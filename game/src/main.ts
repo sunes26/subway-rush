@@ -4,7 +4,7 @@
  * 시뮬은 고정 60Hz, 렌더는 가변. 프레임이 튀어도 물리와 밸런스가 튀지 않는다.
  */
 
-import { Frustum, Matrix4, Vector3 } from 'three'
+import { Frustum, Matrix4, Raycaster, Vector2, Vector3 } from 'three'
 import { createInput, EMPTY_INPUT, type InputFrame } from './core/input'
 import { resolveSeed } from './core/rng'
 import { CAMERA, FPV, MAX_FRAME_MS, MAX_STEPS_PER_FRAME, STEP_MS } from './data/tuning'
@@ -200,6 +200,11 @@ declare global {
       /** 카메라 위치 이력을 **꺼내고 비운다** — 저더(덜컹거림) 계측용 */
       camTrace(): number[]
       setInterp(on: boolean): void
+      /**
+       * 화면 좌표(NDC −1..1)에서 레이를 쏴 맞은 메시를 가까운 순으로 돌려준다.
+       * 룩을 눈으로만 판단하면 "저 흰 면이 뭐지"에서 매번 헛짚는다 — 이름을 직접 읽는다.
+       */
+      pick(ndcX?: number, ndcY?: number): { name: string; dist: number; point: [number, number, number] }[]
     }
   }
 }
@@ -211,6 +216,8 @@ input.sample = (): InputFrame => (forcedInput ? { ...rawSample(), ...forcedInput
 // 렌더 계측 훅 (E2E 예산 검증용)
 ;(window as unknown as { __renderer?: unknown; __scene?: unknown }).__renderer = stage.renderer
 ;(window as unknown as { __scene?: unknown }).__scene = stage.scene
+// 시선 방향을 밖에서 읽을 수 있게 — 마우스 경로가 실제로 카메라를 돌리는지 재려면 필요하다
+;(window as unknown as { __camera?: unknown }).__camera = stage.camera
 
 const gateFrustum = new Frustum()
 const gateMat = new Matrix4()
@@ -220,7 +227,27 @@ const gatePoint = new Vector3()
  *  위치 차이만 보면 프레임 시간 변동까지 섞이므로 **속도**를 볼 수 있게 시각을 같이 남긴다. */
 const camTrace: number[] = []
 
+const pickRay = new Raycaster()
+const pickNdc = new Vector2()
+
 window.__game = {
+  pick: (ndcX = 0, ndcY = 0) => {
+    pickNdc.set(ndcX, ndcY)
+    stage.camera.updateMatrixWorld()
+    pickRay.setFromCamera(pickNdc, stage.camera)
+    pickRay.far = 200
+    const roots = [station?.root, player?.root].filter((r) => r !== null && r !== undefined)
+    const hits = pickRay.intersectObjects(roots, true)
+    return hits.slice(0, 8).map((h) => ({
+      name: h.object.name || h.object.type,
+      dist: Math.round(h.distance * 100) / 100,
+      point: [
+        Math.round(h.point.x * 100) / 100,
+        Math.round(-h.point.z * 100) / 100,   // three z → 월드 y
+        Math.round(h.point.y * 100) / 100,    // three y → 월드 z
+      ] as [number, number, number],
+    }))
+  },
   // 읽으면 비운다 — 순간이동·존 전환이 섞인 구간을 계측에서 떼어내기 위해
   camTrace: () => camTrace.splice(0, camTrace.length),
   setInterp: (on: boolean) => { interpOn = on },

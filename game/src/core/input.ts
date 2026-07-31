@@ -6,6 +6,7 @@
  */
 
 import { FPV } from '../data/tuning'
+import { EMPTY_LOOK, pushLook, readLook, setLocked, type LookState } from './look'
 
 export type InputFrame = Readonly<{
   /** −1..1 — 카메라 기준 우/좌 */
@@ -67,6 +68,8 @@ export const createInput = (target: HTMLElement): InputSource => {
   let lookYaw = 0
   let lookPitch = 0
   let locked = false
+  /** 시선 델타 필터 상태 — 스킵 원인별 처리는 core/look.ts 참고 */
+  let look: LookState = EMPTY_LOOK
 
   const onKeyDown = (e: KeyboardEvent): void => {
     if (e.repeat) {
@@ -84,11 +87,30 @@ export const createInput = (target: HTMLElement): InputSource => {
   const onKeyUp = (e: KeyboardEvent): void => { held.delete(e.code) }
   const onBlur = (): void => { held.clear(); dragging = false }
 
+  /**
+   * 포인터 락 요청.
+   *
+   * `unadjustedMovement: true` — **OS 마우스 가속을 끈다** (스킵 원인 4).
+   * 가속이 켜져 있으면 같은 물리 거리를 움직여도 손 속도에 따라 회전량이 배로 달라져서,
+   * 조금 빨리 움직인 순간 화면이 훌쩍 건너뛴 것처럼 보인다.
+   * 표준 옵션이지만 미지원 브라우저는 Promise를 거부하거나 던지므로 폴백을 둔다.
+   */
+  const requestLock = (): void => {
+    const el = target as HTMLElement & {
+      requestPointerLock?: (opts?: { unadjustedMovement?: boolean }) => Promise<void> | void
+    }
+    if (!el.requestPointerLock) return
+    try {
+      const r = el.requestPointerLock({ unadjustedMovement: true })
+      if (r instanceof Promise) r.catch(() => { void el.requestPointerLock?.() })
+    } catch {
+      void el.requestPointerLock()
+    }
+  }
+
   const onPointerDown = (e: PointerEvent): void => {
     // 좌클릭 = 포인터 락 요청. 1인칭 시선의 유일한 진입점이다.
-    if (e.button === 0 && document.pointerLockElement !== target) {
-      void target.requestPointerLock?.()
-    }
+    if (e.button === 0 && document.pointerLockElement !== target) requestLock()
     if (e.button === 2) { dragging = true; target.setPointerCapture(e.pointerId) }
   }
   const onPointerUp = (e: PointerEvent): void => {
@@ -97,16 +119,24 @@ export const createInput = (target: HTMLElement): InputSource => {
       if (target.hasPointerCapture(e.pointerId)) target.releasePointerCapture(e.pointerId)
     }
   }
-  const onLockChange = (): void => { locked = document.pointerLockElement === target }
+  const onLockChange = (): void => {
+    locked = document.pointerLockElement === target
+    look = setLocked(look, locked, performance.now())
+  }
+
+  /**
+   * 락 중 시선은 **mousemove**로 받는다.
+   *
+   * PointerEvent의 movementX/Y는 Chrome에서 오래 문제가 있었고(락 중 좌표계·배율),
+   * 포인터 락 명세가 기준으로 삼는 이벤트는 mousemove다. 오빗 드래그만 pointermove에 남긴다.
+   */
+  const onMouseMove = (e: MouseEvent): void => {
+    if (!locked) return
+    look = pushLook(look, -e.movementX, -e.movementY, e.timeStamp)
+  }
 
   const onPointerMove = (e: PointerEvent): void => {
-    if (locked) {
-      lookYaw -= e.movementX * SENSITIVITY
-      lookPitch -= e.movementY * SENSITIVITY
-      lookPitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, lookPitch))
-      return
-    }
-    if (!dragging) return
+    if (locked || !dragging) return
     orbitYaw -= e.movementX * 0.0042
     orbitPitch -= e.movementY * 0.0032
     orbitYaw = Math.max(-0.79, Math.min(0.79, orbitYaw))
@@ -125,6 +155,7 @@ export const createInput = (target: HTMLElement): InputSource => {
   target.addEventListener('pointerdown', onPointerDown)
   window.addEventListener('pointerup', onPointerUp)
   window.addEventListener('pointermove', onPointerMove)
+  window.addEventListener('mousemove', onMouseMove)
   target.addEventListener('wheel', onWheel, { passive: false })
   target.addEventListener('contextmenu', onContext)
 
@@ -136,6 +167,13 @@ export const createInput = (target: HTMLElement): InputSource => {
 
   return {
     sample(): InputFrame {
+      // 이 프레임에 반영할 시선 델타를 꺼낸다. 넘치는 몫은 필터가 다음 프레임으로 이월한다.
+      const r = readLook(look)
+      look = r.state
+      lookYaw += r.delta.dx * SENSITIVITY
+      lookPitch += r.delta.dy * SENSITIVITY
+      lookPitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, lookPitch))
+
       const frame: InputFrame = {
         moveX: axis(['KeyA', 'ArrowLeft'], ['KeyD', 'ArrowRight']),
         moveY: axis(['KeyS', 'ArrowDown'], ['KeyW', 'ArrowUp']),
@@ -160,6 +198,7 @@ export const createInput = (target: HTMLElement): InputSource => {
       target.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('pointerup', onPointerUp)
       window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('mousemove', onMouseMove)
       target.removeEventListener('wheel', onWheel)
       target.removeEventListener('contextmenu', onContext)
     },
