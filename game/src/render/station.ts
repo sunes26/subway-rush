@@ -73,6 +73,16 @@ const MATERIAL_TINT: Record<string, number> = {
   'Material.001': 0x8f959b,  // Z5 잡부재
 }
 
+/**
+ * 유리로 그려야 하는 머티리얼.
+ *
+ * 안전문·에스컬레이터 난간·상가 창을 불투명으로 두면 유리로 안 읽힐 뿐 아니라
+ * **들어오는 열차가 안 보인다** — 안전문 너머를 보는 건 이 게임에서 정보다.
+ */
+const GLASS_MATERIALS = new Set([
+  'PSD_GLASS', 'ST_GLASS', 'ESC_GLASS', 'BLD_GLASS', 'VM_GLASS', 'TR_WINDOW',
+])
+
 const baseColor = (m: Material | Material[]): number => {
   const one = (Array.isArray(m) ? m[0] : m) as MeshStandardMaterial | undefined
   const tint = one?.name ? MATERIAL_TINT[one.name] : undefined
@@ -119,7 +129,10 @@ const mergeBuckets = (buckets: Map<string, Bucket>, into: Group): void => {
   for (const [name, b] of buckets) {
     const merged = b.geos.length === 1 ? b.geos[0] : mergeGeometries(b.geos, false)
     if (!merged) continue
-    const mesh = new Mesh(merged, toonMat(b.color))
+    const glass = GLASS_MATERIALS.has(name)
+    const mesh = new Mesh(merged, glass ? toonMat(b.color, { transparent: true, opacity: 0.34 }) : toonMat(b.color))
+    // 유리는 나중에 그린다 — 뒤에 있는 열차·통로가 먼저 깊이버퍼에 들어가야 비쳐 보인다
+    if (glass) mesh.renderOrder = 2
     mesh.name = `merged:${name}`
     into.add(mesh)
     if (b.geos.length > 1) for (const g of b.geos) g.dispose()
@@ -285,12 +298,16 @@ export const loadStation = async (
     }
   }
 
-  const bank = (geos: { left: BufferGeometry[]; right: BufferGeometry[] }, color: number, parent: Group): DoorBank => {
+  const bank = (
+    geos: { left: BufferGeometry[]; right: BufferGeometry[] },
+    color: number, parent: Group, glass = false,
+  ): DoorBank => {
     const one = (list: BufferGeometry[]): Mesh | null => {
       if (list.length === 0) return null
       const g = list.length === 1 ? list[0] : mergeGeometries(list, false)
       if (!g) return null
-      const mesh = new Mesh(g, toonMat(color))
+      const mesh = new Mesh(g, glass ? toonMat(color, { transparent: true, opacity: 0.34 }) : toonMat(color))
+      if (glass) mesh.renderOrder = 2
       mesh.frustumCulled = false
       parent.add(mesh)
       return mesh
@@ -300,7 +317,7 @@ export const loadStation = async (
 
   // 안전문은 승강장에 고정, 차문은 열차와 함께 움직인다
   const z5 = zoneGroups.find((z) => z.group.name === 'station:Z5_PLATFORM')?.group ?? root
-  const psdBank = bank(psdGeo, 0xc6ced4, z5)
+  const psdBank = bank(psdGeo, 0xc6ced4, z5, true)
   const trainBank = bank(trainGeo, 0x6f8797, trainGroup)
   root.add(trainGroup)
   mergedCount += 4

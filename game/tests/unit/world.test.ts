@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  DOOR_XS, ENTRANCE_RAMP, ESCALATOR, FLOOR, GATES, GATE_BODY,
+  DOOR_XS, ENTRANCE_RAMP_A, ENTRANCE_RAMP_B, ESCALATOR, FLOOR, GATES, GATE_BODY,
   PLATFORM, SLABS, SOLIDS, SPAWN, STAIRS, zoneAt,
 } from '../../src/data/world'
 import { rampZ, sampleGround, resolveMove, setDynamicSolids } from '../../src/systems/collision'
@@ -54,9 +54,12 @@ describe('S1-1 부록 A 좌표 대조', () => {
 
 describe('S1-3 램프', () => {
   it('출구계단은 x가 커질수록 내려간다', () => {
-    expect(rampZ(ENTRANCE_RAMP, 2.0, 28)).toBeCloseTo(0, 5)
-    expect(rampZ(ENTRANCE_RAMP, 14.6, 28)).toBeCloseTo(-6, 5)
-    expect(rampZ(ENTRANCE_RAMP, 8.3, 28)).toBeCloseTo(-3, 3)
+    expect(rampZ(ENTRANCE_RAMP_A, 2.0, 28)).toBeCloseTo(0, 5)
+    expect(rampZ(ENTRANCE_RAMP_A, 7.85, 28)).toBeCloseTo(-18 * (6 / 35), 5)
+    expect(rampZ(ENTRANCE_RAMP_B, 14.6, 28)).toBeCloseTo(-6, 5)
+    // 계단참 구간은 램프가 아니라 Slab이다 — 두 램프 어느 쪽도 여기를 덮지 않는다
+    expect(rampZ(ENTRANCE_RAMP_A, 8.4, 28)).toBeNull()
+    expect(rampZ(ENTRANCE_RAMP_B, 8.4, 28)).toBeNull()
   })
   it('에스컬레이터·계단은 −6 → −20 선형이다', () => {
     expect(rampZ(ESCALATOR, 95.8, 2.2)).toBeCloseTo(-6, 5)

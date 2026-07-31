@@ -126,18 +126,57 @@ export const CROSSWALK = { xMin: -31, xMax: -23, yMin: 23.9, yMax: 31.1 } as con
 /** MAP §3.3 — 주기 30s (녹 12s / 적 18s) */
 export const TRAFFIC_LIGHT = { cycleMs: 30_000, greenMs: 12_000 } as const
 
-/** 지상 → B1 계단. 부록 A: 출구계단 Δ6m.
- *  OBJ-05 출입구 x−0.9~8.9 안에서 시작해 동쪽으로 내려간다.
- *  지하 계단이 지상 건물 외곽선을 넘어 뻗는 것은 실제 역사와 동일하다. */
-export const ENTRANCE_RAMP: Ramp = {
-  id: 'RAMP-EXIT4',
-  rect: [2.0, 25.4, 14.6, 30.6],
+/**
+ * 지상 → B1 출구계단. 부록 A: 출구계단 Δ6m.
+ * OBJ-05 출입구 x−0.9~8.9 안에서 시작해 동쪽으로 내려간다.
+ * 지하 계단이 지상 건물 외곽선을 넘어 뻗는 것은 실제 역사와 동일하다.
+ *
+ * ★ **계단참(踊り場)이 있으므로 단일 경사가 아니다.**
+ *   건축법은 높이 3m를 넘는 계단에 3m 이내마다 계단참을 요구하고, 6m 강하인 이 계단은
+ *   실제로도 두 구간으로 나뉜다. 처음엔 충돌만 직선 램프로 두고 시각만 계단참을 넣었다가
+ *   최대 0.30m가 어긋나 발이 디딤판을 뚫었다 — 보이는 것과 밟는 것이 갈리면 안 되는 지점이다.
+ *
+ *   아래 수치는 Blender `Z1_st_*` 지오메트리와 **같은 상수에서 나온다**:
+ *   단너비 0.325 · 단높이 6/35 · 1구간 18단 · 계단참 1.2m · 2구간 17단.
+ *   (도시철도 정거장 설계지침 표준은 330×165. 12.6m 안에 6m를 넣으려면 이 조합이 한계다.)
+ */
+const STAIR_TREAD = 0.325
+const STAIR_RISE = 6 / 35
+/** 1구간 끝 = 계단참 시작 */
+const LANDING_X0 = 2.0 + 18 * STAIR_TREAD          // 7.85
+/** 계단참 끝 = 2구간 시작 */
+const LANDING_X1 = LANDING_X0 + 1.2                // 9.05
+/** 계단참 고도 */
+const LANDING_Z = -18 * STAIR_RISE                 // −3.0857
+
+export const ENTRANCE_RAMP_A: Ramp = {
+  id: 'RAMP-EXIT4-A',
+  rect: [2.0, 25.4, LANDING_X0, 30.6],
   axis: 'x',
-  zAtMin: FLOOR.L0,   // x=2.0  → ±0
-  zAtMax: FLOOR.B1,   // x=14.6 → −6   (동쪽으로 갈수록 내려간다)
+  zAtMin: FLOOR.L0,
+  zAtMax: LANDING_Z,
   kind: 'stairs',
   carrySpeed: 0,
   carryDir: 1,
+}
+
+export const ENTRANCE_RAMP_B: Ramp = {
+  id: 'RAMP-EXIT4-B',
+  rect: [LANDING_X1, 25.4, 14.6, 30.6],
+  axis: 'x',
+  zAtMin: LANDING_Z,
+  zAtMax: FLOOR.B1,
+  kind: 'stairs',
+  carrySpeed: 0,
+  carryDir: 1,
+}
+
+/** 계단참 — 평면이므로 Slab이다. SLABS에 등록된다. */
+export const ENTRANCE_LANDING = {
+  id: 'RAMP-EXIT4-LANDING',
+  rect: [LANDING_X0, 25.4, LANDING_X1, 30.6] as Rect,
+  z: LANDING_Z,
+  kind: 'landing' as const,
 }
 
 // ═══════════════════════ Z2 · 대합실 (B1 −6) ═══════════════════════
@@ -208,7 +247,7 @@ export const STAIRS: Ramp = {
   carryDir: 1,
 }
 
-export const RAMPS: readonly Ramp[] = [ENTRANCE_RAMP, ESCALATOR, STAIRS]
+export const RAMPS: readonly Ramp[] = [ENTRANCE_RAMP_A, ENTRANCE_RAMP_B, ESCALATOR, STAIRS]
 
 // ═══════════════════════ Z5 · 승강장 (B2 −20) ═══════════════════════
 // 부록 A: 승강장A y0~12 · 안전문 y12.15 · 선로A y14.0 · x 78~206
@@ -226,6 +265,16 @@ export const DOOR_XS: readonly number[] = Array.from({ length: 8 }, (_, k) =>
   [2, 6, 10, 14].map((o) => 78 + 16 * k + o),
 ).flat()
 
+/**
+ * 승강장 기둥 — Blender `Z5_colr_*` 와 **같은 좌표**에서 나온다.
+ * 한쪽만 고치면 통과 가능한 유령 기둥이 되므로 값을 바꿀 땐 양쪽을 같이 본다.
+ */
+const Z5_COLUMN_Y = 4.0
+const Z5_COLUMN_XS = Array.from({ length: 15 }, (_, i) => 84 + i * 8)
+const Z5_COLUMNS: Solid[] = Z5_COLUMN_XS.map((x) =>
+  solid(`Z5-COL-${x}`, at(x, Z5_COLUMN_Y, 1.1, 1.1), FLOOR.B2, 4.5, 'column'),
+)
+
 /** 승차 대기줄 마커 — P0은 시각 표시만 (MAP §7.3) */
 export const QUEUE_MARKERS = [
   { label: '3-1', x: 112, y: 10 },
@@ -241,6 +290,8 @@ export const SLABS: readonly Slab[] = [
   { id: 'Z1-WALK', rect: [-64, 22, 2, 34], z: FLOOR.L0, kind: 'sidewalk' },
   // 출입구 내부 서측 랜딩 (계단 시작 전)
   { id: 'Z1-LANDING', rect: [-0.9, 25.4, 2.0, 30.6], z: FLOOR.L0, kind: 'landing' },
+  // 출구계단 중간 계단참 — 시각 지오메트리와 같은 좌표 (위 ENTRANCE_LANDING 주석 참고)
+  ENTRANCE_LANDING,
 
   // ── Z2 (B1) — 계단통(x2~14.6, y25.4~30) 구멍을 피해 3조각으로 분할
   { id: 'Z2-MAIN', rect: [0, 0, 56, 25.4], z: FLOOR.B1, kind: 'concourse' },
@@ -359,6 +410,10 @@ export const SOLIDS: readonly Solid[] = [
   parapet('Z5-END-E', [206, 0, 206.4, 12], FLOOR.B2, 5.0),
   // 승강장 남측 벽 — Z4 착지 개구부(y1~9.5, x119~128)만 열림
   ...wallWithGaps('Z5-S', 'x', [-0.4, 0], [78, 206], [[119, 128]], FLOOR.B2, 5.0, 'wall', PARAPET_H),
+  // 승강장 기둥 — 신도림역 실사 계측(인물 1.72m 기준 지름 ≈1.1m)을 따랐다.
+  // 시각은 16각 원기둥이고 충돌은 정사각 AABB다. 판정이 조금 관대한 쪽이라
+  // "보이는데 안 막히는" 반대 경우보다 낫다 (GDD §11 — 판정은 관대하게).
+  ...Z5_COLUMNS,
   // OBJ-34 환승계단 (부록 A: x138~142.6, y0.4~6.0)
   solid('OBJ-34-XFER', [138, 0.4, 142.6, 6.0], FLOOR.B2, 3.2, 'stairs'),
   solid('ACT-09-SEAT', at(126, 1.5, 2.4, 0.8), FLOOR.B2, 0.9, 'bench'),
