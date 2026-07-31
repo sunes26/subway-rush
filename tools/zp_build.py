@@ -406,6 +406,50 @@ for _side in ("L", "R"):
     _h, _d, _ln = _arm_axis[_side]
     _cut = _h + _d * (_ln * CUFF)
     _bisect(bm, _cut, -_d, lambda v, _h=_h, _d=_d, _ln=_ln: (v.co - _h).dot(_d) / _ln > 0.15)
+
+
+def _boundary_loops(bm_):
+    """열린 경계(면이 하나뿐인 에지)를 연결 성분별로 묶어 돌려준다."""
+    adj = {}
+    for e in bm_.edges:
+        if len(e.link_faces) == 1:
+            a, b = e.verts
+            adj.setdefault(a, set()).add(b)
+            adj.setdefault(b, set()).add(a)
+    seen, out = set(), []
+    for k in adj:
+        if k in seen:
+            continue
+        stack, comp = [k], set()
+        while stack:
+            n = stack.pop()
+            if n in comp:
+                continue
+            comp.add(n)
+            seen.add(n)
+            stack.extend(adj[n] - comp)
+        out.append(comp)
+    return out
+
+
+# 밑단을 수평 링으로 정렬한다.
+# 그룹 기준 사전 컷이 이미 HEM_Z 위에서 끝나 있으면 위의 bisect 가 자를 게 없어
+# 밑단이 톱니로 남는다(실측: 한 루프 안에서 z 편차 55mm). 그래서 자른 뒤
+# '몸통 밑단 루프'를 찾아 가장 낮은 높이에 맞춰 통째로 눕힌다.
+_torso_hem = None
+for comp in _boundary_loops(bm):
+    zs = [v.co.z for v in comp]
+    if max(zs) < 0.56 and max(abs(v.co.x) for v in comp) < 0.13 and len(comp) > 24:
+        if _torso_hem is None or len(comp) > len(_torso_hem):
+            _torso_hem = comp
+if _torso_hem is None:
+    raise RuntimeError("torso hem loop not found")
+_flat = min(v.co.z for v in _torso_hem)
+_before = max(v.co.z for v in _torso_hem) - _flat
+for v in _torso_hem:
+    v.co.z = _flat
+rep["hem_flatten"] = {"verts": len(_torso_hem), "z": round(_flat, 4),
+                      "spread_before_m": round(_before, 4)}
 bm.normal_update()
 loose = [v for v in bm.verts if not v.link_edges]
 if loose:
@@ -459,9 +503,23 @@ def _front(f):
     return f.calc_center_median().y < -0.02 and f.normal.y < -0.55
 
 
+POCKET_OFF = 0.0105
 POCKET = _dup_offset(bm, lambda f: _front(f)
-                     and 0.455 < f.calc_center_median().z < 0.535
-                     and 0.020 < abs(f.calc_center_median().x) < 0.082, 0.0105)
+                     and 0.468 < f.calc_center_median().z < 0.542
+                     and 0.020 < abs(f.calc_center_median().x) < 0.082, POCKET_OFF)
+# 복제 패치를 그대로 두면 가장자리가 열린 판이 옷 위에 떠 있는 꼴이 된다.
+# 경계를 몸판 표면 쪽으로 되밀어 닫아 융기(주머니)로 만든다.
+_pv = {v for f in POCKET for v in f.verts}
+_pb = [e for e in bm.edges
+       if len(e.link_faces) == 1 and e.link_faces[0] in POCKET]
+if _pb:
+    _ext = bmesh.ops.extrude_edge_only(bm, edges=_pb)
+    for g in _ext["geom"]:
+        if isinstance(g, bmesh.types.BMVert):
+            g.co -= g.normal * POCKET_OFF
+            # 아래쪽 테두리는 법선이 밑을 향해서, 되밀면 밑단 아래로 삐져나온다
+            if g.co.z < _flat + 0.004:
+                g.co.z = _flat + 0.004
 bm.to_mesh(gar.data)
 bm.free()
 gar.data.update()
