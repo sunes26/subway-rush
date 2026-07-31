@@ -223,58 +223,90 @@ head_r = Vector((hx, (hy_max - hy_min) / 2.0, (hz_max - hz_min) / 2.0))
 rep["head"] = {"n": len(head_pts), "center": [round(v, 4) for v in head_c],
                "radii": [round(v, 4) for v in head_r]}
 
-bpy.ops.mesh.primitive_uv_sphere_add(segments=22, ring_count=12, radius=1.0,
+import bmesh
+
+# 후드는 '두피에 붙은 뚜껑'이 아니라 '머리 위에 덮어쓴 자루'여야 한다.
+# 이전 버전은 머리에 1.10배로 딱 붙어서 바가지머리처럼 읽혔다.
+# 머리보다 확실히 크게 띄우고, 얼굴 구멍을 크게 내서 얼굴이 안쪽으로
+# 들어가 보이게 만든다.
+# 얼굴 구멍은 구의 '극점'에 오도록 만든다. 원뿔로 격자를 가로질러 자르면
+# 경계가 링을 따르지 않아 테두리가 톱니로 남는다. 극점 기준으로 자르면
+# 경계가 위도선 하나와 정확히 일치해 완전한 원이 된다.
+FACE_DIR = Vector((0.0, -1.0, -0.30)).normalized()   # 얼굴 구멍이 향하는 방향
+FACE_HALF = 62.0                                     # 구멍 반각
+HOOD_R = (head_r.x + head_r.y + head_r.z) / 3.0 * 1.28 + 0.010
+HOOD_CEN = head_c + Vector((0.0, 0.030, 0.016))
+
+bpy.ops.mesh.primitive_uv_sphere_add(segments=28, ring_count=16, radius=1.0,
                                      location=(0, 0, 0))
 hood = bpy.context.active_object
 hood.name = "ZP_HoodShell"
 hood.data.name = "ZP_HoodShell"
-SC = Vector((head_r.x * 1.10 + 0.005, head_r.y * 1.13 + 0.005, head_r.z * 1.08 + 0.003))
-hood.scale = SC
-hood.location = head_c + Vector((0.0, 0.016, 0.010))
-set_active(hood)
-bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 
-# 얼굴 구멍: 앞·아래쪽 정점 제거 (후드 로컬 정규화 좌표 기준)
-import bmesh
 bm = bmesh.new()
 bm.from_mesh(hood.data)
-cen = head_c + Vector((0.0, 0.016, 0.010))
-kill = []
-for v in bm.verts:
-    d = v.co - cen
-    ny = d.y / SC.y
-    nz = d.z / SC.z
-    if ny < -0.24 and nz < 0.50:
-        kill.append(v)
+_cut = -math.cos(math.radians(FACE_HALF))
+kill = [v for v in bm.verts if v.co.z < _cut]
 if not kill:
-    raise RuntimeError("face opening cut removed no vertices")
+    raise RuntimeError("hood face opening cut removed no vertices")
 bmesh.ops.delete(bm, geom=kill, context='VERTS')
-# 뒷목 카울: 후면(+Y) 볼륨을 키워 후면 실루엣에서 후드가 읽히게 한다.
-# 고개를 숙이면 후드 뒷면은 몸에서 멀어지므로 관통 위험이 없다.
-for v in bm.verts:
-    d = v.co - cen
-    if d.y > 0.0:
-        k = (d.y / SC.y)
-        v.co.y += d.y * 0.34 * k
-        if d.z / SC.z < 0.25:
-            v.co.z -= 0.016 * k
 loose = [v for v in bm.verts if not v.link_edges]
 if loose:
     bmesh.ops.delete(bm, geom=loose, context='VERTS')
 bm.to_mesh(hood.data)
 bm.free()
 hood.data.update()
-if len(hood.data.vertices) < 100:
+
+# -Z(구멍 방향)를 FACE_DIR 로 돌린다
+hood.rotation_mode = 'QUATERNION'
+hood.rotation_quaternion = Vector((0.0, 0.0, -1.0)).rotation_difference(FACE_DIR)
+hood.scale = (HOOD_R, HOOD_R, HOOD_R)        # 균일 스케일 — 회전 후 왜곡 방지
+hood.location = HOOD_CEN
+set_active(hood)
+bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+
+bm = bmesh.new()
+bm.from_mesh(hood.data)
+kill = []
+for v in bm.verts:
+    d = v.co - HOOD_CEN
+    # 머리 비율에 맞춰 월드에서 살짝 늘린다 (균일구 → 계란형)
+    v.co.z = HOOD_CEN.z + d.z * 1.07
+    v.co.y = HOOD_CEN.y + d.y * 1.03
+    # 아래쪽은 머리 회전축 근처에서 끊는다. 더 내리면 고개를 숙일 때
+    # 후드가 어깨를 파고든다 — 목 아래는 Chest 에 실린 칼라가 맡는다.
+    if v.co.z < 0.688:
+        kill.append(v)
+if kill:
+    bmesh.ops.delete(bm, geom=kill, context='VERTS')
+# 뒷목 카울 — 후면(+Y) 볼륨을 키워 자루처럼 늘어지게 한다
+for v in bm.verts:
+    d = v.co - HOOD_CEN
+    if d.y > 0.0:
+        k = d.y / HOOD_R
+        v.co.y += d.y * 0.40 * k
+        if d.z < 0.30 * HOOD_R:
+            v.co.z -= 0.020 * k
+loose = [v for v in bm.verts if not v.link_edges]
+if loose:
+    bmesh.ops.delete(bm, geom=loose, context='VERTS')
+bm.to_mesh(hood.data)
+bm.free()
+hood.data.update()
+if len(hood.data.vertices) < 120:
     raise RuntimeError("hood shell collapsed: %d verts" % len(hood.data.vertices))
 
 sol = hood.modifiers.new("Thick", 'SOLIDIFY')
-sol.thickness = 0.011
+sol.thickness = 0.017          # 두꺼워야 얼굴 구멍 테두리가 원단으로 읽힌다
 sol.offset = 1.0
 set_active(hood)
 bpy.ops.object.modifier_apply(modifier=sol.name)
 bpy.ops.object.shade_smooth()
 hood.data.materials.clear()
 hood.data.materials.append(hood_mat)
+rep["hood_shell"] = {"head_radii": [round(v, 4) for v in head_r],
+                     "verts": len(hood.data.vertices),
+                     "radius": round(HOOD_R, 4), "face_opening_half_deg": FACE_HALF}
 
 # 후드 전체를 Head 본에 100% 웨이트
 vg = hood.vertex_groups.new(name="Head")
@@ -363,14 +395,18 @@ def _bisect(bm_, co, no, verts_filter=None):
     bm_.verts.ensure_lookup_table()
 
 
+# 순서 주의: 부풀린 '뒤에' 잘라야 한다.
+# 자른 뒤 법선 방향으로 밀면 밑단 정점마다 법선의 수직 성분이 달라
+# 애써 평면으로 자른 밑단이 다시 울퉁불퉁해진다.
+bm.normal_update()
+for v in bm.verts:
+    v.co += v.normal * HOODIE_OFFSET             # 원단 두께만큼 부풀린다
 _bisect(bm, Vector((0.0, 0.0, HEM_Z)), Vector((0.0, 0.0, 1.0)))
 for _side in ("L", "R"):
     _h, _d, _ln = _arm_axis[_side]
     _cut = _h + _d * (_ln * CUFF)
     _bisect(bm, _cut, -_d, lambda v, _h=_h, _d=_d, _ln=_ln: (v.co - _h).dot(_d) / _ln > 0.15)
 bm.normal_update()
-for v in bm.verts:
-    v.co += v.normal * HOODIE_OFFSET             # 원단 두께만큼 부풀린다
 loose = [v for v in bm.verts if not v.link_edges]
 if loose:
     bmesh.ops.delete(bm, geom=loose, context='VERTS')
@@ -379,19 +415,148 @@ bm.free()
 gar.data.update()
 if len(gar.data.vertices) < 400:
     raise RuntimeError("hoodie shell too small: %d verts" % len(gar.data.vertices))
+# 머티리얼 슬롯을 먼저 잡는다. bmesh 로 material_index 를 박은 뒤에
+# materials.clear() 를 호출하면 인덱스가 전부 0 으로 초기화된다.
 gar.data.materials.clear()
-gar.data.materials.append(hood_mat)
+gar.data.materials.append(hood_mat)         # 슬롯 0 = 후드티
+gar.data.materials.append(AJ_DARK)          # 슬롯 1 = 지퍼
+
+# ---- 지퍼 · 주머니: 몸판 면을 복제해 바깥으로 밀어낸다 ----
+# 웨이트가 그대로 따라오므로 별도 리깅이 필요 없고 몸을 정확히 따라간다.
+bm = bmesh.new()
+bm.from_mesh(gar.data)
+bm.faces.ensure_lookup_table()
+bm.edges.ensure_lookup_table()
+bm.verts.ensure_lookup_table()
+
+
+def _dup_offset(bm_, pred, dist):
+    src = [f for f in bm_.faces if pred(f)]
+    if len(src) < 6:
+        raise RuntimeError("dup_offset: too few faces (%d)" % len(src))
+    geom = list(src)
+    seen = set()
+    for f in src:
+        for e in f.edges:
+            if e.index not in seen:
+                seen.add(e.index)
+                geom.append(e)
+    seen_v = set()
+    for f in src:
+        for v in f.verts:
+            if v.index not in seen_v:
+                seen_v.add(v.index)
+                geom.append(v)
+    res = bmesh.ops.duplicate(bm_, geom=geom)
+    new_faces = [g for g in res["geom"] if isinstance(g, bmesh.types.BMFace)]
+    new_verts = {v for g in res["geom"] if isinstance(g, bmesh.types.BMVert) for v in (g,)}
+    for v in new_verts:
+        v.co += v.normal * dist
+    return new_faces
+
+
+def _front(f):
+    # 밑단에서 아래로 말려 들어가는 면까지 잡으면 지퍼가 가랑이 쪽으로
+    # 검은 혀처럼 삐져나온다. 정면을 확실히 향한 면만 쓴다.
+    return f.calc_center_median().y < -0.02 and f.normal.y < -0.55
+
+
+ZIP_W = 0.017
+def _zip_face(f):
+    # 면 중심만 보면 가랑이로 말려 들어가는 면까지 잡혀 지퍼가 밑단 아래로
+    # 검은 혀처럼 삐져나온다. 정점 전체가 밴드 안에 있고 벽면에 가까운 면만 쓴다.
+    if not _front(f):
+        return False
+    if abs(f.calc_center_median().x) >= ZIP_W:
+        return False
+    if abs(f.normal.z) > 0.45:                 # 바닥으로 말린 면 제외
+        return False
+    return all(0.462 < v.co.z < 0.700 for v in f.verts)
+
+
+zip_faces = _dup_offset(bm, _zip_face, 0.0060)
+for f in zip_faces:
+    f.material_index = 1                       # 슬롯 1 = AJ_Dark (지퍼)
+POCKET = _dup_offset(bm, lambda f: _front(f)
+                     and 0.455 < f.calc_center_median().z < 0.535
+                     and 0.020 < abs(f.calc_center_median().x) < 0.082, 0.0105)
+for f in POCKET:
+    f.material_index = 0
+bm.to_mesh(gar.data)
+bm.free()
+gar.data.update()
+
+_zc = sum(1 for poly in gar.data.polygons if poly.material_index == 1)
+if _zc < 6:
+    raise RuntimeError("zipper faces lost (%d)" % _zc)
 set_active(gar)
 bpy.ops.object.shade_smooth()
+rep["zipper_faces"] = _zc
+rep["pocket_faces"] = len(POCKET)
 rep["hoodie"] = {"verts": len(gar.data.vertices),
                  "tris": sum(len(p.vertices) - 2 for p in gar.data.polygons),
                  "offset_m": HOODIE_OFFSET, "hem_z": HEM_Z, "cuff": CUFF,
                  "color": HOODIE_HEX}
 
+# ---- 칼라: 후드와 몸판 사이 목 구간을 메운다 ----
+# 후드는 Head 본에 100% 실려 고개와 함께 통째로 돈다. 목 아래까지 후드를
+# 내리면 고개를 숙일 때 어깨를 파고들므로, 그 구간은 Chest 에 실린 칼라가 맡는다.
+COL_Z0, COL_Z1 = 0.628, 0.706
+bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=1.0, depth=1.0,
+                                    location=(0, 0, 0))
+col = bpy.context.active_object
+col.name = "ZP_Collar"
+col.data.name = "ZP_Collar"
+bm = bmesh.new()
+bm.from_mesh(col.data)
+bmesh.ops.delete(bm, geom=[f for f in bm.faces if abs(f.normal.z) > 0.9], context='FACES')
+for v in bm.verts:
+    t = 0.5 + v.co.z                       # 0(아래) ~ 1(위)
+    r = 0.055 + 0.030 * t                  # 위로 갈수록 벌어진다
+    ln = Vector((v.co.x, v.co.y, 0.0)).length
+    if ln > 1e-6:
+        v.co.x = v.co.x / ln * r
+        v.co.y = v.co.y / ln * r * 1.06
+    v.co.z = COL_Z0 + (COL_Z1 - COL_Z0) * t
+bm.to_mesh(col.data)
+bm.free()
+col.data.update()
+sol2 = col.modifiers.new("Thick", 'SOLIDIFY')
+sol2.thickness = 0.014
+set_active(col)
+bpy.ops.object.modifier_apply(modifier=sol2.name)
+bpy.ops.object.shade_smooth()
+col.data.materials.clear()
+col.data.materials.append(hood_mat)
+vgc = col.vertex_groups.new(name="Chest")
+vgc.add(range(len(col.data.vertices)), 1.0, 'REPLACE')
+rep["collar"] = {"verts": len(col.data.vertices), "z": [COL_Z0, COL_Z1]}
+
+# ---- 조임끈 2가닥: 후드 앞 테두리에서 가슴으로 늘어진다 ----
+cords = []
+for sgn in (-1, 1):
+    bpy.ops.mesh.primitive_cylinder_add(vertices=8, radius=0.0052, depth=0.100,
+                                        location=(sgn * 0.026, -0.089, 0.610))
+    c = bpy.context.active_object
+    c.name = "ZP_Cord.%s" % ("L" if sgn > 0 else "R")
+    c.rotation_euler = (math.radians(-9), 0.0, 0.0)   # 아래쪽이 앞으로 나오게
+    set_active(c)
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    bpy.ops.object.shade_smooth()
+    c.data.materials.clear()
+    c.data.materials.append(hood_mat)
+    g = c.vertex_groups.new(name="Chest")
+    g.add(range(len(c.data.vertices)), 1.0, 'REPLACE')
+    cords.append(c)
+rep["cords"] = len(cords)
+
 # 본체에 조인 (기존 파이프라인: 액세서리 셸은 *_Character 에 합침)
 set_active(mesh)
 hood.select_set(True)
 gar.select_set(True)
+col.select_set(True)
+for c in cords:
+    c.select_set(True)
 bpy.context.view_layer.objects.active = mesh
 bpy.ops.object.join()
 mesh = need_obj("ZP_Character")
@@ -644,9 +809,10 @@ n = (head_world - phone_c).normalized()          # 화면이 바라볼 방향
 # 사용자 요청: 화면이 얼굴을 정면으로 보게 한다 = 폰 면과 얼굴 면이 평행.
 # 시선 방향을 그대로 법선으로 쓰므로 사실상 클램프를 풀어 둔 값이다.
 # 보행 중 스마트폰 사용 연구 다이어그램(수평선 기준 각 θ) 기준.
-# 화면 법선이 눈을 향하되 폰이 완전히 눕지는 않는 구간 = 수직에서 60도.
+# 화면 법선이 눈을 향하되 폰이 완전히 눕지는 않는 구간. 82 가 완전 평행이고
+# 75 는 거기서 7도만 세운 값 — 정면 실루엣을 조금 남기는 절충점이다.
 # 90 이면 시선과 완전 평행이 되어 정면에서 폰이 선으로만 보인다.
-MAX_TILT = float(os.environ.get('ZP_MAX_TILT', '60'))
+MAX_TILT = float(os.environ.get('ZP_MAX_TILT', '75'))
 fwd = Vector((0.0, -1.0, 0.0))
 tilt = math.degrees(n.angle(fwd))
 if tilt > MAX_TILT:
