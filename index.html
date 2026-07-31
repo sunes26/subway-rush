@@ -23,6 +23,17 @@
   .wrap{max-width:1060px; margin:0 auto; padding:0 24px;}
 
   .mast{ padding:56px 0 20px; border-bottom:2px solid var(--ink); }
+  .playcta{ display:grid; grid-template-columns:1fr auto; align-items:center;
+    gap:4px 20px; text-decoration:none; color:var(--paper); background:var(--ink);
+    padding:24px 26px; margin:22px 0 6px; border-radius:3px;
+    transition:transform .16s ease, filter .16s ease; }
+  .playcta:hover{ transform:translateY(-2px); filter:brightness(1.12); }
+  .playcta .pk{ grid-column:1; font-family:var(--mono); font-size:10px;
+    letter-spacing:.3em; opacity:.55; }
+  .playcta .pt{ grid-column:1; font-size:clamp(20px,3vw,28px); font-weight:750;
+    letter-spacing:-.03em; line-height:1.15; }
+  .playcta .ps{ grid-column:1; font-size:12.5px; opacity:.6; margin-top:4px; }
+  .playcta .parrow{ grid-column:2; grid-row:1 / span 3; font-size:26px; opacity:.8; }
   .kicker{ font-family:var(--mono); font-size:10px; letter-spacing:.3em;
            text-transform:uppercase; color:var(--muted); }
   h1{ font-size:clamp(28px,4.6vw,44px); line-height:1.04; margin:12px 0 0;
@@ -149,6 +160,13 @@
     <div class="kicker">Subway Rush / Assets</div>
     <h1>에셋</h1>
   </div>
+
+  <a class="playcta" href="game/dist/index.html">
+    <span class="pk">P0 · PLAYABLE</span>
+    <span class="pt">지하철 러쉬 &mdash; 플레이</span>
+    <span class="ps">180초 · 개찰구 6기 중 살아있는 건 하나 &middot; WASD / Shift / 마우스</span>
+    <span class="parrow">&#9654;</span>
+  </a>
 
   <div id="index">
 <button class="entry" data-go="mc"><span class="eid">ACT-01</span><span class="ename">플레이어</span><span class="emeta">애니메이션 9종</span><span class="arrow">&rarr;</span></button>

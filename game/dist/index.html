@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>지하철 러쉬 — SUBWAY RUSH</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🚇</text></svg>">
+<style>
+  :root{
+    --led:#F5F5F0; --warn:#FFC83D; --hot:#FF8A3D; --crit:#E5484D;
+    --line2:#00A84D; --line1:#0052A4; --gold:#FFC83D; --ink:#0B0B0A;
+    --mono:ui-monospace,"Cascadia Mono","SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:#07070A;color:var(--led);
+    font-family:var(--sans); -webkit-font-smoothing:antialiased;}
+  canvas{display:block;position:fixed;inset:0;width:100%;height:100%}
+  #ui{position:fixed;inset:0;pointer-events:none;z-index:10}
+</style>
+  <script type="module" crossorigin src="./assets/index-MKlJSJRx.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/three-ZQZaNPA2.js">
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="ui"></div>
+</body>
+</html>
