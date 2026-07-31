@@ -13,6 +13,8 @@ declare global {
       visibleGates(): number
       mode(): 'fp' | 'tp'
       toggleView(): void
+      camTrace(): number[]
+      setInterp(on: boolean): void
     }
   }
 }

@@ -30,3 +30,11 @@ for (const [name, x, y, z, zone, minAdv, maxDrift] of CASES) {
     expect(Math.abs(after.y - before.y), `${name} 횡드리프트`).toBeLessThan(maxDrift)
   })
 }
+
+/**
+ * 저더(덜컹거림) 계측.
+ *
+ * 시뮬은 고정 60Hz, 렌더는 가변이다. 보간 없이 시뮬 위치를 그대로 그리면
+ * 한 프레임에 스텝이 0회 또는 2회 도는 경우가 섞이며 카메라가 계단처럼 튄다.
+ * 등속 직진 중이라면 프레임간 이동량은 거의 일정해야 한다 — 그 분산을 본다.
+ */

@@ -7,7 +7,7 @@
 
 import { lerpExp, rotateToward, type Vec2 } from '../core/math'
 import type { InputFrame } from '../core/input'
-import { MOVE, SPEED, STAMINA } from '../data/tuning'
+import { JUMP, MOVE, SPEED, STAMINA } from '../data/tuning'
 import { FLOOR, GATES, GATE_FUNNEL_X } from '../data/world'
 import type { Action, GameState } from '../state/types'
 import { resolveMove, sampleGround, depenetrate } from './collision'
@@ -110,8 +110,44 @@ export const movementSystem = (s: GameState, ctx: MoveCtx): Action[] => {
   if (res.hitX) vx = 0
   if (res.hitY) vy = 0
 
+  // ── 수직: 접지면 위에 붙어 있거나, 공중이면 중력으로 떨어진다
   const ground = sampleGround(fixed.x, fixed.y, p.pos.z)
-  const z = ground.z === Number.NEGATIVE_INFINITY ? p.pos.z : ground.z
+  const groundZ = ground.z === Number.NEGATIVE_INFINITY ? p.pos.z : ground.z
+
+  let z = p.pos.z
+  let vz = p.vz
+  let grounded = p.grounded
+  let airborneMs = p.airborneMs
+  // 입력 버퍼 — 착지 직전에 누른 점프를 착지 순간에 살려준다
+  let jumpBufferMs = ctx.input.jump ? JUMP.bufferMs : Math.max(0, p.jumpBufferMs - ctx.dtMs)
+  let jumped = false
+
+  if (grounded) {
+    z = groundZ
+    vz = 0
+    airborneMs = 0
+  } else {
+    vz -= JUMP.gravity * dt
+    z += vz * dt
+    airborneMs += ctx.dtMs
+    if (vz <= 0 && z <= groundZ) { z = groundZ; vz = 0; grounded = true; airborneMs = 0 }
+  }
+
+  // 지면이 아래로 꺼지면(계단·경사 끝) 낙하로 전환
+  if (grounded && groundZ < z - 0.06) grounded = false
+
+  // 코요테 타임 — 모서리에서 한 프레임 늦게 눌러도 받아준다
+  const canJump = (grounded || airborneMs <= JUMP.coyoteMs) && vz <= 0.01
+  if (canJump && jumpBufferMs > 0 && stamina >= JUMP.stamina) {
+    vz = JUMP.speed
+    z = groundZ + 0.02
+    grounded = false
+    airborneMs = 0
+    jumpBufferMs = 0
+    stamina -= JUMP.stamina
+    jumped = true
+  }
+  void jumped
 
   const moving = Math.hypot(vx, vy) > 0.35
   const facing = moving
@@ -129,6 +165,10 @@ export const movementSystem = (s: GameState, ctx: MoveCtx): Action[] => {
       rampId: ground.rampId,
       moving,
       sprinting: canSprint && moving,
+      vz,
+      grounded,
+      airborneMs,
+      jumpBufferMs,
     },
     { t: 'STAMINA', value: stamina, locked, sinceSprintMs },
   ]

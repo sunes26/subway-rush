@@ -11,19 +11,22 @@ import {
 } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js'
+import type { Vec3 } from '../core/math'
 import { PALETTE } from '../data/tuning'
 import type { GameState } from '../state/types'
 import { toonMat } from './toon'
 
-export type ClipName = 'Idle' | 'Walk' | 'Run' | 'Sprint' | 'Jump' | 'Slide' | 'Stumble' | 'Hit' | 'Board'
+export type ClipName =
+  | 'Idle' | 'Walk' | 'Run' | 'Sprint' | 'Jump' | 'JumpAir' | 'JumpLand'
+  | 'Slide' | 'Stumble' | 'Hit' | 'Board'
 
 const CROSSFADE = 0.18
 /** 원샷 클립 — 끝나면 자동으로 이전 상태로 돌아간다 */
-const ONESHOT: ReadonlySet<ClipName> = new Set(['Stumble', 'Hit', 'Jump'])
+const ONESHOT: ReadonlySet<ClipName> = new Set(['Stumble', 'Hit', 'Jump', 'JumpAir', 'JumpLand'])
 
 export type PlayerRig = Readonly<{
   root: Group
-  sync(state: GameState, dtSec: number): void
+  sync(state: GameState, dtSec: number, renderPos?: Vec3): void
   play(name: ClipName): void
   /** 1인칭에서는 자기 몸이 카메라를 가린다 — 통째로 끈다 (전용 팔 메시는 P1) */
   setVisible(on: boolean): void
@@ -78,6 +81,8 @@ export const loadPlayerRig = async (url: string, outline: boolean): Promise<Play
   let current: ClipName | null = null
   let oneshotUntil = 0
   let clock = 0
+  /** 직전 프레임에 공중이었는가 — 착지 클립 트리거 */
+  let wasAirborne = false
 
   const play = (name: ClipName, force = false): void => {
     if (current === name && !force) return
@@ -105,20 +110,25 @@ export const loadPlayerRig = async (url: string, outline: boolean): Promise<Play
     root,
     setVisible(on) { root.visible = on },
     play: (n) => play(n),
-    sync(state, dtSec) {
+    sync(state, dtSec, renderPos) {
       clock += dtSec
       const p = state.player
-      root.position.set(p.pos.x, p.pos.z, -p.pos.y)
+      const pos = renderPos ?? p.pos
+      root.position.set(pos.x, pos.z, -pos.y)
       // 월드 facing(+x 기준, 반시계) → three 요
       root.rotation.y = -p.facing + Math.PI / 2
 
+      // 공중은 원샷 클립보다 우선한다 — 뛰는 도중 다른 상태로 덮이면 안 된다
       if (state.phase === 'boarding') play('Board')
+      else if (!p.grounded) play('JumpAir')
+      else if (wasAirborne) { wasAirborne = false; play('JumpLand', true) }
       else if (clock >= oneshotUntil) {
         if (state.gates.state === 'reject') play('Stumble')
         else if (p.sprinting) play('Sprint')
         else if (p.moving) play('Walk')
         else play('Idle')
       }
+      if (!p.grounded) wasAirborne = true
       mixer.update(dtSec)
     },
     dispose() {

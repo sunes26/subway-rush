@@ -113,6 +113,10 @@ export const gateKnockback = (s: GameState, prevState: GameState): Action[] => {
     rampId: p.rampId,
     moving: false,
     sprinting: false,
+    vz: p.vz,
+    grounded: p.grounded,
+    airborneMs: p.airborneMs,
+    jumpBufferMs: p.jumpBufferMs,
   }]
 }
 

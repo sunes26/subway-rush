@@ -42,6 +42,10 @@ export const initialState = (seed: number): GameState => {
       sprintLocked: false,
       sinceSprintMs: 99_999,
       speedPenalty: 0,
+      vz: 0,
+      grounded: true,
+      airborneMs: 0,
+      jumpBufferMs: 0,
       rampId: null,
       moving: false,
       sprinting: false,
@@ -124,6 +128,10 @@ export const reducer = (s: GameState, a: Action): GameState => {
           rampId: a.rampId,
           moving: a.moving,
           sprinting: a.sprinting,
+          vz: a.vz,
+          grounded: a.grounded,
+          airborneMs: a.airborneMs,
+          jumpBufferMs: a.jumpBufferMs,
         },
       }
 

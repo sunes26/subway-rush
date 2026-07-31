@@ -66,6 +66,7 @@ stage.resize()
 const restart = (): void => {
   const seed = (state.seed * 1664525 + 1013904223) >>> 0
   state = initialState(seed)
+  prevPos = state.player.pos
   rebuildDynamics(state)
 }
 
@@ -84,6 +85,10 @@ const lightRemainSec = (s: GameState): number =>
 
 let prev = performance.now()
 let acc = 0
+/** 직전 시뮬 스텝의 플레이어 위치 — 렌더 보간의 시작점 */
+let prevPos = state.player.pos
+/** 렌더 보간 on/off — E2E에서 이 테스트가 실제로 저더를 잡는지 확인하는 용도 */
+let interpOn = true
 
 const frame = (now: number): void => {
   requestAnimationFrame(frame)
@@ -101,17 +106,32 @@ const frame = (now: number): void => {
 
   let steps = 0
   while (acc >= STEP_MS && steps < MAX_STEPS_PER_FRAME) {
+    prevPos = state.player.pos
     state = tick(state, STEP_MS, { input: sample, cameraYaw: cameraRig.yaw() })
     acc -= STEP_MS
     steps++
   }
   if (steps === MAX_STEPS_PER_FRAME) acc = 0
 
+  /**
+   * 렌더 보간 — 시뮬은 고정 60Hz, 렌더는 가변이다.
+   * 보간 없이 시뮬 위치를 그대로 그리면 프레임마다 위치가 계단처럼 튄다.
+   * 한 프레임에 스텝이 0회 또는 2회 도는 경우가 섞이면 그게 그대로 화면 덜컹거림이 된다.
+   * 계획서 §3의 "렌더는 α로 부드럽게 그린다"가 이것이다.
+   */
+  const alpha = interpOn ? Math.min(1, acc / STEP_MS) : 1
+  const cur = state.player.pos
+  const renderPos = {
+    x: prevPos.x + (cur.x - prevPos.x) * alpha,
+    y: prevPos.y + (cur.y - prevPos.y) * alpha,
+    z: prevPos.z + (cur.z - prevPos.z) * alpha,
+  }
+
   const dtSec = Math.min(dt, 100) / 1000
-  cameraRig.update(state, sample, dtSec)
+  cameraRig.update(state, sample, dtSec, renderPos)
   stage.setMood(state.zone, dtSec)
   station?.sync(state, dtSec, lightIsGreen(state), lightRemainSec(state))
-  player?.sync(state, dtSec)
+  player?.sync(state, dtSec, renderPos)
   hud.sync(state, sample.locked && cameraRig.mode() === 'fp')
   screens.sync(state)
   debug.sync(state)
@@ -124,6 +144,9 @@ const frame = (now: number): void => {
     stage.camera.position.x += (Math.random() - 0.5) * 0.22 * k
     stage.camera.position.y += (Math.random() - 0.5) * 0.22 * k
   }
+
+  camTrace.push(stage.camera.position.x, now)
+  if (camTrace.length > 1200) camTrace.splice(0, 2)
 
   stage.renderer.render(stage.scene, stage.camera)
 }
@@ -174,6 +197,9 @@ declare global {
       visibleGates(): number
       mode(): 'fp' | 'tp'
       toggleView(): void
+      /** 카메라 위치 이력을 **꺼내고 비운다** — 저더(덜컹거림) 계측용 */
+      camTrace(): number[]
+      setInterp(on: boolean): void
     }
   }
 }
@@ -190,7 +216,14 @@ const gateFrustum = new Frustum()
 const gateMat = new Matrix4()
 const gatePoint = new Vector3()
 
+/** 카메라 x와 그 시각(ms) 쌍 — 저더 계측.
+ *  위치 차이만 보면 프레임 시간 변동까지 섞이므로 **속도**를 볼 수 있게 시각을 같이 남긴다. */
+const camTrace: number[] = []
+
 window.__game = {
+  // 읽으면 비운다 — 순간이동·존 전환이 섞인 구간을 계측에서 떼어내기 위해
+  camTrace: () => camTrace.splice(0, camTrace.length),
+  setInterp: (on: boolean) => { interpOn = on },
   look: (yaw, pitch = 0) => { forcedInput = { ...(forcedInput ?? {}), lookYaw: yaw, lookPitch: pitch } },
   mode: () => cameraRig.mode(),
   toggleView: () => { cameraRig.toggleMode(); applyView() },

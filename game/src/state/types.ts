@@ -34,6 +34,14 @@ export type PlayerState = Readonly<{
   sinceSprintMs: number
   /** 0..1 — 단소 피격 누적. P0 미사용 */
   speedPenalty: number
+  /** 수직 속도 m/s (양수 = 상승) */
+  vz: number
+  /** 지면에 닿아 있는가 */
+  grounded: boolean
+  /** 지면을 벗어난 뒤 경과(ms) — 코요테 타임 판정 */
+  airborneMs: number
+  /** 점프 입력 버퍼 잔여(ms) */
+  jumpBufferMs: number
   /** 현재 밟고 있는 램프 id */
   rampId: string | null
   /** 이동 중 여부 (애니 선택용) */
@@ -109,7 +117,8 @@ export type GameState = Readonly<{
 
 export type Action =
   | { t: 'ADVANCE'; dtMs: number }
-  | { t: 'MOVE'; pos: Vec3; vel: Vec2; facing: number; rampId: string | null; moving: boolean; sprinting: boolean }
+  | { t: 'MOVE'; pos: Vec3; vel: Vec2; facing: number; rampId: string | null; moving: boolean; sprinting: boolean
+      vz: number; grounded: boolean; airborneMs: number; jumpBufferMs: number }
   | { t: 'STAMINA'; value: number; locked: boolean; sinceSprintMs: number }
   | { t: 'ZONE'; zone: ZoneId }
   | { t: 'GATE_BEGIN_TAG'; gateId: number }

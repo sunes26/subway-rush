@@ -10,6 +10,7 @@ import type { InputFrame } from '../core/input'
 import { clamp01, easeInOut, lerp, lerpExp } from '../core/math'
 import { CAMERA, FPV, MOVE } from '../data/tuning'
 import { GATES } from '../data/world'
+import type { Vec3 } from '../core/math'
 import type { GameState, ZoneId } from '../state/types'
 
 export type CamPreset = Readonly<{ yaw: number; pitch: number; dist: number; fov: number }>
@@ -57,7 +58,12 @@ export const z3Distance = (fovDeg: number, pitch: number): number => {
 export type ViewMode = 'fp' | 'tp'
 
 export type CameraRig = Readonly<{
-  update(state: GameState, input: InputFrame, dtSec: number): void
+  /**
+   * @param renderPos 시뮬 스텝 사이를 보간한 렌더용 위치.
+   *   시뮬은 고정 60Hz라 그 값을 그대로 쓰면 프레임마다 위치가 계단처럼 튄다(저더).
+   *   프레임레이트가 60의 배수가 아니면 한 프레임에 0스텝/1스텝/2스텝이 섞여 더 심해진다.
+   */
+  update(state: GameState, input: InputFrame, dtSec: number, renderPos?: Vec3): void
   /** 이동 입력을 월드로 변환할 때 쓰는 현재 요 */
   yaw(): number
   target(): Vector3
@@ -110,26 +116,29 @@ export const createCameraRig = (camera: PerspectiveCamera, occluders?: Object3D)
       if (mode === 'tp') { blend = 0; from = { ...cur }; to = presetFor(zone) }
       return mode
     },
-    update(state, input, dtSec) {
+    update(state, input, dtSec, renderPos) {
       if (mode === 'fp') {
         const p = state.player
+        const pos = renderPos ?? p.pos
         effYaw = input.lookYaw
 
         // 헤드밥 — 실제 이동 속도에 비례. 서 있으면 0으로 감쇠한다.
         const speed = Math.hypot(p.vel.x, p.vel.y)
         const want = p.moving ? Math.min(1, speed / 5) : 0
         bobLevel += (want - bobLevel) * (1 - Math.exp(-dtSec / FPV.bobTau))
-        bobPhase += speed * dtSec * FPV.bobFreq * Math.PI
-        const bobY = Math.sin(bobPhase * 2) * FPV.bobAmp * bobLevel
-        const bobX = Math.cos(bobPhase) * FPV.bobSway * bobLevel
+        // 위상은 **시간** 기준으로 굴린다. 속도로 굴리면 프레임 dt 흔들림이 그대로 위상 지터가 된다.
+        const hz = FPV.bobHzBase + FPV.bobHzPerSpeed * speed
+        bobPhase += dtSec * hz * Math.PI * 2
+        const bobY = Math.sin(bobPhase) * FPV.bobAmp * bobLevel
+        const bobX = Math.sin(bobPhase * 0.5) * FPV.bobSway * bobLevel
 
         // 시선 기준 우측 벡터로 좌우 흔들림을 준다
         const rightX = Math.sin(effYaw)
         const rightY = -Math.cos(effYaw)
         eye.set(
-          p.pos.x + rightX * bobX,
-          p.pos.z + FPV.eyeHeight + bobY,
-          -(p.pos.y + rightY * bobX),
+          pos.x + rightX * bobX,
+          pos.z + FPV.eyeHeight + bobY,
+          -(pos.y + rightY * bobX),
         )
         camera.position.copy(eye)
         camera.rotation.order = 'YXZ'
@@ -168,10 +177,11 @@ export const createCameraRig = (camera: PerspectiveCamera, occluders?: Object3D)
       }
 
       const p = state.player
+      const tp = renderPos ?? p.pos
       // 선행 오프셋 — 진행 방향을 미리 보여준다
-      const ax = p.pos.x + p.vel.x * CAMERA.lookAheadSec
-      const ay = p.pos.y + p.vel.y * CAMERA.lookAheadSec
-      const want = new Vector3(ax, p.pos.z + MOVE.eyeHeight, -ay)
+      const ax = tp.x + p.vel.x * CAMERA.lookAheadSec
+      const ay = tp.y + p.vel.y * CAMERA.lookAheadSec
+      const want = new Vector3(ax, tp.z + MOVE.eyeHeight, -ay)
 
       if (!started) { anchor.copy(want); started = true }
       anchor.set(

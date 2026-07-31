@@ -14,6 +14,8 @@ export type InputFrame = Readonly<{
   moveY: number
   sprint: boolean
   interact: boolean
+  /** 점프 (Space) */
+  jump: boolean
   /** 1인칭 시선 (rad). 포인터 락 중 마우스 이동으로 누적된다 */
   lookYaw: number
   lookPitch: number
@@ -32,7 +34,7 @@ export type InputFrame = Readonly<{
 }>
 
 export const EMPTY_INPUT: InputFrame = {
-  moveX: 0, moveY: 0, sprint: false, interact: false,
+  moveX: 0, moveY: 0, sprint: false, interact: false, jump: false,
   lookYaw: 0, lookPitch: 0, locked: false,
   orbitYaw: 0, orbitPitch: 0, zoom: 1,
   pressStart: false, pressRestart: false, pressDebug: false, pressToggleView: false,
@@ -72,7 +74,8 @@ export const createInput = (target: HTMLElement): InputSource => {
       return
     }
     held.add(e.code)
-    if (e.code === 'Enter' || e.code === 'Space') pressStart = true
+    // Space는 점프다. 타이틀 시작은 Enter만 받는다 — 겸용하면 시작 직후 한 번 뛴다.
+    if (e.code === 'Enter') pressStart = true
     if (e.code === 'KeyR') pressRestart = true
     if (e.code === 'F3') { pressDebug = true; e.preventDefault() }
     if (e.code === 'KeyV') pressToggleView = true
@@ -138,6 +141,7 @@ export const createInput = (target: HTMLElement): InputSource => {
         moveY: axis(['KeyS', 'ArrowDown'], ['KeyW', 'ArrowUp']),
         sprint: held.has('ShiftLeft') || held.has('ShiftRight'),
         interact: held.has('KeyE'),
+        jump: held.has('Space'),
         lookYaw, lookPitch, locked,
         orbitYaw, orbitPitch, zoom,
         pressStart, pressRestart, pressDebug, pressToggleView,
