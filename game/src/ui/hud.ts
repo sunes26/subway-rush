@@ -55,12 +55,34 @@ const CSS = `
 #vig{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .4s;
   background:radial-gradient(ellipse at center,transparent 42%,rgba(140,10,14,.62) 100%)}
 #shake{position:absolute;inset:0;pointer-events:none}
+
+/* 1인칭 조준점 — 상호작용 대상이 화면 어디를 기준으로 판정되는지 알려준다 */
+#cross{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:16px;height:16px;display:none;pointer-events:none;opacity:.75}
+#cross.on{display:block}
+#cross i{position:absolute;background:rgba(245,245,240,.9);
+  box-shadow:0 0 3px rgba(0,0,0,.6)}
+#cross i:nth-child(1){left:7px;top:0;width:2px;height:5px}
+#cross i:nth-child(2){left:7px;bottom:0;width:2px;height:5px}
+#cross i:nth-child(3){top:7px;left:0;height:2px;width:5px}
+#cross i:nth-child(4){top:7px;right:0;height:2px;width:5px}
+
+/* 포인터 락 안내 — 잠기기 전에는 시선이 안 움직인다는 걸 알려야 한다 */
+#lockhint{position:absolute;left:50%;top:72%;transform:translateX(-50%);
+  font-family:var(--mono);font-size:12px;letter-spacing:.18em;color:#F5F5F0;
+  background:rgba(8,8,10,.72);padding:9px 16px;border-radius:5px;display:none;
+  border:1px solid rgba(255,255,255,.16);pointer-events:none}
+#lockhint.on{display:block;animation:pop .3s ease both}
 `
 
 const stage = (ms: number): '' | 'warn' | 'hot' | 'crit' =>
   ms > TIMER_STAGES.calm ? '' : ms > TIMER_STAGES.warn ? 'warn' : ms > TIMER_STAGES.hot ? 'hot' : 'crit'
 
-export type Hud = Readonly<{ sync(s: GameState): void; el: HTMLElement }>
+export type Hud = Readonly<{
+  sync(s: GameState, pointerLocked: boolean): void
+  setCrosshair(on: boolean): void
+  el: HTMLElement
+}>
 
 export const createHud = (mount: HTMLElement): Hud => {
   const style = document.createElement('style')
@@ -76,6 +98,8 @@ export const createHud = (mount: HTMLElement): Hud => {
     </div>
     <div id="fx"></div>
     <div id="vig"></div>
+    <div id="cross"><i></i><i></i><i></i><i></i></div>
+    <div id="lockhint">화면을 클릭하면 시점이 잠깁니다 · ESC 해제</div>
     <div class="foot">
       <div class="cell"><div class="k">Zone</div><div class="v" id="hud-zone">—</div></div>
       <div class="cell"><div class="k">교통카드 잔액</div><div class="v" id="hud-bal">—</div></div>
@@ -94,6 +118,9 @@ export const createHud = (mount: HTMLElement): Hud => {
   const stamFill = $('hud-stam-i')
   const fxBox = $('fx')
   const vig = $('vig')
+  const cross = $('cross')
+  const lockHint = $('lockhint')
+  let firstPerson = true
 
   let lastLed = ''
   let lastTime = ''
@@ -106,7 +133,11 @@ export const createHud = (mount: HTMLElement): Hud => {
 
   return {
     el,
-    sync(s) {
+    setCrosshair(on) { firstPerson = on; cross.className = on ? 'on' : '' },
+    sync(s, pointerLocked) {
+      lockHint.className =
+        firstPerson && !pointerLocked && (s.phase === 'playing' || s.phase === 'boarding') ? 'on' : ''
+      cross.className = firstPerson && pointerLocked ? 'on' : ''
       const ledMsg = ledText(s)
       if (ledMsg !== lastLed) { led.textContent = ledMsg; lastLed = ledMsg }
 

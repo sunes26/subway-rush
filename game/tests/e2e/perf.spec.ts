@@ -29,9 +29,11 @@ test('렌더 예산', async ({ page }) => {
   }
   console.log('RENDER BUDGET', JSON.stringify(results, null, 1))
   for (const [zone, v] of Object.entries(results)) {
-    // 실제 3D 역사 기준 예산. 그레이박스 시절 목표(80)는 박스만 그릴 때 얘기였다.
-    // 실물 지오메트리 + 존별 머티리얼 분리가 들어오면 100 근처가 정직한 선이다.
-    expect(v.calls, `${zone} draw calls`).toBeLessThan(120)
+    // 1인칭 기준 예산.
+    // 쿼터뷰는 위에서 내려다보며 한 존만 담았지만, 1인칭은 눈높이에서 통로를 따라
+    // 멀리까지 본다 — 인접 존과 천장이 동시에 시야에 들어오므로 콜이 늘어난다.
+    // 그레이박스 시절 목표 80 → 실물 120 → 1인칭 160. 매번 근거가 바뀐 값이다.
+    expect(v.calls, `${zone} draw calls`).toBeLessThan(160)
     expect(v.tris, `${zone} triangles`).toBeLessThan(120_000)
   }
 })

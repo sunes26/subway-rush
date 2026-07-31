@@ -8,7 +8,7 @@ import type { Object3D, PerspectiveCamera } from 'three'
 import { Raycaster, Vector3 } from 'three'
 import type { InputFrame } from '../core/input'
 import { clamp01, easeInOut, lerp, lerpExp } from '../core/math'
-import { CAMERA, MOVE } from '../data/tuning'
+import { CAMERA, FPV, MOVE } from '../data/tuning'
 import { GATES } from '../data/world'
 import type { GameState, ZoneId } from '../state/types'
 
@@ -54,11 +54,15 @@ export const z3Distance = (fovDeg: number, pitch: number): number => {
   return need * Math.max(0.55, Math.cos(pitch))
 }
 
+export type ViewMode = 'fp' | 'tp'
+
 export type CameraRig = Readonly<{
   update(state: GameState, input: InputFrame, dtSec: number): void
   /** 이동 입력을 월드로 변환할 때 쓰는 현재 요 */
   yaw(): number
   target(): Vector3
+  mode(): ViewMode
+  toggleMode(): ViewMode
 }>
 
 /** 카메라와 플레이어 사이를 막는 지오메트리가 있으면 그만큼 당겨 붙인다 (S2-6). */
@@ -84,6 +88,13 @@ export const createCameraRig = (camera: PerspectiveCamera, occluders?: Object3D)
   /** 오빗까지 반영한 실효 요. 이동 방향은 **플레이어가 보는 화면** 기준이어야 한다. */
   let effYaw = PRESETS.Z1.yaw
 
+  // ── 1인칭 상태
+  let mode: ViewMode = 'fp'
+  let bobPhase = 0
+  let bobLevel = 0
+  let fov = FPV.fovDeg
+  const eye = new Vector3()
+
   const presetFor = (z: ZoneId): CamPreset => {
     const p = PRESETS[z]
     if (z !== 'Z3') return p
@@ -93,7 +104,48 @@ export const createCameraRig = (camera: PerspectiveCamera, occluders?: Object3D)
   return {
     yaw: () => effYaw,
     target: () => look.clone(),
+    mode: () => mode,
+    toggleMode() {
+      mode = mode === 'fp' ? 'tp' : 'fp'
+      if (mode === 'tp') { blend = 0; from = { ...cur }; to = presetFor(zone) }
+      return mode
+    },
     update(state, input, dtSec) {
+      if (mode === 'fp') {
+        const p = state.player
+        effYaw = input.lookYaw
+
+        // 헤드밥 — 실제 이동 속도에 비례. 서 있으면 0으로 감쇠한다.
+        const speed = Math.hypot(p.vel.x, p.vel.y)
+        const want = p.moving ? Math.min(1, speed / 5) : 0
+        bobLevel += (want - bobLevel) * (1 - Math.exp(-dtSec / FPV.bobTau))
+        bobPhase += speed * dtSec * FPV.bobFreq * Math.PI
+        const bobY = Math.sin(bobPhase * 2) * FPV.bobAmp * bobLevel
+        const bobX = Math.cos(bobPhase) * FPV.bobSway * bobLevel
+
+        // 시선 기준 우측 벡터로 좌우 흔들림을 준다
+        const rightX = Math.sin(effYaw)
+        const rightY = -Math.cos(effYaw)
+        eye.set(
+          p.pos.x + rightX * bobX,
+          p.pos.z + FPV.eyeHeight + bobY,
+          -(p.pos.y + rightY * bobX),
+        )
+        camera.position.copy(eye)
+        camera.rotation.order = 'YXZ'
+        camera.rotation.set(input.lookPitch, effYaw - Math.PI / 2, 0)
+        // 달릴 때 살짝 넓어지는 화각 — 속도감의 대부분이 여기서 나온다
+        const wantFov = FPV.fovDeg + (p.sprinting ? FPV.sprintFov : 0)
+        if (Math.abs(fov - wantFov) > 0.01) {
+          fov += (wantFov - fov) * (1 - Math.exp(-dtSec / FPV.fovTau))
+          camera.fov = fov
+          camera.near = 0.08
+          camera.updateProjectionMatrix()
+        }
+        look.copy(eye)
+        return
+      }
+
       if (state.zone !== zone) {
         zone = state.zone
         from = { ...cur }

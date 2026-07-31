@@ -11,7 +11,7 @@
  */
 
 import {
-  Box3, Color, DoubleSide, Group, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial,
+  Box3, type Camera, Color, DoubleSide, Group, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial,
   PlaneGeometry, Quaternion, Vector3,
   type BufferGeometry, type Material, type MeshStandardMaterial, type Object3D,
 } from 'three'
@@ -27,15 +27,21 @@ export const ZONE_FILES = [
 ] as const
 
 /**
- * 머리 위 구조물은 전부 숨긴다 — 쿼터뷰 카메라는 그 위에 서므로 그리면 화면이 막힌다.
- * 천장뿐 아니라 **플레이어가 그 밑에 설 수 있는 지붕**도 같은 부류다.
- * 정류장 쉘터 지붕(`Z1_BS_roof`)은 부록 A상 스폰 지점(−58,24)을 정확히 덮고 있어
- * 이걸 그리면 게임 시작 순간 캐릭터가 안 보인다.
+ * 머리 위 구조물 — 천장·지붕·매달림 사인.
+ *
+ * **1인칭에서는 있어야 하고, 쿼터뷰에서는 없어야 한다.**
+ * 쿼터뷰 카메라는 반드시 방 밖 위쪽에 서므로 이것들이 화면을 통째로 막는다
+ * (정류장 쉘터 지붕은 부록 A의 스폰 지점 −58,24를 정확히 덮어서, 그리면
+ *  게임 시작 순간 캐릭터가 안 보였다). 1인칭은 반대로 이게 없으면 실내가 실내로 안 읽힌다.
+ * 그래서 지우지 않고 **별도 그룹으로 분리해 모드에 따라 켠다.**
  * 단, `*_top`은 게이트 상단함·자판기 상단이라 일괄로 잡으면 안 된다.
  */
-const HIDDEN_MATERIALS = new Set(['ST_CEIL'])
-const HIDDEN_NAME = /ceil/i
-const HIDDEN_EXACT = /^(Z1_BS_roof|Z4_corridor_top|Z5_hang_)/
+const OVERHEAD_MATERIALS = new Set(['ST_CEIL'])
+const OVERHEAD_NAME = /ceil/i
+const OVERHEAD_EXACT = /^(Z1_BS_roof|Z4_corridor_top|Z5_hang_)/
+
+const isOverhead = (name: string, matName: string): boolean =>
+  OVERHEAD_MATERIALS.has(matName) || OVERHEAD_NAME.test(name) || OVERHEAD_EXACT.test(name)
 
 /** 존 그룹을 그릴 최대 거리(m). 안개 far(≈90m)와 맞춰 둔다. */
 const VISIBLE_RANGE = 95
@@ -81,8 +87,9 @@ type Bucket = { geos: BufferGeometry[]; color: number }
 /** 씬 하나를 훑어 정적 메시는 머티리얼별로 모으고, 동적 메시는 그대로 넘긴다. */
 const collect = (
   scene: Object3D,
-): { buckets: Map<string, Bucket>; dynamics: Mesh[] } => {
+): { buckets: Map<string, Bucket>; overhead: Map<string, Bucket>; dynamics: Mesh[] } => {
   const buckets = new Map<string, Bucket>()
+  const overhead = new Map<string, Bucket>()
   const dynamics: Mesh[] = []
   scene.updateWorldMatrix(true, true)
 
@@ -90,8 +97,6 @@ const collect = (
     const m = o as Mesh
     if (!m.isMesh || !m.geometry) return
     const matName = Array.isArray(m.material) ? m.material[0]?.name ?? '' : m.material.name
-
-    if (HIDDEN_MATERIALS.has(matName) || HIDDEN_NAME.test(m.name) || HIDDEN_EXACT.test(m.name)) return
 
     if (isDynamic(m)) { dynamics.push(m); return }
 
@@ -101,12 +106,13 @@ const collect = (
     geo.deleteAttribute('uv')
     geo.deleteAttribute('uv1')
     geo.deleteAttribute('tangent')
+    const into = isOverhead(m.name, matName) ? overhead : buckets
     const key = matName || 'default'
-    const b = buckets.get(key)
+    const b = into.get(key)
     if (b) b.geos.push(geo)
-    else buckets.set(key, { geos: [geo], color: baseColor(m.material) })
+    else into.set(key, { geos: [geo], color: baseColor(m.material) })
   })
-  return { buckets, dynamics }
+  return { buckets, overhead, dynamics }
 }
 
 const mergeBuckets = (buckets: Map<string, Bucket>, into: Group): void => {
@@ -123,17 +129,23 @@ const mergeBuckets = (buckets: Map<string, Bucket>, into: Group): void => {
 // ─────────────────────────── 동적 부품 ───────────────────────────
 
 type Flap = { gate: number; node: Object3D; home: number; dir: number }
-type SignFace = { gate: number; mat: MeshStandardMaterial }
+type SignFace = { gate: number; mat: MeshBasicMaterial }
 /** 같은 진행률로 함께 움직이는 문 묶음 — 좌/우 각각 한 덩어리로 병합한다 */
 type DoorBank = { left: Mesh | null; right: Mesh | null }
 
-const matOf = (o: Object3D): MeshStandardMaterial => {
-  const m = (o as Mesh).material
-  const one = (Array.isArray(m) ? m[0] : m) as MeshStandardMaterial
-  // 게이트마다 다른 색을 넣어야 하므로 공유 머티리얼을 복제한다
-  const cloned = one.clone()
-  ;(o as Mesh).material = cloned
-  return cloned
+/**
+ * 상태 표시등을 **자체 발광 머티리얼로 교체**한다.
+ *
+ * 원본은 MeshStandardMaterial이라 색을 바꿔도 조명·톤매핑을 거치면서 뭉개진다
+ * (초록으로 칠한 사인이 화면에서는 살구색으로 나왔다).
+ * 표지판은 실제로도 백라이트 사인이므로 조명 영향을 받지 않는 게 맞고,
+ * 무엇보다 **이 색이 이 게임의 유일한 판단 근거**라 정확해야 한다.
+ * 머티리얼은 게이트마다 개별로 만든다 — 공유하면 하나를 칠할 때 전부 물든다.
+ */
+const emissiveOf = (o: Object3D, color: number): MeshBasicMaterial => {
+  const mat = new MeshBasicMaterial({ color: new Color(color), toneMapped: false })
+  ;(o as Mesh).material = mat
+  return mat
 }
 
 const worldX = (o: Object3D): number => {
@@ -179,11 +191,14 @@ const buildFloorPatches = (): Group => {
 export type Station = Readonly<{
   root: Group
   sync(s: GameState, dtSec: number, greenLight: boolean, lightRemainSec: number): void
+  /** 천장·지붕 표시 여부. 1인칭이면 true, 쿼터뷰면 false */
+  setOverhead(on: boolean): void
   stats: Readonly<{ merged: number; dynamic: number }>
 }>
 
 export const loadStation = async (
   baseUrl: string,
+  camera: Camera,
   onProgress?: (done: number, total: number) => void,
 ): Promise<Station> => {
   const loader = new GLTFLoader()
@@ -206,16 +221,21 @@ export const loadStation = async (
    * 그래서 **존 단위로 직접 껐다 켠다.** 안개 far(약 90m) 밖은 어차피 안 보인다.
    */
   const zoneGroups: { group: Group; box: Box3 }[] = []
+  /** 존별 천장 서브그룹. 존 그룹 아래 두면 거리 컬링에 같이 걸린다. */
+  const overheadGroups: Group[] = []
+  let overheadOn = true
   const trainGroup = new Group()
   trainGroup.name = 'station:train'
 
   const flaps: Flap[] = []
   const signs: SignFace[] = []
   const lamps: SignFace[] = []
-  let tlRed: MeshStandardMaterial | null = null
-  let tlGreen: MeshStandardMaterial | null = null
+  let tlRed: MeshBasicMaterial | null = null
+  let tlGreen: MeshBasicMaterial | null = null
   const tlCount: Object3D[] = []
-  const signAnchors = new Map<number, Vector3>()
+  /** 사인 면의 월드 박스 + 정면 법선. 사인이 아래로 기울어져 있어서
+   *  단순히 −x로 밀면 프레임 안에 파묻힌다 — 실제 법선을 따라 띄워야 한다. */
+  const signBoxes = new Map<number, Box3>()
   const psdGeo: { left: BufferGeometry[]; right: BufferGeometry[] } = { left: [], right: [] }
   const trainGeo: { left: BufferGeometry[]; right: BufferGeometry[] } = { left: [], right: [] }
 
@@ -236,10 +256,14 @@ export const loadStation = async (
     const isTrain = zone === 'Z5_TRAIN'
     const group = isTrain ? trainGroup : new Group()
     group.name = `station:${zone}`
-    const { buckets, dynamics } = collect(scene)
+    const { buckets, overhead, dynamics } = collect(scene)
     const before = group.children.length
     mergeBuckets(buckets, group)
-    mergedCount += group.children.length - before
+    const oGroup = new Group()
+    oGroup.name = `overhead:${zone}`
+    mergeBuckets(overhead, oGroup)
+    if (oGroup.children.length > 0) { group.add(oGroup); overheadGroups.push(oGroup) }
+    mergedCount += group.children.length - before + oGroup.children.length
 
     for (const m of dynamics) {
       const matName = Array.isArray(m.material) ? m.material[0]?.name ?? '' : m.material.name
@@ -267,17 +291,18 @@ export const loadStation = async (
       }
       const signM = /^Z3_sign_G(\d)_face$/.exec(m.name)
       if (signM) {
-        signs.push({ gate: Number(signM[1]), mat: matOf(node) })
-        signAnchors.set(Number(signM[1]), new Box3().setFromObject(node).getCenter(new Vector3()))
+        signs.push({ gate: Number(signM[1]), mat: emissiveOf(node, 0x00a84d) })
+        signBoxes.set(Number(signM[1]), new Box3().setFromObject(node))
         continue
       }
-      if (/^Z3_GATE_G(\d)_floorlamp$/.test(m.name) || matName === 'LED_RED' || matName === 'LED_GREEN') {
-        const g = /G(\d)/.exec(m.name)
-        if (g) lamps.push({ gate: Number(g[1]), mat: matOf(node) })
+      // 바닥 램프는 **이름으로만** 잡는다. LED_* 머티리얼로 잡으면 게이트 상판까지 물든다
+      const lampM = /^Z3_GATE_G(\d)_floorlamp$/.exec(m.name)
+      if (lampM) {
+        lamps.push({ gate: Number(lampM[1]), mat: emissiveOf(node, 0x00a84d) })
         continue
       }
-      if (matName === 'TL_RED') tlRed = matOf(node)
-      else if (matName === 'TL_GRN') tlGreen = matOf(node)
+      if (matName === 'TL_RED') tlRed = emissiveOf(node, 0xe5484d)
+      else if (matName === 'TL_GRN') tlGreen = emissiveOf(node, 0x00a84d)
       else if (matName === 'TL_COUNT') tlCount.push(node)
     }
 
@@ -310,15 +335,18 @@ export const loadStation = async (
   // ── 색각 보조 기호 — GLB 사인 면 앞에 ▲ / ✕ 를 얹는다.
   //    색만으로 구분하면 이 게임의 유일한 판단 근거가 색각 이상 플레이어에게서 사라진다.
   //    막대 30장을 개별 메시로 두면 Z3에서만 드로우 콜 30개다 → 인스턴싱 2개로 묶는다.
-  const ARROW_BARS = [[-0.17, 0.5], [0, 0.33], [0.15, 0.14]] as const
+  // 배경은 상태색(초록/적색), 기호는 흰색. 실제 개찰구 사인과 같은 대비 구조다.
+  // 기호를 상태색으로 칠하면 배경에 묻혀 형태가 안 읽힌다 — 색이 아니라 **형태**가 정보다.
+  const SYMBOL = 0xf7f7f4
+  const ARROW_BARS = [[-0.17, 0.54], [0, 0.36], [0.17, 0.17]] as const
   const CROSS_BARS = [Math.PI / 4, -Math.PI / 4] as const
   const flatMat = (c: number): MeshBasicMaterial =>
     new MeshBasicMaterial({ color: new Color(c), toneMapped: false, side: DoubleSide })
 
-  const gateOrder = GATES.filter((g) => signAnchors.has(g.id))
-  const arrows = new InstancedMesh(new PlaneGeometry(1, 0.1), flatMat(PALETTE.line2),
+  const gateOrder = GATES.filter((g) => signBoxes.has(g.id))
+  const arrows = new InstancedMesh(new PlaneGeometry(1, 0.12), flatMat(SYMBOL),
     Math.max(1, gateOrder.length * ARROW_BARS.length))
-  const crosses = new InstancedMesh(new PlaneGeometry(0.58, 0.1), flatMat(PALETTE.danger),
+  const crosses = new InstancedMesh(new PlaneGeometry(0.62, 0.12), flatMat(SYMBOL),
     Math.max(1, gateOrder.length * CROSS_BARS.length))
   arrows.frustumCulled = false
   crosses.frustumCulled = false
@@ -327,31 +355,54 @@ export const loadStation = async (
   mergedCount += 2
 
   const symMat = new Matrix4()
-  const faceWest = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI / 2)
   const HIDE = new Vector3(0, 0, 0)
+  const upTmp = new Vector3()
+  /** 회전된 평면의 로컬 +Y가 월드에서 향하는 방향 — 막대를 세로로 쌓을 때 쓴다 */
+  const upOf = (q: Quaternion): Vector3 => upTmp.set(0, 1, 0).applyQuaternion(q)
 
+  const center = new Vector3()
+  const camDir = new Vector3()
+  const anchor = new Vector3()
+  const billboard = new Matrix4()
+  const WORLD_UP = new Vector3(0, 1, 0)
+
+  /**
+   * 기호는 **매 프레임 카메라 쪽으로 빌보드**한다.
+   *
+   * 사인 면의 법선을 따라 띄우는 방식은 실패했다 — 사인이 기울어져 있고 프레임이
+   * 면보다 앞으로 나와 있어서, 어느 고정 오프셋을 줘도 각도에 따라 파묻힌다.
+   * 카메라 방향으로 띄우면 각도와 무관하게 항상 앞이다. 깊이 테스트는 그대로 두므로
+   * 벽 너머로 비쳐 보이지도 않는다.
+   */
   const syncSymbols = (workingIds: readonly number[]): void => {
     gateOrder.forEach((g, i) => {
-      const a = signAnchors.get(g.id) as Vector3
+      const box = signBoxes.get(g.id) as Box3
+      box.getCenter(center)
+      camDir.copy(camera.position).sub(center).normalize()
+      anchor.copy(center).addScaledVector(camDir, 0.22)
+      const a = anchor
+      // setFromUnitVectors는 롤이 임의라 기호가 기울어진다.
+      // 월드 업을 고정한 lookAt으로 만들어야 ▲가 똑바로 선다.
+      billboard.lookAt(anchor, camera.position, WORLD_UP)
+      const face = new Quaternion().setFromRotationMatrix(billboard)
       const ok = workingIds.includes(g.id)
       ARROW_BARS.forEach(([dy, w], k) => {
         symMat.compose(
-          new Vector3(a.x - 0.09, a.y + dy, a.z), faceWest,
+          a.clone().addScaledVector(upOf(face), dy), face,
           ok ? new Vector3(w, 1, 1) : HIDE,
         )
         arrows.setMatrixAt(i * ARROW_BARS.length + k, symMat)
       })
       CROSS_BARS.forEach((rot, k) => {
-        const q = faceWest.clone().multiply(
+        const q = face.clone().multiply(
           new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), rot))
-        symMat.compose(new Vector3(a.x - 0.09, a.y, a.z), q, ok ? HIDE : new Vector3(1, 1, 1))
+        symMat.compose(a, q, ok ? HIDE : new Vector3(1, 1, 1))
         crosses.setMatrixAt(i * CROSS_BARS.length + k, symMat)
       })
     })
     arrows.instanceMatrix.needsUpdate = true
     crosses.instanceMatrix.needsUpdate = true
   }
-  let lastWorking = ''
 
   const green = new Color(PALETTE.line2)
   const red = new Color(PALETTE.danger)
@@ -359,17 +410,21 @@ export const loadStation = async (
 
   return {
     root,
+    setOverhead(on) {
+      overheadOn = on
+      for (const g of overheadGroups) g.visible = on
+    },
     stats: { merged: mergedCount, dynamic: dynamicCount },
     sync(s, dtSec, greenLight, lightRemainSec) {
       // ── 존 가시성: 안개 far 밖의 존은 그리지 않는다
       const p = new Vector3(s.player.pos.x, s.player.pos.z, -s.player.pos.y)
       for (const z of zoneGroups) z.group.visible = z.box.distanceToPoint(p) < VISIBLE_RANGE
+      void overheadOn
 
       // ── 게이트 사인 · 램프 · 기호
       for (const sg of signs) sg.mat.color.copy(s.gates.workingIds.includes(sg.gate) ? green : red)
       for (const lp of lamps) lp.mat.color.copy(s.gates.workingIds.includes(lp.gate) ? green : red)
-      const key = s.gates.workingIds.join(',')
-      if (key !== lastWorking) { lastWorking = key; syncSymbols(s.gates.workingIds) }
+      syncSymbols(s.gates.workingIds)
 
       // ── 게이트 플랩
       for (const f of flaps) {

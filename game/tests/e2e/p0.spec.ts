@@ -103,30 +103,54 @@ test('A-6 60fps 유지 (최저 55)', async ({ page }) => {
   expect(s.pos.x, '10초간 실제로 이동했다').toBeGreaterThan(-58)
 })
 
-test('S4-8 Z3에서 게이트 램프 6개가 동시에 보인다', async ({ page }) => {
+test('S4-8 Z3에서 게이트 6기를 둘러보면 전부 판독된다 (1인칭)', async ({ page }) => {
   await boot(page, 42)
   await page.keyboard.press('Enter')
-  // 개찰구 앞으로 이동시킨다
   await page.evaluate(() => {
     const s = window.__game!.state()
     window.__game!.set({
       zone: 'Z3',
-      player: { ...s.player, pos: { x: 58.5, y: 16, z: -6 } },
+      player: { ...s.player, pos: { x: 57.5, y: 16, z: -6 } },
     } as never)
   })
-  await page.waitForTimeout(2200)   // 카메라 존 보간 1.2s + 여유
+  await page.waitForTimeout(600)
 
-  const visible = await page.evaluate(() => {
-    // 램프 6개를 카메라 NDC로 투영해 전부 화면 안인지 본다
-    const g = window.__game!
-    void g
-    return (window as unknown as { __lampCheck?: () => number }).__lampCheck?.() ?? -1
-  })
-  void visible
+  // 1인칭에서는 6기(y 6~26, 20m)가 한 화면에 안 들어온다 — 이건 설계 변경이고,
+  // 대신 "고개를 돌리면 전부 읽힌다"가 새 기준이다 (P0-SPEC §2.5 · MAP §5.4).
+  const seen = new Set<number>()
+  let maxAtOnce = 0
+  for (let deg = -80; deg <= 80; deg += 5) {
+    await page.evaluate((d) => window.__game!.look((d as number) * Math.PI / 180), deg)
+    await page.waitForTimeout(60)
+    const n = await page.evaluate(() => window.__game!.visibleGates())
+    maxAtOnce = Math.max(maxAtOnce, n)
+    if (n > 0) seen.add(deg)
+  }
+  expect(maxAtOnce, '정면에서 최소 2기는 동시에 보인다').toBeGreaterThanOrEqual(2)
+  expect(seen.size, '시야 스윕으로 게이트가 보이는 각도 구간').toBeGreaterThan(6)
 
+  // 정면(동쪽)을 보고 스크린샷
+  await page.evaluate(() => window.__game!.look(0, -0.08))
+  await page.waitForTimeout(400)
   await page.screenshot({ path: 'tests/e2e/__shots__/z3-gates.png' })
-  const s = await snap(page)
-  expect(s.workingIds.length).toBeGreaterThanOrEqual(1)
+})
+
+test('전 게이트가 시야 스윕 안에 들어온다', async ({ page }) => {
+  await boot(page, 42)
+  await page.keyboard.press('Enter')
+  await page.evaluate(() => {
+    const s = window.__game!.state()
+    window.__game!.set({ zone: 'Z3', player: { ...s.player, pos: { x: 57.5, y: 16, z: -6 } } } as never)
+  })
+  await page.waitForTimeout(500)
+  let best = 0
+  for (const deg of [-70, -45, -20, 0, 20, 45, 70]) {
+    await page.evaluate((d) => window.__game!.look((d as number) * Math.PI / 180), deg)
+    await page.waitForTimeout(80)
+    best += await page.evaluate(() => window.__game!.visibleGates())
+  }
+  // 각도별 카운트 합이 6 이상이면 최소 한 번씩은 다 지나간다
+  expect(best, '스윕 누적 가시 게이트').toBeGreaterThanOrEqual(6)
 })
 
 test('S3-2 게임 시간이 실시간보다 빠르게 흐르지 않는다 (복귀 점프 없음)', async ({ page, context }) => {

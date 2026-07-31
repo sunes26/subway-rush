@@ -61,10 +61,12 @@ export const createScreens = (mount: HTMLElement): Screens => {
       <h1>지하철 러쉬</h1>
       <div class="sub">버스에서 내린 순간부터 문이 닫히기까지 — 180초.</div>
       <div class="keys">
-        <kbd>W A S D</kbd><kbd>SHIFT 스프린트</kbd><kbd>우클릭 드래그 시점</kbd><kbd>휠 줌</kbd>
+        <kbd>W A S D</kbd><kbd>SHIFT 스프린트</kbd><kbd>마우스 시점</kbd><kbd>V 시점 전환</kbd>
       </div>
       <div class="hint">개찰구는 여섯 개고, 살아있는 건 그중 하나다.<br>
-        게이트 위 램프를 보면 알 수 있다. 안 보고 태그하면 8초가 날아간다.</div>
+        표지판이 <b style="color:#00A84D">▲</b> 면 열려 있고 <b style="color:#E5484D">✕</b> 면 고장이다.
+        한 화면에 다 안 들어오니 <b>고개를 돌려 봐야 한다.</b><br>
+        안 보고 태그하면 8초가 날아간다.</div>
       <div class="stats"><span>SEED ${s.seed}</span></div>
       <div class="cta">ENTER 를 눌러 시작</div>
     </div>`

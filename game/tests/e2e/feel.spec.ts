@@ -4,7 +4,8 @@ import { expect, test } from '@playwright/test'
 const CASES: readonly [string, number, number, number, string, number, number][] = [
   // zone, startX, startY, startZ, zoneId, 최소 x 전진, 허용 y 이탈
   ['Z1', -58, 26, 0, 'Z1', 12, 6],
-  ['Z2', 6, 20, -6, 'Z2', 12, 8],
+  // y=10/20은 기둥 열이다(부록 A: x 12/24/36/48 × y 10/20). 정면으로 박으므로 사이로 시작한다
+  ['Z2', 6, 16, -6, 'Z2', 12, 8],
   ['Z4', 76, 7, -6, 'Z4', 12, 4],
 ]
 

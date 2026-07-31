@@ -4,10 +4,11 @@
  * 시뮬은 고정 60Hz, 렌더는 가변. 프레임이 튀어도 물리와 밸런스가 튀지 않는다.
  */
 
+import { Frustum, Matrix4, Vector3 } from 'three'
 import { createInput, EMPTY_INPUT, type InputFrame } from './core/input'
 import { resolveSeed } from './core/rng'
-import { MAX_FRAME_MS, MAX_STEPS_PER_FRAME, STEP_MS } from './data/tuning'
-import { TRAFFIC_LIGHT } from './data/world'
+import { CAMERA, FPV, MAX_FRAME_MS, MAX_STEPS_PER_FRAME, STEP_MS } from './data/tuning'
+import { GATES, GATE_BODY, GATE_LAMP_Z, TRAFFIC_LIGHT } from './data/world'
 import { createCameraRig } from './render/camera-rig'
 import { loadPlayerRig, type PlayerRig } from './render/player-rig'
 import { createStage } from './render/scene'
@@ -40,6 +41,17 @@ world.root.visible = false
 const cameraRig = createCameraRig(stage.camera, world.occluders)
 stage.scene.add(world.root)
 
+/** 시점 전환 — 1인칭이 기본. 3인칭 쿼터뷰는 V로 확인용 전환. */
+const applyView = (): void => {
+  const fp = cameraRig.mode() === 'fp'
+  station?.setOverhead(fp)   // 1인칭이면 천장·지붕을 켠다
+  player?.setVisible(!fp)    // 1인칭이면 자기 몸을 끈다
+  hud.setCrosshair(fp)
+  stage.camera.near = fp ? 0.08 : CAMERA.near
+  stage.camera.fov = fp ? FPV.fovDeg : CAMERA.fovDeg
+  stage.camera.updateProjectionMatrix()
+}
+
 const hud = createHud(uiRoot)
 const screens = createScreens(uiRoot)
 const debug = createDebug(uiRoot, stage.renderer)
@@ -59,6 +71,7 @@ const restart = (): void => {
 
 const handleMeta = (f: InputFrame): void => {
   if (f.pressDebug) debug.toggle()
+  if (f.pressToggleView) { cameraRig.toggleMode(); applyView() }
   if (state.phase === 'title' && f.pressStart) state = { ...state, phase: 'playing' }
   if (state.phase === 'ended' && f.pressRestart) restart()
 }
@@ -99,7 +112,7 @@ const frame = (now: number): void => {
   stage.setMood(state.zone, dtSec)
   station?.sync(state, dtSec, lightIsGreen(state), lightRemainSec(state))
   player?.sync(state, dtSec)
-  hud.sync(state)
+  hud.sync(state, sample.locked && cameraRig.mode() === 'fp')
   screens.sync(state)
   debug.sync(state)
 
@@ -119,7 +132,7 @@ const frame = (now: number): void => {
 
 const boot = async (): Promise<void> => {
   const [stationResult, playerResult] = await Promise.allSettled([
-    loadStation(BASE, (d, t) => screens.setLoading(`역사 로딩 ${d} / ${t}`)),
+    loadStation(BASE, stage.camera, (d, t) => screens.setLoading(`역사 로딩 ${d} / ${t}`)),
     loadPlayerRig(`${BASE}models/mc_character_rigged.glb`, false),
   ])
 
@@ -138,6 +151,7 @@ const boot = async (): Promise<void> => {
     console.error('[player] GLB 로드 실패', playerResult.reason)
   }
 
+  applyView()
   rebuildDynamics(state)
   screens.hideLoading()
   requestAnimationFrame((t) => { prev = t; requestAnimationFrame(frame) })
@@ -154,6 +168,12 @@ declare global {
       input(f: Partial<InputFrame>): void
       minFps(): number
       stationStats(): { merged: number; dynamic: number } | null
+      /** 1인칭 시선을 강제한다 (E2E용 — 포인터 락 없이 시점 검증) */
+      look(yaw: number, pitch?: number): void
+      /** 지금 화면 안에 들어온 게이트 표지 수 (0~6) */
+      visibleGates(): number
+      mode(): 'fp' | 'tp'
+      toggleView(): void
     }
   }
 }
@@ -166,7 +186,25 @@ input.sample = (): InputFrame => (forcedInput ? { ...rawSample(), ...forcedInput
 ;(window as unknown as { __renderer?: unknown; __scene?: unknown }).__renderer = stage.renderer
 ;(window as unknown as { __scene?: unknown }).__scene = stage.scene
 
+const gateFrustum = new Frustum()
+const gateMat = new Matrix4()
+const gatePoint = new Vector3()
+
 window.__game = {
+  look: (yaw, pitch = 0) => { forcedInput = { ...(forcedInput ?? {}), lookYaw: yaw, lookPitch: pitch } },
+  mode: () => cameraRig.mode(),
+  toggleView: () => { cameraRig.toggleMode(); applyView() },
+  visibleGates: () => {
+    stage.camera.updateMatrixWorld()
+    gateMat.multiplyMatrices(stage.camera.projectionMatrix, stage.camera.matrixWorldInverse)
+    gateFrustum.setFromProjectionMatrix(gateMat)
+    let n = 0
+    for (const g of GATES) {
+      gatePoint.set((GATE_BODY.xMin + GATE_BODY.xMax) / 2, GATE_LAMP_Z, -g.y)
+      if (gateFrustum.containsPoint(gatePoint)) n++
+    }
+    return n
+  },
   state: () => state,
   set: (patch) => { state = { ...state, ...patch } },
   input: (f) => { forcedInput = Object.keys(f).length ? f : null },

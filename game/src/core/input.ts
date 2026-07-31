@@ -5,6 +5,8 @@
  * 덕분에 테스트에서 InputFrame 배열을 손으로 만들어 3분 플레이를 20ms에 재생할 수 있다.
  */
 
+import { FPV } from '../data/tuning'
+
 export type InputFrame = Readonly<{
   /** −1..1 — 카메라 기준 우/좌 */
   moveX: number
@@ -12,22 +14,32 @@ export type InputFrame = Readonly<{
   moveY: number
   sprint: boolean
   interact: boolean
-  /** 우클릭 드래그 오빗 누적 (rad) */
+  /** 1인칭 시선 (rad). 포인터 락 중 마우스 이동으로 누적된다 */
+  lookYaw: number
+  lookPitch: number
+  /** 포인터가 잠겨 있는가 — 잠기지 않았으면 시선이 움직이지 않는다 */
+  locked: boolean
+  /** 우클릭 드래그 오빗 누적 (rad) — 3인칭 전용 */
   orbitYaw: number
   orbitPitch: number
-  /** 휠 줌 배율 0.6..1.6 */
+  /** 휠 줌 배율 0.6..1.6 — 3인칭 전용 */
   zoom: number
   /** 원샷 — 소비되면 false로 돌아간다 */
   pressStart: boolean
   pressRestart: boolean
   pressDebug: boolean
+  pressToggleView: boolean
 }>
 
 export const EMPTY_INPUT: InputFrame = {
   moveX: 0, moveY: 0, sprint: false, interact: false,
+  lookYaw: 0, lookPitch: 0, locked: false,
   orbitYaw: 0, orbitPitch: 0, zoom: 1,
-  pressStart: false, pressRestart: false, pressDebug: false,
+  pressStart: false, pressRestart: false, pressDebug: false, pressToggleView: false,
 }
+
+const SENSITIVITY = FPV.sensitivity
+const PITCH_LIMIT = FPV.pitchLimit
 
 const MOVE_KEYS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD',
@@ -49,6 +61,10 @@ export const createInput = (target: HTMLElement): InputSource => {
   let pressStart = false
   let pressRestart = false
   let pressDebug = false
+  let pressToggleView = false
+  let lookYaw = 0
+  let lookPitch = 0
+  let locked = false
 
   const onKeyDown = (e: KeyboardEvent): void => {
     if (e.repeat) {
@@ -59,12 +75,17 @@ export const createInput = (target: HTMLElement): InputSource => {
     if (e.code === 'Enter' || e.code === 'Space') pressStart = true
     if (e.code === 'KeyR') pressRestart = true
     if (e.code === 'F3') { pressDebug = true; e.preventDefault() }
+    if (e.code === 'KeyV') pressToggleView = true
     if (MOVE_KEYS.has(e.code)) e.preventDefault()
   }
   const onKeyUp = (e: KeyboardEvent): void => { held.delete(e.code) }
   const onBlur = (): void => { held.clear(); dragging = false }
 
   const onPointerDown = (e: PointerEvent): void => {
+    // 좌클릭 = 포인터 락 요청. 1인칭 시선의 유일한 진입점이다.
+    if (e.button === 0 && document.pointerLockElement !== target) {
+      void target.requestPointerLock?.()
+    }
     if (e.button === 2) { dragging = true; target.setPointerCapture(e.pointerId) }
   }
   const onPointerUp = (e: PointerEvent): void => {
@@ -73,7 +94,15 @@ export const createInput = (target: HTMLElement): InputSource => {
       if (target.hasPointerCapture(e.pointerId)) target.releasePointerCapture(e.pointerId)
     }
   }
+  const onLockChange = (): void => { locked = document.pointerLockElement === target }
+
   const onPointerMove = (e: PointerEvent): void => {
+    if (locked) {
+      lookYaw -= e.movementX * SENSITIVITY
+      lookPitch -= e.movementY * SENSITIVITY
+      lookPitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, lookPitch))
+      return
+    }
     if (!dragging) return
     orbitYaw -= e.movementX * 0.0042
     orbitPitch -= e.movementY * 0.0032
@@ -86,6 +115,7 @@ export const createInput = (target: HTMLElement): InputSource => {
   }
   const onContext = (e: Event): void => { e.preventDefault() }
 
+  document.addEventListener('pointerlockchange', onLockChange)
   window.addEventListener('keydown', onKeyDown)
   window.addEventListener('keyup', onKeyUp)
   window.addEventListener('blur', onBlur)
@@ -108,15 +138,18 @@ export const createInput = (target: HTMLElement): InputSource => {
         moveY: axis(['KeyS', 'ArrowDown'], ['KeyW', 'ArrowUp']),
         sprint: held.has('ShiftLeft') || held.has('ShiftRight'),
         interact: held.has('KeyE'),
+        lookYaw, lookPitch, locked,
         orbitYaw, orbitPitch, zoom,
-        pressStart, pressRestart, pressDebug,
+        pressStart, pressRestart, pressDebug, pressToggleView,
       }
       pressStart = false
       pressRestart = false
       pressDebug = false
+      pressToggleView = false
       return frame
     },
     dispose(): void {
+      document.removeEventListener('pointerlockchange', onLockChange)
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
       window.removeEventListener('blur', onBlur)

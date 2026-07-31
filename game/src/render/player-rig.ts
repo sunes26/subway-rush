@@ -25,6 +25,8 @@ export type PlayerRig = Readonly<{
   root: Group
   sync(state: GameState, dtSec: number): void
   play(name: ClipName): void
+  /** 1인칭에서는 자기 몸이 카메라를 가린다 — 통째로 끈다 (전용 팔 메시는 P1) */
+  setVisible(on: boolean): void
   dispose(): void
 }>
 
@@ -101,6 +103,7 @@ export const loadPlayerRig = async (url: string, outline: boolean): Promise<Play
 
   return {
     root,
+    setVisible(on) { root.visible = on },
     play: (n) => play(n),
     sync(state, dtSec) {
       clock += dtSec
