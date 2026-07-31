@@ -182,15 +182,16 @@ for pb in rig.pose.bones:
     pb.rotation_mode = 'XYZ'
 
 # --------------------------------------------------------------- 5. 머티리얼
-if "ZP_Hood" in bpy.data.materials:
-    raise RuntimeError("ZP_Hood already exists")
-hood_mat = bpy.data.materials.new("ZP_Hood")
+HOODIE_HEX = "#7C7F84"          # 무채 계열 중명도 회색
+if "ZP_Hoodie" in bpy.data.materials:
+    raise RuntimeError("ZP_Hoodie already exists")
+hood_mat = bpy.data.materials.new("ZP_Hoodie")
 hood_mat.use_nodes = True
 b = principled(hood_mat)
-b.inputs["Base Color"].default_value = hex_lin("#3FA08D") + (1.0,)
-b.inputs["Roughness"].default_value = 0.62
+b.inputs["Base Color"].default_value = hex_lin(HOODIE_HEX) + (1.0,)
+b.inputs["Roughness"].default_value = 0.72      # 면 원단
 b.inputs["Metallic"].default_value = 0.0
-hood_mat.diffuse_color = hex_lin("#3FA08D") + (1.0,)
+hood_mat.diffuse_color = hex_lin(HOODIE_HEX) + (1.0,)
 
 screen_mat = bpy.data.materials.new("ZP_Screen")
 screen_mat.use_nodes = True
@@ -281,14 +282,121 @@ vg.add(range(len(hood.data.vertices)), 1.0, 'REPLACE')
 rep["hood"] = {"verts": len(hood.data.vertices),
                "tris": sum(len(p.vertices) - 2 for p in hood.data.polygons)}
 
+# ------------------------------------------------- 6-b. 후드티 몸판(소매 포함)
+# 이미 웨이트가 실린 본체를 부분 복제해 법선 방향으로 부풀린다.
+# 정점 그룹이 그대로 따라오므로 재바인딩이 전혀 필요 없다 —
+# 이 프로젝트에서 가장 잘 깨지는 단계를 통째로 건너뛴다.
+HOODIE_OFFSET = 0.0080
+HEM_Z = 0.437            # 밑단. 0.40 이면 가랑이 지오메트리가 V 자로 남아 뾰족해진다
+CUFF = 0.70              # 아래팔의 몇 %까지 소매로 덮을지. 손은 맨손으로 남긴다
+
+set_active(mesh)
+bpy.ops.object.duplicate()
+gar = bpy.context.active_object
+gar.name = "ZP_HoodieShell"
+gar.data.name = "ZP_HoodieShell"
+for m in list(gar.modifiers):
+    gar.modifiers.remove(m)
+gar.parent = None
+
+_gi = {g.name: g.index for g in gar.vertex_groups}
+for _n in ("Head", "Spine", "Chest", "Hips", "Shoulder.L", "Shoulder.R",
+           "UpperArm.L", "UpperArm.R", "LowerArm.L", "LowerArm.R",
+           "UpperLeg.L", "UpperLeg.R", "LowerLeg.L", "LowerLeg.R", "Foot.L", "Foot.R"):
+    if _n not in _gi:
+        raise RuntimeError("vertex group missing for hoodie cut: %s" % _n)
+_LEG = {_gi["UpperLeg.L"], _gi["UpperLeg.R"], _gi["LowerLeg.L"],
+        _gi["LowerLeg.R"], _gi["Foot.L"], _gi["Foot.R"]}
+_LOWERARM = {"L": _gi["LowerArm.L"], "R": _gi["LowerArm.R"]}
+_arm_axis = {}
+for side in ("L", "R"):
+    bn = rig.data.bones["LowerArm." + side]
+    h = bn.head_local.copy()
+    d = (bn.tail_local - bn.head_local)
+    _arm_axis[side] = (h, d.normalized(), d.length)
+
+
+def _keep(v):
+    """그룹 기준 대략 컷. 밑단·소맷부리 같은 '직선이어야 하는' 경계는
+    정점 단위로 자르면 톱니가 남으므로 아래에서 평면 bisect 로 따로 자른다."""
+    ws = {g.group: g.weight for g in v.groups if g.weight > 1e-4}
+    if not ws:
+        return False
+    if ws.get(_gi["Head"], 0.0) > 0.30:          # 머리·목은 후드가 덮는다
+        return False
+    dom = max(ws, key=ws.get)
+    if dom in _LEG:
+        return False
+    if v.co.z < HEM_Z - 0.06:                     # 여유를 두고 대충 잘라 둔다
+        return False
+    for side, idx in _LOWERARM.items():
+        if dom == idx:
+            h, d, ln = _arm_axis[side]
+            if (v.co - h).dot(d) / ln > CUFF + 0.25:
+                return False
+    return True
+
+
+_kill = [v.index for v in gar.data.vertices if not _keep(v)]
+if len(_kill) >= len(gar.data.vertices) - 200:
+    raise RuntimeError("hoodie cut removed almost everything: %d/%d"
+                       % (len(_kill), len(gar.data.vertices)))
+bm = bmesh.new()
+bm.from_mesh(gar.data)
+bm.verts.ensure_lookup_table()
+bmesh.ops.delete(bm, geom=[bm.verts[i] for i in _kill], context='VERTS')
+bm.verts.ensure_lookup_table()
+
+
+def _bisect(bm_, co, no, verts_filter=None):
+    """평면으로 잘라 normal 반대쪽을 버린다. 밑단이 직선으로 떨어진다."""
+    geom = list(bm_.verts) + list(bm_.edges) + list(bm_.faces)
+    if verts_filter is not None:
+        vs = {v for v in bm_.verts if verts_filter(v)}
+        geom = list(vs) + [e for e in bm_.edges if all(v in vs for v in e.verts)] \
+               + [f for f in bm_.faces if all(v in vs for v in f.verts)]
+        if not geom:
+            raise RuntimeError("bisect: empty geometry subset")
+    bmesh.ops.bisect_plane(bm_, geom=geom, dist=1e-6,
+                           plane_co=co, plane_no=no,
+                           clear_inner=True, clear_outer=False)
+    bm_.verts.ensure_lookup_table()
+
+
+_bisect(bm, Vector((0.0, 0.0, HEM_Z)), Vector((0.0, 0.0, 1.0)))
+for _side in ("L", "R"):
+    _h, _d, _ln = _arm_axis[_side]
+    _cut = _h + _d * (_ln * CUFF)
+    _bisect(bm, _cut, -_d, lambda v, _h=_h, _d=_d, _ln=_ln: (v.co - _h).dot(_d) / _ln > 0.15)
+bm.normal_update()
+for v in bm.verts:
+    v.co += v.normal * HOODIE_OFFSET             # 원단 두께만큼 부풀린다
+loose = [v for v in bm.verts if not v.link_edges]
+if loose:
+    bmesh.ops.delete(bm, geom=loose, context='VERTS')
+bm.to_mesh(gar.data)
+bm.free()
+gar.data.update()
+if len(gar.data.vertices) < 400:
+    raise RuntimeError("hoodie shell too small: %d verts" % len(gar.data.vertices))
+gar.data.materials.clear()
+gar.data.materials.append(hood_mat)
+set_active(gar)
+bpy.ops.object.shade_smooth()
+rep["hoodie"] = {"verts": len(gar.data.vertices),
+                 "tris": sum(len(p.vertices) - 2 for p in gar.data.polygons),
+                 "offset_m": HOODIE_OFFSET, "hem_z": HEM_Z, "cuff": CUFF,
+                 "color": HOODIE_HEX}
+
 # 본체에 조인 (기존 파이프라인: 액세서리 셸은 *_Character 에 합침)
 set_active(mesh)
 hood.select_set(True)
+gar.select_set(True)
 bpy.context.view_layer.objects.active = mesh
 bpy.ops.object.join()
 mesh = need_obj("ZP_Character")
-if "ZP_Hood" not in [m.name for m in mesh.data.materials]:
-    raise RuntimeError("hood material lost during join")
+if "ZP_Hoodie" not in [m.name for m in mesh.data.materials]:
+    raise RuntimeError("hoodie material lost during join")
 # 기존 캐릭터 4종에 공통으로 남아 있던 고립 정점 2개(파이프라인 유래)를 ZP 에서는 정리한다.
 _bm = bmesh.new()
 _bm.from_mesh(mesh.data)
@@ -361,7 +469,8 @@ def apply_pose(vals):
 # 레퍼런스 방향: 등이 C자로 깊게 말리고 머리가 앞으로 튀어나온 "거북목" 자세.
 # 목 하나를 꺾지 않고 Hips→Spine→Chest→Head 로 나눠 누적 70도를 만든다.
 UPPER_BASE = {"Hips": (6, 0, 0), "Spine": (15, 0, 0),
-              "Chest": (21, 0, 0), "Head": (28, 0, 0)}
+              "Chest": (20, 0, 0),
+              "Head": (float(os.environ.get("ZP_HEAD_BOW", "23")), 0, 0)}
 # 하체 기준 포즈(Idle 1프레임) 얹기
 for bn, sn in BASE_LOWER.items():
     pb = rig.pose.bones[bn]
@@ -421,7 +530,7 @@ rest_head = rig.data.bones["Head"].matrix_local
 head_ctr = rig.matrix_world @ ((hb.head + hb.tail) / 2.0)
 delta = (hb.matrix @ rest_head.inverted()).to_3x3()
 gaze = (delta @ Vector((0.0, -1.0, 0.0))).normalized()   # rest 정면(-Y)에 포즈 회전 적용
-PHONE_AIM = head_ctr + gaze * 0.185
+PHONE_AIM = head_ctr + gaze * 0.170
 rep["gaze"] = {"head_center": [round(v, 4) for v in head_ctr],
                "dir": [round(v, 4) for v in gaze],
                "phone_aim": [round(v, 4) for v in PHONE_AIM]}
@@ -430,18 +539,31 @@ rep["gaze"] = {"head_center": [round(v, 4) for v in head_ctr],
 from mathutils.kdtree import KDTree
 
 
+_HOODIE_SLOT = [i for i, m in enumerate(mesh.data.materials)
+                if m and m.name == "ZP_Hoodie"]
+if not _HOODIE_SLOT:
+    raise RuntimeError("ZP_Hoodie material slot not found")
+_HOODIE_SLOT = _HOODIE_SLOT[0]
+_HOODIE_VERTS = {vi for p in mesh.data.polygons
+                 if p.material_index == _HOODIE_SLOT for vi in p.vertices}
+
+
 def hand_surface(side, thr=0.6):
-    """현재 포즈에서 아래팔(=손 뭉치) 표면 정점의 월드 좌표."""
+    """현재 포즈에서 맨손 표면 정점의 월드 좌표.
+
+    소매(후드티 셸)도 같은 LowerArm 웨이트를 갖고 있으므로 반드시 빼야 한다.
+    소매에 스냅하면 폰이 원단 안으로 들어가 안 보인다.
+    """
     idx = gi["LowerArm." + side]
     dgh = bpy.context.evaluated_depsgraph_get()
     dgh.update()
     ev = mesh.evaluated_get(dgh)
-    src = mesh.data.vertices
     pts = [mesh.matrix_world @ ev.data.vertices[v.index].co
-           for v in src
-           if sum(g.weight for g in v.groups if g.group == idx) > thr]
+           for v in mesh.data.vertices
+           if v.index not in _HOODIE_VERTS
+           and sum(g.weight for g in v.groups if g.group == idx) > thr]
     if len(pts) < 50:
-        raise RuntimeError("hand surface region too small for %s: %d" % (side, len(pts)))
+        raise RuntimeError("bare hand region too small for %s: %d" % (side, len(pts)))
     return pts
 
 
@@ -519,7 +641,12 @@ phone_c = (hR + hL) / 2.0 * 0.68 + PHONE_AIM * 0.32 + Vector((0.0, -0.012, 0.004
 n = (head_world - phone_c).normalized()          # 화면이 바라볼 방향
 # 머리를 그대로 겨누면 폰이 거의 수평으로 눕고 뒤쪽 모서리가 가슴을 파고든다.
 # 전방(-Y)에서 잰 기울기를 MAX_TILT 로 제한해 세워 든 실루엣을 유지한다.
-MAX_TILT = 55.0
+# 사용자 요청: 화면이 얼굴을 정면으로 보게 한다 = 폰 면과 얼굴 면이 평행.
+# 시선 방향을 그대로 법선으로 쓰므로 사실상 클램프를 풀어 둔 값이다.
+# 보행 중 스마트폰 사용 연구 다이어그램(수평선 기준 각 θ) 기준.
+# 화면 법선이 눈을 향하되 폰이 완전히 눕지는 않는 구간 = 수직에서 60도.
+# 90 이면 시선과 완전 평행이 되어 정면에서 폰이 선으로만 보인다.
+MAX_TILT = float(os.environ.get('ZP_MAX_TILT', '60'))
 fwd = Vector((0.0, -1.0, 0.0))
 tilt = math.degrees(n.angle(fwd))
 if tilt > MAX_TILT:
@@ -542,11 +669,33 @@ basis = basis @ Matrix.Rotation(D(7.0), 4, 'Y')   # 살짝 비틀어 대칭 깨�
 # 오른손 표면에 실제로 닿을 때까지 밀어 넣는다.
 # 본 꼬리 기준 거리만 보면 붙어 보이지만 실제로는 38mm 떠 있었다 —
 # 블롭은 손가락이 없어서 표면끼리 파묻혀야만 '쥔' 것으로 읽힌다.
+# 폰만 손으로 끌어내리면 시선 조준점에서 멀어져 폰이 아래로 처진다.
+# 간격의 65% 는 손이 올라와서 메우고 35% 만 폰이 양보하도록 반복 수렴시킨다.
 GRIP_EMBED = 0.006
-tree_r = kdtree_of(hand_surface("R"))
-phone_c, gap_before = snap_to_hand(phone_c, basis, tree_r, GRIP_EMBED)
+gap_before = None
+for _gi_it in range(4):
+    tree_r = kdtree_of(hand_surface("R"))
+    new_c, gap = snap_to_hand(phone_c, basis, tree_r, GRIP_EMBED)
+    if gap_before is None:
+        gap_before = gap
+    delta = new_c - phone_c
+    if delta.length < 0.004:
+        phone_c = new_c
+        break
+    HAND_R -= delta * 0.65                    # 손을 폰 쪽으로 끌어올린다
+    pr_r, err_r = solve_arm("R", HAND_R, ELB_R)
+    UPPER_BASE["UpperArm.R"] = tuple(round(x, 2) for x in pr_r[:3])
+    UPPER_BASE["LowerArm.R"] = tuple(round(x, 2) for x in pr_r[3:])
+    apply_pose({k: v for k, v in UPPER_BASE.items() if k != "Hips"})
+    phone_c = phone_c + delta * 0.35
+else:
+    tree_r = kdtree_of(hand_surface("R"))
+    phone_c, _ = snap_to_hand(phone_c, basis, tree_r, GRIP_EMBED)
 desired = Matrix.Translation(phone_c) @ basis
-rep["grip_R"] = {"gap_before_m": round(gap_before, 4), "embed_m": GRIP_EMBED}
+rep["grip_R"] = {"gap_before_m": round(gap_before, 4), "embed_m": GRIP_EMBED,
+                 "iterations": _gi_it + 1,
+                 "phone_center": [round(v, 4) for v in phone_c],
+                 "aim_point": [round(v, 4) for v in PHONE_AIM]}
 
 # 폰이 오른손으로 끌려갔으니 왼손 목표를 다시 잡아 폰 왼쪽 모서리에 붙인다.
 xax_w = (basis.to_3x3() @ Vector((1.0, 0.0, 0.0))).normalized()
@@ -609,7 +758,7 @@ from mathutils.bvhtree import BVHTree
 _dgx = bpy.context.evaluated_depsgraph_get()
 _dgx.update()
 _me = mesh.evaluated_get(_dgx)
-_hs = [i for i, m in enumerate(mesh.data.materials) if m and m.name == "ZP_Hood"][0]
+_hs = [i for i, m in enumerate(mesh.data.materials) if m and m.name == "ZP_Hoodie"][0]
 _vs = [mesh.matrix_world @ v.co for v in _me.data.vertices]
 _tr = []
 for _p in _me.data.polygons:

@@ -164,10 +164,10 @@ armidx = {s: [v.index for v in me.vertices
 torso_idx = [v.index for v in me.vertices
              if sum(g.weight for g in v.groups
                     if g.group in (gi["Spine"], gi["Chest"], gi["Hips"])) > 0.85]
-# 후드는 ZP_Hood 머티리얼 슬롯으로 식별한다 (본체와 같은 오브젝트에 조인돼 있음)
-hood_slot = [i for i, m in enumerate(me.materials) if m and m.name == "ZP_Hood"]
+# 후드/후드티는 ZP_Hoodie 머티리얼 슬롯으로 식별한다 (본체에 조인돼 있음)
+hood_slot = [i for i, m in enumerate(me.materials) if m and m.name == "ZP_Hoodie"]
 if not hood_slot:
-    raise RuntimeError("ZP_Hood material slot not found on ZP_Character")
+    raise RuntimeError("ZP_Hoodie material slot not found on ZP_Character")
 hood_slot = hood_slot[0]
 hood_idx = sorted({vi for p in me.polygons if p.material_index == hood_slot
                    for vi in p.vertices})
@@ -235,7 +235,7 @@ for name, (nf, loop) in ACTS.items():
     if fr != [1.0, float(nf)]:
         fail("%s frame_range %s != [1, %d]" % (name, fr, nf))
     per = []
-    pen = {"phone": 0, "hood": 0, "phone_frame": None, "hood_frame": None}
+    pen = {"phone": 0, "hood": 0.0, "phone_frame": None, "hood_frame": None}
     prev_foot = None
     slide = {"L": 0.0, "R": 0.0}
     minz = 9e9
@@ -285,13 +285,22 @@ for name, (nf, loop) in ACTS.items():
             inside_phone = sum(1 for p in pv
                                if point_inside(bvh, p)
                                and not is_grip_contact(bvh, btris, p))
-            hv = [wv[i] for i in hood_idx]
-            inside_hood = sum(1 for p in hv if point_inside(bvh, p))
+            # 후드티는 본체를 법선 방향으로 오프셋한 복제라, 겨드랑이·팔꿈치
+            # 접힘부에서는 원단이 본체 안으로 들어가는 게 정상이다. 겹친 '개수'는
+            # 관절 각도에 따라 크게 흔들려 지표가 못 된다. 대신 '얼마나 깊이'
+            # 들어갔는지를 본다 — 원단 두께보다 깊으면 삼켜진 것이다.
+            depth = 0.0
+            for i in hood_idx:
+                q = wv[i]
+                if point_inside(bvh, q):
+                    near = bvh.find_nearest(q)
+                    if near[0] is not None:
+                        depth = max(depth, (q - near[0]).length)
             if inside_phone > pen["phone"]:
                 pen["phone"] = inside_phone
                 pen["phone_frame"] = f
-            if inside_hood > pen["hood"]:
-                pen["hood"] = inside_hood
+            if depth > pen["hood"]:
+                pen["hood"] = depth
                 pen["hood_frame"] = f
         if f == 1:
             first_snapshot = [Vector(p) for p in wv]
@@ -306,7 +315,7 @@ for name, (nf, loop) in ACTS.items():
              "phone_to_nearest_hand_max_m": round(phone_gap_max, 4),
              "phone_to_face_min_m": round(face_gap_min, 4),
              "phone_verts_inside_body": pen["phone"],
-             "hood_verts_inside_body": pen["hood"],
+             "hoodie_max_depth_m": round(pen["hood"], 5),
              "pen_frames": [pen["phone_frame"], pen["hood_frame"]]}
     for k, v in per:
         entry[k] = v
@@ -325,12 +334,12 @@ for name, (nf, loop) in ACTS.items():
         fail("%s loop seam delta %.5f" % (name, entry["loop_delta"]))
     if pen["phone"] > 0:
         fail("%s phone penetrates body at f%s (%d verts)" % (name, pen["phone_frame"], pen["phone"]))
-    # 후드 아래 테두리는 설계상 목을 감싸므로 상시 겹친다.
-    # 정지 포즈 대비 '증가분'만 관통으로 본다 (고개 숙임이 후드를 가슴에 박는 경우).
+    # 정지 포즈의 침투 깊이를 기준으로, 애니메이션이 그보다 8mm 넘게
+    # 더 밀어 넣으면 원단이 삼켜지는 것으로 본다.
     if HOOD_BASE[0] is None:
         HOOD_BASE[0] = pen["hood"]
-    if pen["hood"] > HOOD_BASE[0] + 8:
-        fail("%s hood pushed into body at f%s (%d vs base %d)"
+    if pen["hood"] > HOOD_BASE[0] + 0.008:
+        fail("%s hoodie swallowed at f%s (depth %.4f vs base %.4f)"
              % (name, pen["hood_frame"], pen["hood"], HOOD_BASE[0]))
     # 발 미끄러짐은 MC 원본 대비로 판정한다. ZP_Walk/ZP_Idle 의 하체는 MC 액션을
     # 그대로 리샘플한 것이라 같은 값이 나와야 정상이고, 커지면 회귀다.

@@ -30,7 +30,7 @@ IMPORTER_ARTIFACTS = {"Icosphere"}
 EXPECT_ACTS = {"ZP_Idle": 61, "ZP_Walk": 31, "ZP_Bump": 19, "ZP_MoveAside": 41,
                "ZP_Idle1H": 61, "ZP_Walk1H": 31}
 EXPECT_BONES = 18
-EXPECT_MATS = {"MC_White", "ZP_Hood", "AJ_Dark", "ZP_Screen"}
+EXPECT_MATS = {"MC_White", "ZP_Hoodie", "AJ_Dark", "ZP_Screen"}
 
 
 def action_fcurves(a):
