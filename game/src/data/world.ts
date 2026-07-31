@@ -287,12 +287,30 @@ const Z5_COLUMNS: Solid[] = Z5_COLUMN_XS.map((x) =>
 export type GuidePath = Readonly<{ z: number; points: readonly (readonly [number, number])[] }>
 
 export const GUIDE_PATHS: readonly GuidePath[] = [
-  { z: FLOOR.L0, points: [[-60, 23.4], [-2, 23.4], [-2, 28], [1.3, 28]] },
+  /**
+   * Z1 인도 — y 26.5 일직선.
+   *
+   * 처음엔 y 23.4로 깔았다가 세 군데를 관통했다: 정류장 기둥 두 개(y 23.4~23.7)와
+   * **이면도로 차단벽**(y 22~23.9). 유도선이 벽을 뚫고 지나가면 안내가 아니라 함정이다.
+   * y 26.5는 쉘터 북쪽 · 횡단보도 대역(23.9~31.1) 안 · 출입구 개구부(25.4~30.6) 정면을
+   * 한 번에 만족하는 유일하게 깔끔한 선이다. 꺾을 필요도 없어졌다.
+   */
+  { z: FLOOR.L0, points: [[-60, 26.5], [1.3, 26.5]] },
+  /** 정류장 → 본선 접속 (스폰이 쉘터 안이다) */
+  { z: FLOOR.L0, points: [[-58, 25.6], [-58, 26.5]] },
   { z: FLOOR.B1, points: [[15.2, 28], [20, 28], [20, 14], [55.8, 14]] },
   { z: FLOOR.B1, points: [[56, 14], [59.2, 14]] },
   { z: FLOOR.B1, points: [[62.6, 14], [68, 14], [68, 7], [95, 7]] },
-  { z: FLOOR.B2, points: [[80, 6], [202, 6]] },
+  /**
+   * Z5 승강장 — y 7.0.
+   * y 6.0은 **환승계단(OBJ-34, x138~142.6 · y0.4~6.0)** 을 스쳤다. P0에서 잠긴 계단으로
+   * 화살표가 안내하는 꼴이었다. 문 쪽 지선도 x140 → 144로 옮겼다(둘 다 가동문 위치다).
+   */
+  { z: FLOOR.B2, points: [[80, 7], [202, 7]] },
 ]
+
+/** 승강장에서 유도선 → 가동문으로 갈라지는 지선의 x. 전부 DOOR_XS 위에 있다. */
+export const GUIDE_DOOR_XS = [112, 144, 176] as const
 
 /** 승차 대기줄 마커 — P0은 시각 표시만 (MAP §7.3) */
 export const QUEUE_MARKERS = [
