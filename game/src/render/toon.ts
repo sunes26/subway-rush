@@ -25,8 +25,22 @@ const RAMP = makeToonRamp()
 
 const cache = new Map<string, MeshToonMaterial>()
 
-export const toonMat = (color: number, opts: { transparent?: boolean; opacity?: number; side?: 'double' } = {}): MeshToonMaterial => {
-  const k = `${color}|${opts.transparent ? 1 : 0}|${opts.opacity ?? 1}|${opts.side ?? ''}`
+export type ToonOpts = {
+  transparent?: boolean
+  opacity?: number
+  side?: 'double'
+  /**
+   * 바닥·벽에 얹히는 데칼(줄눈·점자블록·노선띠).
+   *
+   * 이 지오메트리들은 호스트 표면과 몇 mm 차이라 깊이값이 사실상 같다.
+   * 카메라가 움직일 때마다 어느 쪽이 앞인지 뒤집혀 **점멸한다**.
+   * 폴리곤 오프셋으로 깊이만 앞으로 당긴다 — 위치는 그대로 두고 z-파이팅만 없앤다.
+   */
+  decal?: boolean
+}
+
+export const toonMat = (color: number, opts: ToonOpts = {}): MeshToonMaterial => {
+  const k = `${color}|${opts.transparent ? 1 : 0}|${opts.opacity ?? 1}|${opts.side ?? ''}|${opts.decal ? 1 : 0}`
   const hit = cache.get(k)
   if (hit) return hit
   const m = new MeshToonMaterial({
@@ -34,6 +48,9 @@ export const toonMat = (color: number, opts: { transparent?: boolean; opacity?: 
     gradientMap: RAMP,
     ...(opts.transparent ? { transparent: true, opacity: opts.opacity ?? 0.5 } : {}),
     ...(opts.side === 'double' ? { side: DoubleSide } : {}),
+    ...(opts.decal
+      ? { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }
+      : {}),
   })
   cache.set(k, m)
   return m

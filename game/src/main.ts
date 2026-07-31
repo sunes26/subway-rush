@@ -10,6 +10,7 @@ import { resolveSeed } from './core/rng'
 import { CAMERA, FPV, MAX_FRAME_MS, MAX_STEPS_PER_FRAME, STEP_MS } from './data/tuning'
 import { GATES, GATE_BODY, GATE_LAMP_Z, TRAFFIC_LIGHT } from './data/world'
 import { createCameraRig } from './render/camera-rig'
+import { createGuideArrows } from './render/guide-arrows'
 import { loadPlayerRig, type PlayerRig } from './render/player-rig'
 import { createStage } from './render/scene'
 import { loadStation, type Station } from './render/station'
@@ -40,6 +41,10 @@ const world = buildWorld(false)
 world.root.visible = false
 const cameraRig = createCameraRig(stage.camera, world.occluders)
 stage.scene.add(world.root)
+
+/** 유도블록 위를 흐르는 방향 화살표. GLB가 아니라 코드가 만든다 — 매 프레임 움직인다. */
+const guideArrows = createGuideArrows()
+stage.scene.add(guideArrows.mesh)
 
 /** 시점 전환 — 1인칭이 기본. 3인칭 쿼터뷰는 V로 확인용 전환. */
 const applyView = (): void => {
@@ -131,6 +136,8 @@ const frame = (now: number): void => {
   cameraRig.update(state, sample, dtSec, renderPos)
   stage.setMood(state.zone, dtSec)
   station?.sync(state, dtSec, lightIsGreen(state), lightRemainSec(state))
+  // 흐름은 **경과 시간** 기준이다. dt 누적으로 굴리면 프레임 흔들림이 그대로 위상 지터가 된다
+  guideArrows.update(now / 1000, renderPos)
   player?.sync(state, dtSec, renderPos)
   hud.sync(state, sample.locked && cameraRig.mode() === 'fp')
   screens.sync(state)

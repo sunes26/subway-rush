@@ -83,6 +83,18 @@ const GLASS_MATERIALS = new Set([
   'PSD_GLASS', 'ST_GLASS', 'ESC_GLASS', 'BLD_GLASS', 'VM_GLASS', 'TR_WINDOW',
 ])
 
+/**
+ * 바닥·벽에 얹히는 데칼 — 줄눈·점자블록·노선띠·광고판·차선.
+ *
+ * 호스트 표면과 몇 mm 차이라 카메라가 움직이면 깊이 판정이 뒤집혀 점멸한다.
+ * 지오메트리도 6mm 띄웠지만(Blender), 원거리에서는 깊이 정밀도가 그걸 못 버틴다.
+ * 폴리곤 오프셋으로 확실히 앞에 세운다.
+ */
+const DECAL_MATERIALS = new Set([
+  'ST_TACTILE', 'ST_TACT_WARN', 'PF_TACTILE', 'SW_TACTILE', 'PF_YELLOW',
+  'FLOOR_JOINT', 'LINE2_GRN', 'AD_PANEL', 'RD_LINE', 'WEAR_LOW', 'WEAR_HIGH',
+])
+
 const baseColor = (m: Material | Material[]): number => {
   const one = (Array.isArray(m) ? m[0] : m) as MeshStandardMaterial | undefined
   const tint = one?.name ? MATERIAL_TINT[one.name] : undefined
@@ -130,7 +142,9 @@ const mergeBuckets = (buckets: Map<string, Bucket>, into: Group): void => {
     const merged = b.geos.length === 1 ? b.geos[0] : mergeGeometries(b.geos, false)
     if (!merged) continue
     const glass = GLASS_MATERIALS.has(name)
-    const mesh = new Mesh(merged, glass ? toonMat(b.color, { transparent: true, opacity: 0.34 }) : toonMat(b.color))
+    const mesh = new Mesh(merged, glass
+      ? toonMat(b.color, { transparent: true, opacity: 0.34 })
+      : toonMat(b.color, { decal: DECAL_MATERIALS.has(name) }))
     // 유리는 나중에 그린다 — 뒤에 있는 열차·통로가 먼저 깊이버퍼에 들어가야 비쳐 보인다
     if (glass) mesh.renderOrder = 2
     mesh.name = `merged:${name}`

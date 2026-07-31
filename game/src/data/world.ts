@@ -275,6 +275,25 @@ const Z5_COLUMNS: Solid[] = Z5_COLUMN_XS.map((x) =>
   solid(`Z5-COL-${x}`, at(x, Z5_COLUMN_Y, 1.1, 1.1), FLOOR.B2, 4.5, 'column'),
 )
 
+/**
+ * 점자 유도블록이 그리는 동선 — 흐르는 화살표가 이 위를 지난다.
+ *
+ * Blender의 `*_tact_guide` 지오메트리와 **같은 좌표**다. 한쪽만 고치면 화살표가
+ * 블록 밖으로 흘러간다. 방향은 배열 순서 = 진행 방향(역 → 승강장).
+ *
+ * Z1 구간이 인도 본선에서 입구로 꺾이는 게 핵심이다 — 예전엔 유도선이 입구를
+ * 지나쳐 계속 동쪽으로 갔고, 그대로 따라가면 출입구 측벽 앞에서 막혔다.
+ */
+export type GuidePath = Readonly<{ z: number; points: readonly (readonly [number, number])[] }>
+
+export const GUIDE_PATHS: readonly GuidePath[] = [
+  { z: FLOOR.L0, points: [[-60, 23.4], [-2, 23.4], [-2, 28], [1.3, 28]] },
+  { z: FLOOR.B1, points: [[15.2, 28], [20, 28], [20, 14], [55.8, 14]] },
+  { z: FLOOR.B1, points: [[56, 14], [59.2, 14]] },
+  { z: FLOOR.B1, points: [[62.6, 14], [68, 14], [68, 7], [95, 7]] },
+  { z: FLOOR.B2, points: [[80, 6], [202, 6]] },
+]
+
 /** 승차 대기줄 마커 — P0은 시각 표시만 (MAP §7.3) */
 export const QUEUE_MARKERS = [
   { label: '3-1', x: 112, y: 10 },
@@ -354,7 +373,9 @@ export const SOLIDS: readonly Solid[] = [
   solid('ACT-02-BENCH', at(42, 15, 2.4, 0.8), FLOOR.B1, 0.9, 'bench'),
   solid('OBJ-11-BENCH', at(47, 25, 2.4, 0.8), FLOOR.B1, 0.9, 'bench'),
   solid('OBJ-13-LOST', at(50, 23.6, 3.0, 1.2), FLOOR.B1, 2.6, 'kiosk'),
-  solid('OBJ-14-WC', at(44, 28.5, 5.0, 3.0), FLOOR.B1, 3.0, 'wall'),
+  // 화장실 — 실제로 지어진 방(Blender `Z2_OBJ14_room`)과 같은 범위.
+  // 예전 5.0×3.0(y 27~30)은 문틀보다 1.35m 앞에서부터 막아서, 아무것도 없는데 걸렸다.
+  { id: 'OBJ-14-WC', rect: [41.5, 28.35, 46.5, 30.4], z0: FLOOR.B1, h: 3.2, look: 'wall' },
   solid('OBJ-16-UMBRELLA', at(38, 5, 1.0, 0.6), FLOOR.B1, 1.0, 'prop'),
   solid('OBJ-17-NEWSSTAND', at(32, 4.6, 2.6, 1.4), FLOOR.B1, 2.4, 'kiosk'),
   solid('OBJ-18-CAFE', at(29.5, 27.4, 5.0, 3.4), FLOOR.B1, 3.0, 'glass'),
