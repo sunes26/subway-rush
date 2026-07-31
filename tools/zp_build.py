@@ -808,19 +808,21 @@ n = (head_world - phone_c).normalized()          # 화면이 바라볼 방향
 # 전방(-Y)에서 잰 기울기를 MAX_TILT 로 제한해 세워 든 실루엣을 유지한다.
 # 사용자 요청: 화면이 얼굴을 정면으로 보게 한다 = 폰 면과 얼굴 면이 평행.
 # 시선 방향을 그대로 법선으로 쓰므로 사실상 클램프를 풀어 둔 값이다.
-# 보행 중 스마트폰 사용 연구 다이어그램(수평선 기준 각 θ) 기준.
-# 화면 법선이 눈을 향하되 폰이 완전히 눕지는 않는 구간. 82 가 완전 평행이고
-# 75 는 거기서 7도만 세운 값 — 정면 실루엣을 조금 남기는 절충점이다.
-# 90 이면 시선과 완전 평행이 되어 정면에서 폰이 선으로만 보인다.
-MAX_TILT = float(os.environ.get('ZP_MAX_TILT', '75'))
+# 폰 기울기: 전방 수평(-Y)에서 잰 절대 목표각으로 지정한다.
+# 상한(clamp)으로 두면 조준값(=시선과 완전 평행, 81.7도)을 넘는 값을 줘도
+# 조준값에 머물러 실제로는 안 눕는다.
+#   0   = 수직 (화면이 정면을 봄)
+#   81.7= 시선과 완전 평행 (화면이 얼굴을 정면으로 봄)
+#   90  = 완전 수평 (화면이 하늘을 봄)
+PHONE_TILT = float(os.environ.get('ZP_PHONE_TILT', '85'))
 fwd = Vector((0.0, -1.0, 0.0))
-tilt = math.degrees(n.angle(fwd))
-if tilt > MAX_TILT:
-    axis = fwd.cross(n)
-    if axis.length < 1e-6:
-        raise RuntimeError("cannot clamp phone tilt: degenerate axis")
-    n = (Matrix.Rotation(D(MAX_TILT), 4, axis.normalized()) @ fwd).normalized()
-rep["phone_tilt_deg"] = {"aimed": round(tilt, 2), "clamped_to": MAX_TILT if tilt > MAX_TILT else round(tilt, 2)}
+aimed = math.degrees(n.angle(fwd))
+axis = fwd.cross(n)
+if axis.length < 1e-6:
+    raise RuntimeError("cannot set phone tilt: degenerate axis")
+n = (Matrix.Rotation(D(PHONE_TILT), 4, axis.normalized()) @ fwd).normalized()
+rep["phone_tilt_deg"] = {"aimed_face_parallel": round(aimed, 2),
+                         "applied": PHONE_TILT}
 yax = -n                                          # 로컬 +Y = 화면 뒷면
 xr = Vector((1.0, 0.0, 0.0))
 xax = (xr - yax * xr.dot(yax)).normalized()
