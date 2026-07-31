@@ -1,0 +1,97 @@
+/**
+ * 시뮬레이션 1스텝. 렌더를 전혀 모른다.
+ *
+ * 이 함수가 순수하기 때문에 3분 플레이를 20ms에 시뮬레이션할 수 있고,
+ * 시드 1,000개 밸런싱 스윕이 20초에 끝난다. 아키텍처 분리의 진짜 이유가 이것이다.
+ */
+
+import type { InputFrame } from '../core/input'
+import { EMPTY_INPUT } from '../core/input'
+import { resolveEnding } from '../data/endings'
+import { CROSSWALK, FLOOR, TRAFFIC_LIGHT, zoneAt, type Solid } from '../data/world'
+import { applyAll } from '../state/reducer'
+import type { Action, GameState } from '../state/types'
+import { setDynamicSolids } from './collision'
+import { gateFlaps, gateKnockback, gatesSystem } from './gates'
+import { movementSystem } from './movement'
+import { psdDoors, trainAt, trainSystem } from './train'
+
+export type TickCtx = Readonly<{ input: InputFrame; cameraYaw: number }>
+
+export const lightIsGreen = (s: GameState): boolean => s.lightMs < TRAFFIC_LIGHT.greenMs
+
+/** 적신호 동안 횡단보도를 막는 보이지 않는 벽. Z1의 유일한 진짜 판단(MAP §3.3). */
+const crossingBlock = (s: GameState): Solid[] =>
+  lightIsGreen(s)
+    ? []
+    : [{
+        id: 'LIGHT-BLOCK',
+        rect: [CROSSWALK.xMin - 0.3, CROSSWALK.yMin, CROSSWALK.xMin + 0.1, CROSSWALK.yMax],
+        z0: FLOOR.L0,
+        h: 2.4,
+        look: 'wall',
+      }]
+
+/** 이번 스텝의 동적 충돌체를 확정한다. 순서: 게이트 플랩 · PSD 가동문 · 신호 차단 */
+export const rebuildDynamics = (s: GameState): void => {
+  setDynamicSolids([...gateFlaps(s), ...psdDoors(s), ...crossingBlock(s)])
+}
+
+export const tick = (state: GameState, dtMs: number, ctx: TickCtx): GameState => {
+  let s = state
+
+  // 1) 시계 전진
+  s = applyAll(s, [{ t: 'ADVANCE', dtMs }])
+
+  // 2) 열차는 시간의 순수 함수 — 리듀서를 거치지 않고 파생한다
+  const train = trainAt(s.elapsedMs)
+  if (
+    train.state !== s.train.state ||
+    train.x !== s.train.x ||
+    train.doorProgress !== s.train.doorProgress
+  ) {
+    s = { ...s, train }
+  }
+
+  // 3) 동적 충돌체 갱신 (이동 전에 반드시)
+  rebuildDynamics(s)
+
+  // 4) 시스템 → 액션
+  const before = s
+  const actions: Action[] = [
+    ...movementSystem(s, { dtMs, input: ctx.input, cameraYaw: ctx.cameraYaw }),
+  ]
+  s = applyAll(s, actions)
+
+  const gateActions = gatesSystem(s)
+  s = applyAll(s, gateActions)
+  s = applyAll(s, gateKnockback(s, before))
+
+  s = applyAll(s, trainSystem(s))
+
+  // 5) 존 판정
+  const zone = zoneAt(s.player.pos.x, s.player.pos.z)
+  if (zone !== s.zone) s = applyAll(s, [{ t: 'ZONE', zone }])
+
+  // 6) 종료 판정
+  if (s.phase === 'boarding' && s.train.state === 'departed') {
+    s = applyAll(s, [{ t: 'END', endingId: resolveEnding(s).id }])
+  } else if (s.phase === 'playing' && s.train.state === 'departed') {
+    s = applyAll(s, [{ t: 'END', endingId: resolveEnding(s).id }])
+  }
+
+  return s
+}
+
+/** 헤드리스 시뮬 — 테스트·밸런싱 스윕용. 렌더 없이 게임 전체를 돌린다. */
+export const simulate = (
+  start: GameState,
+  script: readonly InputFrame[],
+  cameraYaw = 0,
+  dtMs = 1000 / 60,
+): GameState =>
+  script.reduce((s, input) => tick(s, dtMs, { input, cameraYaw }), start)
+
+/** n스텝 동안 같은 입력을 유지한다. */
+export const hold = (input: Partial<InputFrame>, steps: number): InputFrame[] =>
+  Array.from({ length: steps }, () => ({ ...EMPTY_INPUT, ...input }))

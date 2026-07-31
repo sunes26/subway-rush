@@ -1,0 +1,137 @@
+"""ZP GLB/FBX 익스포트. 기존 저장소 규약(export_apply=False, NLA 트랙, 리프본 없음,
+정점당 영향 4, 리그 위치 0)을 따른다.
+
+blender -b zp_character.blend --python zp_export.py -- <glb_path> <fbx_path>
+"""
+import bpy, sys, os, json
+from mathutils import Matrix
+
+args = sys.argv[sys.argv.index("--") + 1:]
+GLB, FBX = os.path.abspath(args[0]), os.path.abspath(args[1])
+REPORT = os.environ.get("ZP_REPORT", "/tmp/zp_export_report.json")
+rep = {}
+
+
+def need(name):
+    o = bpy.data.objects.get(name)
+    if o is None:
+        raise RuntimeError("missing object: %s" % name)
+    return o
+
+
+rig = need("ZP_Rig")
+mesh = need("ZP_Character")
+phone = need("PR_Phone")
+sc = bpy.context.scene
+
+# ---------------------------------------------------------- 익스포트 전 점검
+checks = {}
+checks["rig_location"] = [round(v, 6) for v in rig.location]
+checks["rig_rotation"] = [round(v, 6) for v in rig.rotation_euler]
+checks["rig_scale"] = [round(v, 6) for v in rig.scale]
+if max(abs(v) for v in rig.location) > 1e-6:
+    raise RuntimeError("rig not at world origin: %s" % list(rig.location))
+if max(abs(v - 1.0) for v in rig.scale) > 1e-6:
+    raise RuntimeError("rig scale != 1")
+if not any(m.type == 'ARMATURE' for m in mesh.modifiers):
+    raise RuntimeError("Armature modifier missing on ZP_Character")
+if phone.parent_bone != "Prop.R":
+    raise RuntimeError("phone not parented to Prop.R")
+
+# 정점당 영향 4개 제한 + 정규화 (glTF 는 상위 4개만 남긴다)
+bpy.ops.object.select_all(action='DESELECT')
+mesh.select_set(True)
+bpy.context.view_layer.objects.active = mesh
+bpy.ops.object.vertex_group_limit_total(limit=4)
+bpy.ops.object.vertex_group_normalize_all(lock_active=False)
+maxinf = 0
+for v in mesh.data.vertices:
+    maxinf = max(maxinf, len([g for g in v.groups if g.weight > 1e-5]))
+checks["max_influence_after_limit"] = maxinf
+if maxinf > 4:
+    raise RuntimeError("influence limit failed: %d" % maxinf)
+
+# ------------------------------------------------------------- NLA 트랙 구성
+ZP_ACTIONS = ["ZP_Idle", "ZP_Walk", "ZP_Idle1H", "ZP_Walk1H", "ZP_Bump", "ZP_MoveAside"]
+present = sorted(a.name for a in bpy.data.actions)
+if set(present) != set(ZP_ACTIONS):
+    raise RuntimeError("unexpected actions in file: %s" % present)
+
+ad = rig.animation_data or rig.animation_data_create()
+ad.action = None
+for t in list(ad.nla_tracks):
+    ad.nla_tracks.remove(t)
+for name in ZP_ACTIONS:
+    act = bpy.data.actions[name]
+    tr = ad.nla_tracks.new()
+    tr.name = name
+    st = tr.strips.new(name, int(act.frame_range[0]), act)
+    st.name = name
+    tr.mute = False
+    tr.is_solo = False
+checks["nla_tracks"] = [{"track": t.name,
+                         "strips": [(s.name, s.action.name,
+                                     round(s.frame_start, 1), round(s.frame_end, 1))
+                                    for s in t.strips]}
+                        for t in ad.nla_tracks]
+if len(ad.nla_tracks) != len(ZP_ACTIONS):
+    raise RuntimeError("NLA track count mismatch")
+
+# 익스포트 대상만 선택 (카메라 · 라이트 제외)
+bpy.ops.object.select_all(action='DESELECT')
+for o in (rig, mesh, phone):
+    o.select_set(True)
+bpy.context.view_layer.objects.active = rig
+checks["selected"] = sorted(o.name for o in bpy.context.selected_objects)
+if any(o.type in ('CAMERA', 'LIGHT') for o in bpy.context.selected_objects):
+    raise RuntimeError("camera/light in selection")
+
+# ------------------------------------------------------------------- GLB
+bpy.ops.export_scene.gltf(
+    filepath=GLB,
+    export_format='GLB',
+    use_selection=True,
+    export_apply=False,                 # True 면 Armature 모디파이어까지 적용돼 리깅이 사라진다
+    export_animations=True,
+    export_animation_mode='NLA_TRACKS',  # README 규약. ACTIONS 는 타 캐릭터 액션이 섞인다
+    export_nla_strips=True,
+    export_leaf_bone=False,
+    export_influence_nb=4,
+    export_all_influences=False,
+    export_materials='EXPORT',
+    export_yup=True,
+    export_rest_position_armature=True,
+    export_optimize_animation_size=False,
+    export_draco_mesh_compression_enable=False,
+)
+
+# ------------------------------------------------------------------- FBX
+bpy.ops.export_scene.fbx(
+    filepath=FBX,
+    use_selection=True,
+    object_types={'ARMATURE', 'MESH'},
+    use_mesh_modifiers=False,           # export_apply=False 와 동일 취지
+    add_leaf_bones=False,
+    bake_anim=True,
+    bake_anim_use_all_bones=True,
+    bake_anim_use_nla_strips=True,
+    bake_anim_use_all_actions=False,
+    bake_anim_force_startend_keying=True,
+    bake_anim_step=1.0,
+    bake_anim_simplify_factor=0.0,
+    axis_forward='-Z',
+    axis_up='Y',
+    apply_unit_scale=True,
+    global_scale=1.0,
+    apply_scale_options='FBX_SCALE_NONE',
+    use_armature_deform_only=False,
+    path_mode='COPY',
+    embed_textures=False,
+)
+
+rep["checks"] = checks
+rep["files"] = {"glb": {"path": GLB, "bytes": os.path.getsize(GLB)},
+                "fbx": {"path": FBX, "bytes": os.path.getsize(FBX)}}
+with open(REPORT, "w") as fh:
+    json.dump(rep, fh, indent=1, ensure_ascii=False)
+print("ZP EXPORT OK", os.path.getsize(GLB), os.path.getsize(FBX))
