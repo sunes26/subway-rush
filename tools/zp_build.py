@@ -415,13 +415,11 @@ bm.free()
 gar.data.update()
 if len(gar.data.vertices) < 400:
     raise RuntimeError("hoodie shell too small: %d verts" % len(gar.data.vertices))
-# 머티리얼 슬롯을 먼저 잡는다. bmesh 로 material_index 를 박은 뒤에
-# materials.clear() 를 호출하면 인덱스가 전부 0 으로 초기화된다.
 gar.data.materials.clear()
-gar.data.materials.append(hood_mat)         # 슬롯 0 = 후드티
-gar.data.materials.append(AJ_DARK)          # 슬롯 1 = 지퍼
+gar.data.materials.append(hood_mat)         # 슬롯 0 = 후드티 (풀오버라 지퍼 없음)
 
-# ---- 지퍼 · 주머니: 몸판 면을 복제해 바깥으로 밀어낸다 ----
+# ---- 주머니: 몸판 면을 복제해 바깥으로 밀어낸다 ----
+# 풀오버 후드티라 지퍼는 없다. 배 앞 캥거루 주머니 융기만 만든다.
 # 웨이트가 그대로 따라오므로 별도 리깅이 필요 없고 몸을 정확히 따라간다.
 bm = bmesh.new()
 bm.from_mesh(gar.data)
@@ -461,37 +459,15 @@ def _front(f):
     return f.calc_center_median().y < -0.02 and f.normal.y < -0.55
 
 
-ZIP_W = 0.017
-def _zip_face(f):
-    # 면 중심만 보면 가랑이로 말려 들어가는 면까지 잡혀 지퍼가 밑단 아래로
-    # 검은 혀처럼 삐져나온다. 정점 전체가 밴드 안에 있고 벽면에 가까운 면만 쓴다.
-    if not _front(f):
-        return False
-    if abs(f.calc_center_median().x) >= ZIP_W:
-        return False
-    if abs(f.normal.z) > 0.45:                 # 바닥으로 말린 면 제외
-        return False
-    return all(0.462 < v.co.z < 0.700 for v in f.verts)
-
-
-zip_faces = _dup_offset(bm, _zip_face, 0.0060)
-for f in zip_faces:
-    f.material_index = 1                       # 슬롯 1 = AJ_Dark (지퍼)
 POCKET = _dup_offset(bm, lambda f: _front(f)
                      and 0.455 < f.calc_center_median().z < 0.535
                      and 0.020 < abs(f.calc_center_median().x) < 0.082, 0.0105)
-for f in POCKET:
-    f.material_index = 0
 bm.to_mesh(gar.data)
 bm.free()
 gar.data.update()
 
-_zc = sum(1 for poly in gar.data.polygons if poly.material_index == 1)
-if _zc < 6:
-    raise RuntimeError("zipper faces lost (%d)" % _zc)
 set_active(gar)
 bpy.ops.object.shade_smooth()
-rep["zipper_faces"] = _zc
 rep["pocket_faces"] = len(POCKET)
 rep["hoodie"] = {"verts": len(gar.data.vertices),
                  "tris": sum(len(p.vertices) - 2 for p in gar.data.polygons),
