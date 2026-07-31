@@ -18,7 +18,7 @@ import {
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { PALETTE, TRAIN } from '../data/tuning'
-import { DOOR_XS, GATES, SLABS } from '../data/world'
+import { DOOR_XS, GATES } from '../data/world'
 import type { GameState } from '../state/types'
 import { toonMat } from './toon'
 
@@ -162,32 +162,6 @@ const worldZ = (o: Object3D): number => {
 const nearestDoor = (x: number): number =>
   DOOR_XS.reduce((a, b) => (Math.abs(b - x) < Math.abs(a - x) ? b : a), DOOR_XS[0] as number)
 
-/**
- * Blender 씬에 없는 바닥을 메운다.
- *
- * Z1은 차도(`Z1_road`)·연석·점자블록·횡단보도만 모델링돼 있고 **보도 슬랩이 없다**
- * (`SW_PAVER`는 연석 하나에만 걸려 있다). 렌더 이미지에서는 배경색이 보도처럼 보였을 뿐이라
- * 게임에 넣으니 플레이어가 하늘 위를 걷는다.
- * 지하 존은 전부 자체 바닥(`ST_FLOOR`/`PF_FLOOR`)이 있으므로 여기만 채운다.
- */
-const buildFloorPatches = (): Group => {
-  const g = new Group()
-  g.name = 'floor-patch'
-  const plane = new PlaneGeometry(1, 1)
-  const PATCH = new Set(['Z1-WALK', 'Z1-LANDING'])
-  for (const s of SLABS) {
-    if (!PATCH.has(s.id)) continue
-    const m = new Mesh(plane, toonMat(0xc9c6bd))
-    m.name = `patch:${s.id}`
-    m.rotation.x = -Math.PI / 2
-    m.scale.set(s.rect[2] - s.rect[0], s.rect[3] - s.rect[1], 1)
-    // 점자블록·횡단보도 데칼(z=0)보다 살짝 아래로 — 안 그러면 z-파이팅이 난다
-    m.position.set((s.rect[0] + s.rect[2]) / 2, s.z - 0.012, -(s.rect[1] + s.rect[3]) / 2)
-    g.add(m)
-  }
-  return g
-}
-
 export type Station = Readonly<{
   root: Group
   sync(s: GameState, dtSec: number, greenLight: boolean, lightRemainSec: number): void
@@ -213,7 +187,6 @@ export const loadStation = async (
 
   const root = new Group()
   root.name = 'station'
-  root.add(buildFloorPatches())
 
   /**
    * 존별 그룹. 병합 메시는 존 전체를 덮는 바운딩 박스를 갖기 때문에
