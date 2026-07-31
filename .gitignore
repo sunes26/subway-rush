@@ -3,3 +3,12 @@ assets/backup/
 *.blend2
 *.blend@
 .claude/
+
+# 3D 반복 검토 렌더 (중간 산출물) - 최종본만 커밋
+render/gb_*.png
+render/z1_*.png
+render/z2_*.png
+render/z3_*.png
+render/z5_*.png
+render/CHK*.png
+render/_*
