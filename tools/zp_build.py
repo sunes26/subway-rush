@@ -427,6 +427,67 @@ rep["gaze"] = {"head_center": [round(v, 4) for v in head_ctr],
                "phone_aim": [round(v, 4) for v in PHONE_AIM]}
 
 # 폰을 사이에 두고 오른손은 아래, 왼손은 위 — 실루엣 비대칭
+from mathutils.kdtree import KDTree
+
+
+def hand_surface(side, thr=0.6):
+    """현재 포즈에서 아래팔(=손 뭉치) 표면 정점의 월드 좌표."""
+    idx = gi["LowerArm." + side]
+    dgh = bpy.context.evaluated_depsgraph_get()
+    dgh.update()
+    ev = mesh.evaluated_get(dgh)
+    src = mesh.data.vertices
+    pts = [mesh.matrix_world @ ev.data.vertices[v.index].co
+           for v in src
+           if sum(g.weight for g in v.groups if g.group == idx) > thr]
+    if len(pts) < 50:
+        raise RuntimeError("hand surface region too small for %s: %d" % (side, len(pts)))
+    return pts
+
+
+def kdtree_of(pts):
+    t = KDTree(len(pts))
+    for i, p in enumerate(pts):
+        t.insert(p, i)
+    t.balance()
+    return t
+
+
+def nearest_gap(mat, tree):
+    """폰을 mat 에 놓았을 때 (최단거리, 폰쪽 점, 손쪽 점)."""
+    best = (1e9, None, None)
+    for v in phone.data.vertices:
+        w = mat @ v.co
+        co, _, d = tree.find(w)
+        if d < best[0]:
+            best = (d, w, co)
+    return best
+
+
+def snap_to_hand(center, basis, tree, embed):
+    """폰이 손 표면에 닿을 때까지 밀어 넣는다. embed 만큼 더 파묻어 '쥔' 느낌을 만든다.
+
+    블롭 캐릭터는 손가락이 없어서, 살짝 파묻혀야만 쥐고 있는 걸로 읽힌다.
+    """
+    c = center.copy()
+    last_dir = None
+    d0, _, _ = nearest_gap(Matrix.Translation(c) @ basis, tree)
+    for _ in range(80):
+        d, pp, hp = nearest_gap(Matrix.Translation(c) @ basis, tree)
+        if pp is None:
+            raise RuntimeError("snap_to_hand: no nearest point")
+        if d <= 5e-4:
+            break
+        last_dir = (hp - pp).normalized()
+        c += last_dir * d
+    else:
+        raise RuntimeError("snap_to_hand did not converge (gap %.4f)" % d)
+    if last_dir is None:
+        raise RuntimeError("snap_to_hand: phone already overlapping, cannot orient embed")
+    c += last_dir * embed          # 접촉 직전 방향으로 더 밀어 파묻는다
+    return c, d0
+
+
 HAND_R = PHONE_AIM + Vector((-0.047, 0.014, -0.031))
 HAND_L = PHONE_AIM + Vector((0.047, 0.020, 0.013))
 # 위팔은 몸을 따라 축 늘어뜨리고 아래팔만 폰으로 올린다 (레퍼런스의 긴 팔)
@@ -477,7 +538,59 @@ basis = Matrix((
     (xax.z, yax.z, zax.z),
 )).to_4x4()
 basis = basis @ Matrix.Rotation(D(7.0), 4, 'Y')   # 살짝 비틀어 대칭 깨기
+
+# 오른손 표면에 실제로 닿을 때까지 밀어 넣는다.
+# 본 꼬리 기준 거리만 보면 붙어 보이지만 실제로는 38mm 떠 있었다 —
+# 블롭은 손가락이 없어서 표면끼리 파묻혀야만 '쥔' 것으로 읽힌다.
+GRIP_EMBED = 0.006
+tree_r = kdtree_of(hand_surface("R"))
+phone_c, gap_before = snap_to_hand(phone_c, basis, tree_r, GRIP_EMBED)
 desired = Matrix.Translation(phone_c) @ basis
+rep["grip_R"] = {"gap_before_m": round(gap_before, 4), "embed_m": GRIP_EMBED}
+
+# 폰이 오른손으로 끌려갔으니 왼손 목표를 다시 잡아 폰 왼쪽 모서리에 붙인다.
+xax_w = (basis.to_3x3() @ Vector((1.0, 0.0, 0.0))).normalized()
+zax_w = (basis.to_3x3() @ Vector((0.0, 0.0, 1.0))).normalized()
+tgt_l = phone_c + xax_w * (PW * 0.52) + zax_w * (-PH * 0.10)
+for _it in range(6):
+    pr_l, err_l = solve_arm("L", tgt_l, ELB_L)
+    UPPER_BASE["UpperArm.L"] = tuple(round(x, 2) for x in pr_l[:3])
+    UPPER_BASE["LowerArm.L"] = tuple(round(x, 2) for x in pr_l[3:])
+    apply_pose({k: v for k, v in UPPER_BASE.items() if k != "Hips"})
+    tree_l = kdtree_of(hand_surface("L"))
+    d_l, pp_l, hp_l = nearest_gap(desired, tree_l)
+    if d_l <= 0.0035:
+        break
+    tgt_l += (pp_l - hp_l).normalized() * (d_l * 0.9)
+else:
+    raise RuntimeError("left hand did not reach the phone (gap %.4f)" % d_l)
+rep["grip_L"] = {"gap_m": round(d_l, 4), "iterations": _it + 1,
+                 "residual_m": round(err_l, 5)}
+
+# 한손 변형 — 오른손과 폰은 그대로 두고 왼팔만 몸 옆으로 내린다.
+# ACT-05 는 Z2/Z4 에 여러 개체가 동시에 스폰되므로, 같은 메시로 파지 방식만
+# 갈라 두면 코드가 개체별로 골라 쓸 수 있다.
+HANG_L = sh_l + Vector((0.030, 0.012, -0.258))
+HANG_ELB_L = sh_l + Vector((0.050, 0.004, -0.130))
+pr_hang, err_hang = solve_arm("L", HANG_L, HANG_ELB_L)
+UPPER_1H = dict(UPPER_BASE)
+UPPER_1H["UpperArm.L"] = tuple(round(x, 2) for x in pr_hang[:3])
+UPPER_1H["LowerArm.L"] = tuple(round(x, 2) for x in pr_hang[3:])
+apply_pose({k: v for k, v in UPPER_1H.items() if k != "Hips"})
+_hang_tip = tip("LowerArm.L")
+_torso_pts = [mesh.matrix_world @ v.co for v in mesh.data.vertices
+              if sum(g.weight for g in v.groups
+                     if g.group in (gi["Spine"], gi["Chest"], gi["Hips"],
+                                    gi["UpperLeg.L"])) > 0.85]
+_hang_gap = min((_hang_tip - q).length for q in _torso_pts)
+if _hang_gap < 0.012:
+    raise RuntimeError("one-hand left arm too close to body: %.4f" % _hang_gap)
+rep["one_hand"] = {"params": UPPER_1H["UpperArm.L"] + UPPER_1H["LowerArm.L"],
+                   "residual_m": round(err_hang, 5),
+                   "hand_world": [round(v, 4) for v in _hang_tip],
+                   "body_gap_m": round(_hang_gap, 4)}
+# 기본 포즈로 복귀
+apply_pose({k: v for k, v in UPPER_BASE.items() if k != "Hips"})
 
 pb_prop = rig.pose.bones["Prop.R"]
 bone_len = rig.data.bones["Prop.R"].length
@@ -526,9 +639,26 @@ def _inside(pt):
 
 # 폰은 손에 닿아 있는 게 정상이므로 '팔까지 포함한 최단거리'는 판정 기준이 못 된다.
 # (a) 본체 볼륨 내부로 들어간 정점이 없을 것  (b) 몸통과 충분히 떨어져 있을 것
-_pen = sum(1 for p in _pw if _inside(p))
+_gi_arm = {gi["LowerArm.L"], gi["LowerArm.R"]}
+
+
+def _dom_group(vi):
+    g = max(mesh.data.vertices[vi].groups, key=lambda x: x.weight, default=None)
+    return g.group if g else -1
+
+
+def _is_grip(pt):
+    """가장 가까운 본체 면이 아래팔(=손)이면 의도한 그립 접촉이다."""
+    hit = _bvh.find_nearest(pt)
+    if hit[0] is None:
+        return False
+    return all(_dom_group(v) in _gi_arm for v in _tr[hit[2]])
+
+
+# 폰은 손에 6mm 파묻혀 있어야 쥔 것으로 읽힌다. 손 접촉은 관통이 아니다.
+_pen = [p for p in _pw if _inside(p) and not _is_grip(p)]
 if _pen:
-    raise RuntimeError("phone penetrates body in base pose: %d verts" % _pen)
+    raise RuntimeError("phone penetrates body (non-hand) in base pose: %d verts" % len(_pen))
 _gt = {gi["Spine"], gi["Chest"], gi["Hips"]}
 _torso = [mesh.matrix_world @ v.co for v in _me.data.vertices
           if sum(g.weight for g in v.groups if g.group in _gt) > 0.85]
@@ -581,8 +711,9 @@ UPPER_BONES = ["Spine", "Chest", "Head", "Shoulder.L", "UpperArm.L", "LowerArm.L
 KEYED = LOWER + UPPER_BONES
 
 
-def base_upper(bn):
-    return list(UPPER_BASE.get(bn, (0, 0, 0)))
+def base_upper(bn, variant=None):
+    tbl = UPPER_1H if variant == "1h" else UPPER_BASE
+    return list(tbl.get(bn, (0, 0, 0)))
 
 
 def write_action(name, nframes, framefunc):
@@ -613,36 +744,36 @@ def lower_from(sample, f):
     return out
 
 
-def add_upper(d, f, n, style):
+def add_upper(d, f, n, style, variant=None):
     """상체 = ZP 기본 포즈 + 스타일별 미세 변조. 양팔은 항상 동일 델타."""
     t = (f - 1) / float(n)          # 0..1 (loop 이면 f=n+1 이 f=1 과 동일)
     tau = 2 * math.pi * t
     for bn in UPPER_BONES:
-        d.setdefault(bn, {})["rot"] = base_upper(bn)
+        d.setdefault(bn, {})["rot"] = base_upper(bn, variant)
     if style == "walk":
-        d["Head"]["rot"] = [base_upper("Head")[0] + 2.2 * math.sin(tau * 2),
+        d["Head"]["rot"] = [base_upper("Head", variant)[0] + 2.2 * math.sin(tau * 2),
                             2.5 * math.sin(tau),
                             3.0 * math.sin(tau)]
-        d["Chest"]["rot"] = [base_upper("Chest")[0] + 1.2 * math.sin(tau * 2),
+        d["Chest"]["rot"] = [base_upper("Chest", variant)[0] + 1.2 * math.sin(tau * 2),
                              0.0, -2.2 * math.sin(tau)]
-        d["Spine"]["rot"] = [base_upper("Spine")[0], 0.0, 3.5 * math.sin(tau)]
+        d["Spine"]["rot"] = [base_upper("Spine", variant)[0], 0.0, 3.5 * math.sin(tau)]
         sway = 1.6 * math.sin(tau * 2)
         for s in ("R", "L"):
             for bn in ("UpperArm." + s, "LowerArm." + s):
-                r = list(base_upper(bn))
+                r = list(base_upper(bn, variant))
                 r[0] += sway
                 d[bn]["rot"] = r
     elif style == "idle":
         br = 1.1 * math.sin(tau)
-        d["Head"]["rot"] = [base_upper("Head")[0] + 1.4 * math.sin(tau) + 1.0 * math.sin(tau * 3),
+        d["Head"]["rot"] = [base_upper("Head", variant)[0] + 1.4 * math.sin(tau) + 1.0 * math.sin(tau * 3),
                             1.2 * math.sin(tau * 2), 0.0]
-        d["Chest"]["rot"] = [base_upper("Chest")[0] + br, 0.0, 0.0]
-        d["Spine"]["rot"] = [base_upper("Spine")[0] + br * 0.6, 0.0, 0.0]
+        d["Chest"]["rot"] = [base_upper("Chest", variant)[0] + br, 0.0, 0.0]
+        d["Spine"]["rot"] = [base_upper("Spine", variant)[0] + br * 0.6, 0.0, 0.0]
         thumb = 2.6 * max(0.0, math.sin(tau * 4)) ** 3
-        r = list(base_upper("LowerArm.L")); r[0] -= thumb
+        r = list(base_upper("LowerArm.L", variant)); r[0] -= thumb
         d["LowerArm.L"]["rot"] = r
         for bn in ("UpperArm.R", "LowerArm.R", "UpperArm.L"):
-            r = list(base_upper(bn)); r[0] += br * 0.8
+            r = list(base_upper(bn, variant)); r[0] += br * 0.8
             d[bn]["rot"] = r
     return d
 
@@ -751,13 +882,25 @@ def make_once(offsets_upper, offsets_leg, n):
     return fn
 
 
+def f_walk_1h(f):
+    d = lower_from(WALK_LOWER, f)
+    return add_upper(d, f, 30, "walk", "1h")
+
+
+def f_idle_1h(f):
+    d = lower_from(IDLE_LOWER, f)
+    return add_upper(d, f, 60, "idle", "1h")
+
+
 a_walk = write_action("ZP_Walk", 31, f_walk)
 a_idle = write_action("ZP_Idle", 61, f_idle)
 a_bump = write_action("ZP_Bump", BUMP_N, make_once(BUMP, BUMP_LEG, BUMP_N))
 a_aside = write_action("ZP_MoveAside", ASIDE_N, make_once(ASIDE, ASIDE_LEG, ASIDE_N))
+a_walk1 = write_action("ZP_Walk1H", 31, f_walk_1h)
+a_idle1 = write_action("ZP_Idle1H", 61, f_idle_1h)
 
 rep["actions"] = []
-for a in (a_walk, a_idle, a_bump, a_aside):
+for a in (a_walk, a_idle, a_bump, a_aside, a_walk1, a_idle1):
     nf = 0
     for layer in a.layers:
         for strip in layer.strips:

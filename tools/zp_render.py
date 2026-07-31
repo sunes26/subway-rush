@@ -106,7 +106,8 @@ if MODE in ("views", "all"):
     piv.rotation_euler = (0, 0, 0)
     cam_normal()
 
-SHEETS = [("ZP_Walk", 31), ("ZP_Idle", 61), ("ZP_Bump", 19), ("ZP_MoveAside", 41)]
+SHEETS = [("ZP_Walk", 31), ("ZP_Idle", 61), ("ZP_Walk1H", 31), ("ZP_Idle1H", 61),
+          ("ZP_Bump", 19), ("ZP_MoveAside", 41)]
 NS = 15          # AJ 규격: 액션당 15 샘플
 
 if MODE in ("sheets", "all"):
@@ -114,7 +115,7 @@ if MODE in ("sheets", "all"):
     meta = []
     for act, nframes in SHEETS:
         set_action(act)
-        loop = act in ("ZP_Walk", "ZP_Idle")
+        loop = act in ("ZP_Walk", "ZP_Idle", "ZP_Walk1H", "ZP_Idle1H")
         span = (nframes - 1) if loop else (nframes - 1)
         frames = []
         for i in range(NS):

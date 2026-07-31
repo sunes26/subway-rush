@@ -52,7 +52,7 @@ if maxinf > 4:
     raise RuntimeError("influence limit failed: %d" % maxinf)
 
 # ------------------------------------------------------------- NLA 트랙 구성
-ZP_ACTIONS = ["ZP_Idle", "ZP_Walk", "ZP_Bump", "ZP_MoveAside"]
+ZP_ACTIONS = ["ZP_Idle", "ZP_Walk", "ZP_Idle1H", "ZP_Walk1H", "ZP_Bump", "ZP_MoveAside"]
 present = sorted(a.name for a in bpy.data.actions)
 if set(present) != set(ZP_ACTIONS):
     raise RuntimeError("unexpected actions in file: %s" % present)

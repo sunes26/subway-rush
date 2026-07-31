@@ -129,7 +129,8 @@ if flipped:
 
 # ---------------------------------------------------------- 애니메이션 검증
 ACTS = {"ZP_Walk": (31, True), "ZP_Idle": (61, True),
-        "ZP_Bump": (19, False), "ZP_MoveAside": (41, False)}
+        "ZP_Bump": (19, False), "ZP_MoveAside": (41, False),
+        "ZP_Walk1H": (31, True), "ZP_Idle1H": (61, True)}
 acts_in_file = sorted(a.name for a in bpy.data.actions)
 R["actions_in_file"] = acts_in_file
 if set(acts_in_file) != set(ACTS):
@@ -176,8 +177,15 @@ body_poly = [p for p in me.polygons if p.material_index != hood_slot]
 SAMPLE_EVERY = 3
 
 
+ARM_GROUPS = {gi["LowerArm.L"], gi["LowerArm.R"]}
+DOM = {}
+for _v in me.vertices:
+    _g = max(_v.groups, key=lambda x: x.weight, default=None)
+    DOM[_v.index] = _g.group if _g else -1
+
+
 def body_bvh(o_eval, obj):
-    """후드를 제외한 본체 표면의 BVH (월드 좌표)."""
+    """후드를 제외한 본체 표면의 BVH (월드 좌표). 삼각형 목록도 함께 돌려준다."""
     m = obj.matrix_world
     ev_me = o_eval.data
     verts = [m @ v.co for v in ev_me.vertices]
@@ -188,7 +196,15 @@ def body_bvh(o_eval, obj):
         vs = list(p.vertices)
         for k in range(1, len(vs) - 1):
             tris.append((vs[0], vs[k], vs[k + 1]))
-    return BVHTree.FromPolygons([tuple(v) for v in verts], tris, all_triangles=True)
+    return BVHTree.FromPolygons([tuple(v) for v in verts], tris, all_triangles=True), tris
+
+
+def is_grip_contact(bvh, tris, pt):
+    """가장 가까운 본체 면이 아래팔(=손)이면 의도한 그립 접촉이다."""
+    hit = bvh.find_nearest(pt)
+    if hit[0] is None:
+        return False
+    return all(DOM.get(v, -1) in ARM_GROUPS for v in tris[hit[2]])
 
 
 def point_inside(bvh, p):
@@ -206,7 +222,8 @@ def point_inside(bvh, p):
 
 
 # MC 원본 실측치 (assets/mc_character.blend, 동일 지표)
-MC_FOOT_SLIDE = {"ZP_Walk": {"L": 0.0312, "R": 0.0294}, "ZP_Idle": {"L": 0.0, "R": 0.0}}
+MC_FOOT_SLIDE = {"ZP_Walk": {"L": 0.0312, "R": 0.0294}, "ZP_Idle": {"L": 0.0, "R": 0.0},
+                 "ZP_Walk1H": {"L": 0.0312, "R": 0.0294}, "ZP_Idle1H": {"L": 0.0, "R": 0.0}}
 HOOD_BASE = [None]
 R["anim"] = {}
 for name, (nf, loop) in ACTS.items():
@@ -264,8 +281,10 @@ for name, (nf, loop) in ACTS.items():
         face_gap_min = min(face_gap_min, min(min((p - q).length for q in hp) for p in pv))
         # 관통: 폰/후드 정점이 본체 볼륨 안으로 들어갔는지 레이캐스트 내외판정
         if f % SAMPLE_EVERY == 1 or nf <= 20:
-            bvh = body_bvh(me_ev, mesh)
-            inside_phone = sum(1 for p in pv if point_inside(bvh, p))
+            bvh, btris = body_bvh(me_ev, mesh)
+            inside_phone = sum(1 for p in pv
+                               if point_inside(bvh, p)
+                               and not is_grip_contact(bvh, btris, p))
             hv = [wv[i] for i in hood_idx]
             inside_hood = sum(1 for p in hv if point_inside(bvh, p))
             if inside_phone > pen["phone"]:
