@@ -21,18 +21,18 @@ export type Stage = Readonly<{
  * 실제 역사는 밝다 — 어둡게 하면 분위기가 아니라 그냥 안 보인다.
  */
 const MOOD: Record<ZoneId, { bg: number; fog: number; density: number; sun: number; amb: number }> = {
-  Z1: { bg: 0xbfd8e8, fog: 0xd4e5f0, density: 0.0045, sun: 1.15, amb: 0.34 },
-  Z2: { bg: 0x1b1d22, fog: 0x555a63, density: 0.0125, sun: 1.00, amb: 0.55 },
-  Z3: { bg: 0x1b1d22, fog: 0x5a606a, density: 0.0135, sun: 1.06, amb: 0.58 },
-  Z4: { bg: 0x16181c, fog: 0x4a4f58, density: 0.0150, sun: 0.94, amb: 0.52 },
-  Z5: { bg: 0x101216, fog: 0x424750, density: 0.0110, sun: 1.00, amb: 0.50 },
+  Z1: { bg: 0xa8c6db, fog: 0xb9d2e2, density: 0.0050, sun: 0.92, amb: 0.16 },
+  Z2: { bg: 0x14161a, fog: 0x33383f, density: 0.0130, sun: 0.62, amb: 0.20 },
+  Z3: { bg: 0x14161a, fog: 0x363b43, density: 0.0140, sun: 0.66, amb: 0.22 },
+  Z4: { bg: 0x111317, fog: 0x2b2f36, density: 0.0155, sun: 0.58, amb: 0.19 },
+  Z5: { bg: 0x0d0f13, fog: 0x24282f, density: 0.0115, sun: 0.62, amb: 0.18 },
 }
 
 export const createStage = (canvas: HTMLCanvasElement): Stage => {
   const renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' })
   renderer.outputColorSpace = SRGBColorSpace
   renderer.toneMapping = ACESFilmicToneMapping
-  renderer.toneMappingExposure = 1.02
+  renderer.toneMappingExposure = 0.88
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
 
   const scene = new Scene()
@@ -42,19 +42,19 @@ export const createStage = (canvas: HTMLCanvasElement): Stage => {
   const camera = new PerspectiveCamera(CAMERA.fovDeg, 1, CAMERA.near, CAMERA.far)
   camera.position.set(-70, 14, -10)
 
-  const sun = new DirectionalLight(0xffffff, 1.05)
+  const sun = new DirectionalLight(0xfff6e6, 0.92)
   sun.position.set(-40, 60, 30)
   scene.add(sun)
 
-  const hemi = new HemisphereLight(PALETTE.fluor, 0x2b2b30, 0.62)
+  const hemi = new HemisphereLight(PALETTE.fluor, 0x23242a, 0.34)
   hemi.position.set(0, 40, 0)
   scene.add(hemi)
 
-  const amb = new AmbientLight(0xffffff, 0.34)
+  const amb = new AmbientLight(0xffffff, 0.16)
   scene.add(amb)
 
   // 지하 천장 형광등을 흉내내는 보조광 — 그림자 없는 균일한 상단광
-  const fluor = new DirectionalLight(PALETTE.fluor, 0.42)
+  const fluor = new DirectionalLight(PALETTE.fluor, 0.24)
   fluor.position.set(0.2, 1, 0.35)
   scene.add(fluor)
 
@@ -100,7 +100,7 @@ export const createStage = (canvas: HTMLCanvasElement): Stage => {
       sunI += (m.sun - sunI) * k
       ambI += (m.amb - ambI) * k
       amb.intensity = ambI
-      hemi.intensity = zone === 'Z1' ? 0.62 : 0.86
+      hemi.intensity = zone === 'Z1' ? 0.42 : 0.5
       ;(scene.background as Color).copy(bg)
       const f = scene.fog as Fog
       f.color.copy(fogC)

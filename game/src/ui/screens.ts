@@ -36,6 +36,7 @@ const CSS = `
 export type Screens = Readonly<{
   sync(s: GameState): void
   hideLoading(): void
+  setLoading(text: string): void
 }>
 
 export const createScreens = (mount: HTMLElement): Screens => {
@@ -91,6 +92,7 @@ export const createScreens = (mount: HTMLElement): Screens => {
 
   return {
     hideLoading() { loading.style.display = 'none' },
+    setLoading(text: string) { loading.textContent = text },
     sync(s) {
       const key = `${s.phase}:${s.endingId ?? ''}:${s.seed}`
       if (key === lastKey) return
