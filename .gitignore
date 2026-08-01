@@ -17,6 +17,7 @@ render/web/_cards.html
 # game
 game/node_modules/
 game/test-results/
+test-results/
 game/playwright-report/
 
 # python

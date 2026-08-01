@@ -103,7 +103,7 @@ test('A-6 60fps 유지 (최저 55)', async ({ page }) => {
   expect(s.pos.x, '10초간 실제로 이동했다').toBeGreaterThan(-58)
 })
 
-test('S4-8 Z3에서 게이트 6기를 둘러보면 전부 판독된다 (1인칭)', async ({ page }) => {
+test('S4-8 Z3에서 게이트 9기를 둘러보면 전부 판독된다 (1인칭)', async ({ page }) => {
   await boot(page, 42)
   await page.keyboard.press('Enter')
   await page.evaluate(() => {
@@ -115,8 +115,10 @@ test('S4-8 Z3에서 게이트 6기를 둘러보면 전부 판독된다 (1인칭)
   })
   await page.waitForTimeout(600)
 
-  // 1인칭에서는 6기(y 6~26, 20m)가 한 화면에 안 들어온다 — 이건 설계 변경이고,
-  // 대신 "고개를 돌리면 전부 읽힌다"가 새 기준이다 (P0-SPEC §2.5 · MAP §5.4).
+  // 피치를 4.0 → 2.0m로 좁히면서 뱅크가 21.3 → 17.3m로 짧아졌지만, 그래도
+  // 9기가 한 화면에 다 들어오려면 화각 127°가 필요하다 (거리 4.3m 기준).
+  // 그래서 기준은 여전히 "고개를 돌리면 전부 읽힌다"이다 (P0-SPEC §2.5 · MAP §5.4).
+  // 대신 동시 가시 기수는 확실히 늘었다 — 아래 하한이 그걸 지킨다.
   const seen = new Set<number>()
   let maxAtOnce = 0
   for (let deg = -80; deg <= 80; deg += 5) {
@@ -126,7 +128,8 @@ test('S4-8 Z3에서 게이트 6기를 둘러보면 전부 판독된다 (1인칭)
     maxAtOnce = Math.max(maxAtOnce, n)
     if (n > 0) seen.add(deg)
   }
-  expect(maxAtOnce, '정면에서 최소 2기는 동시에 보인다').toBeGreaterThanOrEqual(2)
+  console.log(`S4-8 동시 가시 최대 ${maxAtOnce}기 / 전체 ${9}기`)
+  expect(maxAtOnce, '정면에서 최소 4기는 동시에 보인다').toBeGreaterThanOrEqual(4)
   expect(seen.size, '시야 스윕으로 게이트가 보이는 각도 구간').toBeGreaterThan(6)
 
   // 정면(동쪽)을 보고 스크린샷

@@ -188,10 +188,16 @@ const Z2_COLUMNS: Solid[] = [12, 24, 36, 48].flatMap((x) =>
 )
 
 // ═══════════════════════ Z3 · 개찰구 (B1 −6) ═══════════════════════
-// 부록 A: 게이트 본체 x 60.3~61.7 · G1 y6 · G2 y10 · G3 y14 · G4 y18 · G5 y22 · G6 y26(0.9m)
+// 게이트 본체 x 60.3~61.7 · G1 y8 … G9 y24 · 피치 2.0m · G9만 우대용 0.9m
+//
+// 피치는 원래 4.0m였다. 2.0m로 좁히면서 6기 → 9기로 늘렸고, 뱅크가
+// y 7.45~24.73 (17.3m)으로 오히려 짧아졌다. 남은 구간은 Blender의
+// `Z3_gate_glass`(유리 칸막이)가 시각적으로 막는다 — 충돌은 예전부터
+// wallWithGaps가 y 0~32 전체를 막고 있었지만 **보이는 게 없어서
+// 통과할 수 있어 보였다.**
 
 export type GateDef = Readonly<{
-  /** 1..6 */
+  /** 1..9 */
   id: number
   label: string
   y: number
@@ -201,13 +207,17 @@ export type GateDef = Readonly<{
   wide: boolean
 }>
 
+/** 피치 2.0m로 배열. Blender `Z3_GATE_G{id}_*` 이름과 1:1 대응한다. */
 export const GATES: readonly GateDef[] = [
-  { id: 1, label: 'G1', y: 6, width: 0.55, wide: false },
+  { id: 1, label: 'G1', y: 8, width: 0.55, wide: false },
   { id: 2, label: 'G2', y: 10, width: 0.55, wide: false },
-  { id: 3, label: 'G3', y: 14, width: 0.55, wide: false },
-  { id: 4, label: 'G4', y: 18, width: 0.55, wide: false },
-  { id: 5, label: 'G5', y: 22, width: 0.55, wide: false },
-  { id: 6, label: 'G6', y: 26, width: 0.90, wide: true },
+  { id: 3, label: 'G3', y: 12, width: 0.55, wide: false },
+  { id: 4, label: 'G4', y: 14, width: 0.55, wide: false },
+  { id: 5, label: 'G5', y: 16, width: 0.55, wide: false },
+  { id: 6, label: 'G6', y: 18, width: 0.55, wide: false },
+  { id: 7, label: 'G7', y: 20, width: 0.55, wide: false },
+  { id: 8, label: 'G8', y: 22, width: 0.55, wide: false },
+  { id: 9, label: 'G9', y: 24, width: 0.90, wide: true },
 ]
 
 export const GATE_BODY = { xMin: 60.3, xMax: 61.7 } as const
@@ -389,15 +399,41 @@ export const SOLIDS: readonly Solid[] = [
   solid('OBJ-10-CHARGE', at(10, 21, 1.2, 0.7), FLOOR.B1, 1.6, 'machine'),
   solid('OBJ-15-BOARD', at(26, 16, 1.0, 1.0), FLOOR.B1, 2.8, 'sign'),
   solid('ACT-02-BENCH', at(42, 15, 2.4, 0.8), FLOOR.B1, 0.9, 'bench'),
-  solid('OBJ-11-BENCH', at(47, 25, 2.4, 0.8), FLOOR.B1, 0.9, 'bench'),
+  // 화장실이 y26까지 나오면서 예전 자리(x47)는 여자 화장실 출입구를 정면으로 막았다.
+  // 남·여 출입구 사이 벽(x 42.5~46.9) 앞으로 옮긴다.
+  solid('OBJ-11-BENCH', at(44.6, 25, 2.4, 0.8), FLOOR.B1, 0.9, 'bench'),
   solid('OBJ-13-LOST', at(50, 23.6, 3.0, 1.2), FLOOR.B1, 2.6, 'kiosk'),
-  // 화장실 — 실제로 지어진 방(Blender `Z2_OBJ14_room`)과 같은 범위.
-  // 예전 5.0×3.0(y 27~30)은 문틀보다 1.35m 앞에서부터 막아서, 아무것도 없는데 걸렸다.
-  { id: 'OBJ-14-WC', rect: [41.5, 28.35, 46.5, 30.4], z0: FLOOR.B1, h: 3.2, look: 'wall' },
+  // ── OBJ-14 화장실 (남 · 여 · 다목적) ───────────────────────────────
+  // 좌표는 전부 `tools/build_wc.py`의 상수와 같은 값이다. **한쪽만 고치면
+  // 벽 없는 데서 막히거나 벽을 통과한다** — 예전 통짜 박스가 정확히 그랬다.
+  // 이제 들어갈 수 있는 방이므로 벽·칸막이·위생기구를 각각 막는다.
+  ...wallWithGaps(
+    'WC-S', 'x', [26.0, 26.2], [38.0, 51.0],
+    [[41.3, 42.5], [46.9, 48.1], [49.3, 50.5]],   // 남 · 여 · 다목적 출입구
+    FLOOR.B1, 3.2, 'wall',
+  ),
+  solid('WC-N', [38.0, 29.8, 51.0, 30.0], FLOOR.B1, 3.2, 'wall'),
+  solid('WC-W', [38.0, 26.0, 38.2, 30.0], FLOOR.B1, 3.2, 'wall'),
+  solid('WC-E', [50.8, 26.0, 51.0, 30.0], FLOOR.B1, 3.2, 'wall'),
+  solid('WC-DIV-MF', [42.9, 26.0, 43.1, 30.0], FLOOR.B1, 3.2, 'wall'),
+  solid('WC-DIV-FA', [48.5, 26.0, 48.7, 30.0], FLOOR.B1, 3.2, 'wall'),
+  // 가림벽 — 입구에서 안이 바로 보이지 않게 하는 벽. 시각과 충돌이 같이 있어야 의미가 있다
+  solid('WC-SCR-M', [40.7, 26.2, 40.9, 27.5], FLOOR.B1, 2.0, 'wall'),
+  solid('WC-SCR-F', [46.5, 26.2, 46.7, 27.5], FLOOR.B1, 2.0, 'wall'),
+  // 대변기 부스는 통째로 막는다. 칸막이만 막으면 플레이어가 부스 안에 갇힌다
+  solid('WC-BOOTH-M', [38.2, 28.3, 40.7, 29.8], FLOOR.B1, 1.9, 'wall'),
+  solid('WC-BOOTH-F', [43.1, 28.3, 46.5, 29.8], FLOOR.B1, 1.9, 'wall'),
+  solid('WC-CNT-M', [38.4, 26.2, 40.4, 26.75], FLOOR.B1, 0.8, 'prop'),
+  solid('WC-CNT-F', [43.3, 26.2, 46.05, 26.75], FLOOR.B1, 0.8, 'prop'),
+  solid('WC-CNT-A', [50.1, 26.2, 50.8, 26.75], FLOOR.B1, 0.8, 'prop'),
+  solid('WC-URINAL', [42.48, 27.0, 42.9, 28.96], FLOOR.B1, 1.28, 'prop'),
+  solid('WC-WCA', [49.0, 29.18, 49.38, 29.7], FLOOR.B1, 0.82, 'prop'),
   solid('OBJ-16-UMBRELLA', at(38, 5, 1.0, 0.6), FLOOR.B1, 1.0, 'prop'),
   solid('OBJ-17-NEWSSTAND', at(32, 4.6, 2.6, 1.4), FLOOR.B1, 2.4, 'kiosk'),
-  solid('OBJ-18-CAFE', at(29.5, 27.4, 5.0, 3.4), FLOOR.B1, 3.0, 'glass'),
-  solid('OBJ-19-CVS', at(24, 27.4, 5.0, 3.4), FLOOR.B1, 3.0, 'glass'),
+  // 유리 점포로 다시 지으면서 북벽(y30)까지 붙였다 — 예전엔 뒤에 0.9m 죽은 공간이 남았다.
+  // 출입구는 각 점포 동쪽 끝 1.3m. 충돌은 점포 전체를 막는다(P0에 입장이 없다).
+  solid('OBJ-18-CAFE', [27.0, 25.7, 32.0, 30.0], FLOOR.B1, 3.0, 'glass'),
+  solid('OBJ-19-CVS', [21.5, 25.7, 26.5, 30.0], FLOOR.B1, 3.0, 'glass'),
   // OBJ-28 가림막 ㄱ자 (부록 A 그대로)
   solid('OBJ-28-N', [44, 6.6, 56, 7.0], FLOOR.B1, 2.4, 'wall'),
   solid('OBJ-28-W', [43.8, 0, 44.2, 7.0], FLOOR.B1, 2.4, 'wall'),

@@ -58,6 +58,17 @@ export const createStage = (canvas: HTMLCanvasElement): Stage => {
   fluor.position.set(0.2, 1, 0.35)
   scene.add(fluor)
 
+  /**
+   * 바닥 반사광 — **아래에서 위로** 쏘는 유일한 광원.
+   *
+   * 다른 광원이 전부 위에서 내려오기 때문에 아래를 향한 면(천장·계단 밑면·차양)이
+   * 실내에서 가장 어두운 면으로 나왔다. 실제 역은 정반대다 — 밝은 화강석 바닥이
+   * 빛을 되쏘아 천장이 가장 밝다. 지상(Z1)은 반사면이 아스팔트라 훨씬 약하게 준다.
+   */
+  const bounce = new DirectionalLight(PALETTE.fluor, 0.30)
+  bounce.position.set(-0.15, -1, -0.25)
+  scene.add(bounce)
+
   // 목표값 — setMood가 부드럽게 수렴시킨다
   let bg = new Color(MOOD.Z1.bg)
   let fogC = new Color(MOOD.Z1.fog)
@@ -110,6 +121,8 @@ export const createStage = (canvas: HTMLCanvasElement): Stage => {
       // 지하에서는 태양을 천장 형광등처럼 위에서 내린다
       const underground = zone !== 'Z1'
       sun.position.set(underground ? 0 : -40, underground ? FLOOR.B1 + 40 : 60, underground ? 6 : 30)
+      // 지상은 아스팔트라 반사가 약하고, 지하는 밝은 화강석이라 강하다
+      bounce.intensity = underground ? 0.34 : 0.12
     },
     dispose() {
       renderer.dispose()

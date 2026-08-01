@@ -32,10 +32,11 @@ const SHOTS: readonly Shot[] = [
   { name: '07-z2-concourse', pos: { x: 20, y: 15, z: B1 }, yaw: 0, note: 'Z2 대합실 — 동쪽 개찰구 방향' },
   { name: '08-z2-columns', pos: { x: 30, y: 15, z: B1 }, yaw: 0.5, note: 'Z2 기둥열' },
   { name: '09-z2-shops', pos: { x: 27, y: 22, z: B1 }, yaw: 1.2, note: 'Z2 북측 편의점·카페' },
-  { name: '09b-z2-wc', pos: { x: 44, y: 24.5, z: B1 }, yaw: Math.PI / 2, note: 'Z2 화장실 정면' },
+  // 화장실 파사드가 y=26.0 으로 앞으로 나왔다 — 예전 y24.5는 벽에 코가 닿는다
+  { name: '09b-z2-wc', pos: { x: 44.5, y: 19.5, z: B1 }, yaw: Math.PI / 2, note: 'Z2 화장실 정면 — 남·여·다목적' },
   { name: '09c-z2-lost', pos: { x: 50, y: 20.5, z: B1 }, yaw: Math.PI / 2, note: 'Z2 유실물 보관소' },
   { name: '01b-z1-stop', pos: { x: -55, y: 24, z: 0 }, yaw: Math.PI, note: '정류장 — 표지판이 진행 반대편에 있는지' },
-  { name: '10-z3-gates', pos: { x: 56.5, y: 16, z: B1 }, yaw: 0, note: 'Z3 개찰구 정면 — 게이트 6기' },
+  { name: '10-z3-gates', pos: { x: 56.5, y: 16, z: B1 }, yaw: 0, note: 'Z3 개찰구 정면 — 게이트 9기 · 피치 2.0m' },
   { name: '11-z3-gate-close', pos: { x: 59.2, y: 14, z: B1 }, yaw: 0, note: 'Z3 개찰구 근접' },
   { name: '12-z4-corridor', pos: { x: 80, y: 7, z: B1 }, yaw: 0, note: 'Z4 운임구역 통로' },
   { name: '13-z4-descent', pos: { x: 94.5, y: 6.7, z: B1 }, yaw: 0, pitch: -0.35, note: 'Z4 하강 상단 — 계단·에스컬레이터' },

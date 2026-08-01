@@ -6,12 +6,28 @@ import {
 import { rampZ, sampleGround, resolveMove, setDynamicSolids } from '../../src/systems/collision'
 
 describe('S1-1 부록 A 좌표 대조', () => {
-  it('게이트 6기의 y가 부록 A와 일치한다', () => {
-    expect(GATES.map((g) => g.y)).toEqual([6, 10, 14, 18, 22, 26])
+  it('게이트 9기가 피치 2.0m로 놓인다', () => {
+    expect(GATES.map((g) => g.y)).toEqual([8, 10, 12, 14, 16, 18, 20, 22, 24])
   })
-  it('G6만 우대용 0.9m', () => {
-    expect(GATES.filter((g) => g.wide).map((g) => g.label)).toEqual(['G6'])
-    expect(GATES[5]?.width).toBe(0.9)
+  it('G9만 우대용 0.9m', () => {
+    expect(GATES.filter((g) => g.wide).map((g) => g.label)).toEqual(['G9'])
+    expect(GATES[8]?.width).toBe(0.9)
+  })
+  // 렌더가 이름을 `Z3_GATE_G(\d)_…` 한 자리 정규식으로 잡는다 (render/station.ts).
+  // 10기 이상으로 늘리면 그 정규식부터 고쳐야 한다.
+  it('게이트 id는 한 자리 · label과 어긋나지 않는다', () => {
+    for (const g of GATES) {
+      expect(g.id).toBeLessThan(10)
+      expect(g.label).toBe(`G${g.id}`)
+    }
+  })
+  // 인접 게이트 본체가 겹치면 유리 칸막이 구간이 음수 길이가 된다
+  it('인접 게이트 본체가 겹치지 않는다', () => {
+    const outer = (g: (typeof GATES)[number]): number => g.width / 2 + 0.275
+    for (let i = 0; i < GATES.length - 1; i++) {
+      const a = GATES[i]!, b = GATES[i + 1]!
+      expect(b.y - outer(b) - (a.y + outer(a)), `${a.label}~${b.label} 간격`).toBeGreaterThan(0.3)
+    }
   })
   it('게이트 본체 x = 60.3~61.7', () => {
     expect(GATE_BODY.xMin).toBe(60.3)

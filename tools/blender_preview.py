@@ -21,6 +21,8 @@ Blender 안에서 게임을 확인하는 도구.
     collision(True)       # 충돌 박스 겹쳐 켜기 (빨강=벽 · 파랑=바닥 · 초록=경사)
     collision(False)
     spots()               # 지점 목록
+    debug(False)          # 판정 영역(주황 박스·원뿔) 숨기기 — 기본 숨김
+    game_view(True)       # 게임과 같은 백페이스 컬링 (뒷면 안 보이게)
 
 충돌 데이터는 미리 뽑아 둬야 한다:
 
@@ -114,6 +116,47 @@ def spots():
     print("사용 가능한 지점:")
     for k, v in SPOTS.items():
         print(f"  {k:14s} ({v[0]}, {v[1]}, {v[2]})")
+
+
+def debug(on=False):
+    """판정 영역(스폰·순찰·배회·시야콘)을 보이거나 숨긴다.
+
+    전부 `hide_render = True` 라 glTF로 안 나가고 게임에도 없다.
+    Blender 뷰포트에만 뜨는 주황 박스·원뿔이 실제 결함처럼 보여서 기본은 숨김이다.
+    """
+    coll = bpy.data.collections.get("DEBUG")
+    if coll is None:
+        print("[preview] DEBUG 컬렉션이 없다")
+        return
+    coll.hide_viewport = not on
+    # 뷰 레이어 쪽에서도 제외해야 아웃라이너 클릭으로 되살아나지 않는다
+    def find(layer):
+        if layer.collection is coll:
+            return layer
+        for ch in layer.children:
+            got = find(ch)
+            if got:
+                return got
+        return None
+    lc = find(bpy.context.view_layer.layer_collection)
+    if lc:
+        lc.exclude = not on
+    print(f"[preview] 판정 영역 {'표시' if on else '숨김'} ({len(coll.objects)}개)")
+
+
+def game_view(on=True):
+    """게임과 같은 백페이스 컬링을 뷰포트에 건다.
+
+    게임 셰이더(`render/toon.ts`)는 three 기본값 FrontSide라 뒷면을 안 그린다.
+    Blender는 기본이 양면이라, **게임에 없는 벽이 여기서는 보인다.**
+    글씨가 좌우로 뒤집혀 보이면 뒷면을 보고 있다는 신호다 — 이걸 켜고 다시 볼 것.
+    """
+    n = 0
+    for area in bpy.context.screen.areas:
+        if area.type == "VIEW_3D":
+            area.spaces[0].shading.show_backface_culling = on
+            n += 1
+    print(f"[preview] 백페이스 컬링 {'ON — 게임과 같음' if on else 'OFF'} (뷰포트 {n})")
 
 
 def _mat(name, rgba):
@@ -221,4 +264,8 @@ def collision(on=True):
 
 
 print(__doc__.split("──")[0].strip())
-print("look('entrance') · collision(True) · spots()")
+
+# 기본 상태를 게임과 맞춰 둔다 — 이 두 줄이 없으면 게임에 없는 것들이 결함처럼 보인다
+debug(False)
+game_view(True)
+print("look('entrance') · collision(True) · debug(True) · game_view(False) · spots()")

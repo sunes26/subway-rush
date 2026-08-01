@@ -92,7 +92,24 @@ const GLASS_MATERIALS = new Set([
  */
 const DECAL_MATERIALS = new Set([
   'ST_TACTILE', 'ST_TACT_WARN', 'PF_TACTILE', 'SW_TACTILE', 'PF_YELLOW',
-  'FLOOR_JOINT', 'LINE2_GRN', 'AD_PANEL', 'RD_LINE', 'WEAR_LOW', 'WEAR_HIGH',
+  'FLOOR_JOINT', 'LINE2_GRN', 'AD_PANEL', 'AD_PANEL2', 'AD_PANEL3',
+  'RD_LINE', 'WEAR_LOW', 'WEAR_HIGH',
+])
+
+/**
+ * 스스로 빛나는 면 — 조명기구와 백라이트 광고판.
+ *
+ * 툰 셰이딩은 면의 법선으로 밝기를 정한다. 그래서 **아래를 향한 천장 조명이
+ * 천장보다 어둡게** 나왔다 — 조명이 조명으로 안 읽힌다. 실제 역에서 시선을 끄는
+ * 건 연속 라인 조명과 백라이트 광고판이고, 그 둘이 어두우면 실내가 통째로 죽는다.
+ * 광원은 음영을 받지 않는 게 맞으므로 조명 영향이 없는 basic 머티리얼로 그린다.
+ */
+const SELF_LIT_MATERIALS = new Set([
+  'FIXTURE', 'AD_PANEL', 'AD_PANEL2', 'AD_PANEL3', 'VM_LIGHT', 'CHG_SCR', 'ESC_COMB',
+  'LED_AMBER', 'SH_GREEN', 'SH_RED',
+  // 사인 글자. 발광 띠 위에 툰 셰이딩된 흰 글자를 얹으면 회색이 되어 안 읽힌다.
+  // 안내 사인은 읽히는 게 존재 이유다.
+  'TXT_WHITE',
 ])
 
 const baseColor = (m: Material | Material[]): number => {
@@ -142,9 +159,17 @@ const mergeBuckets = (buckets: Map<string, Bucket>, into: Group): void => {
     const merged = b.geos.length === 1 ? b.geos[0] : mergeGeometries(b.geos, false)
     if (!merged) continue
     const glass = GLASS_MATERIALS.has(name)
-    const mesh = new Mesh(merged, glass
+    const decal = DECAL_MATERIALS.has(name)
+    const mat = glass
       ? toonMat(b.color, { transparent: true, opacity: 0.34 })
-      : toonMat(b.color, { decal: DECAL_MATERIALS.has(name) }))
+      : SELF_LIT_MATERIALS.has(name)
+        ? new MeshBasicMaterial({
+            color: new Color(b.color),
+            toneMapped: false,
+            ...(decal ? { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 } : {}),
+          })
+        : toonMat(b.color, { decal })
+    const mesh = new Mesh(merged, mat)
     // 유리는 나중에 그린다 — 뒤에 있는 열차·통로가 먼저 깊이버퍼에 들어가야 비쳐 보인다
     if (glass) mesh.renderOrder = 2
     mesh.name = `merged:${name}`
