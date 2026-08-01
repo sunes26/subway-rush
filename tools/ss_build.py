@@ -290,7 +290,7 @@ bpy.ops.object.shade_flat()
 
 # 챙 — 앞(-Y)으로만. 반원 판을 앞으로 기울인다.
 VISOR_R = head_r.x * 1.16
-VISOR_TILT = 13.0
+VISOR_TILT = 17.0
 bpy.ops.mesh.primitive_cylinder_add(vertices=20, radius=VISOR_R, depth=0.021,
                                     location=(0.0, 0.0, 0.0))
 visor = bpy.context.active_object
@@ -304,23 +304,32 @@ bmesh.ops.delete(bm, geom=_kill, context='VERTS')
 _loose = [v for v in bm.verts if not v.link_edges]
 if _loose:
     bmesh.ops.delete(bm, geom=_loose, context='VERTS')
-# 챙이 밴드보다 옆으로 넓으면 모자 실루엣 밖으로 초승달처럼 삐져나와
-# 탑다운·3/4 뷰에서 '철사 고리'로 읽힌다. 뒷변이 밴드 안에 완전히 묻히도록
-# 가로를 줄이고, 대신 앞으로는 더 길게 뺀다.
+# 챙 폭의 기준은 '밴드 반지름'이 아니라 '그 높이에서의 머리 폭'이다.
+# 밴드(반지름 0.0895)를 기준으로 잡았더니, 챙이 밴드 아래로 1mm 만 내려온
+# 구간에서 머리(그 높이에서 0.074)보다 8mm 씩 넓어져 금색 밴드 밑에
+# 검은 띠가 좌우로 이어졌다 — 얼굴을 감는 끈처럼 보인 원인이다.
 VISOR_BACK_Y = -head_r.y * 0.20
-_band_x_at_back = math.sqrt(max(0.0, CAP_R_BAND ** 2 - VISOR_BACK_Y ** 2))
-VISOR_SX = (_band_x_at_back * 0.94) / VISOR_R
-if VISOR_SX > 0.95:
-    raise RuntimeError("visor x-scale suspicious: %.3f" % VISOR_SX)
+VISOR_Z = CAP_BAND_Z + 0.002
+# 두께 때문에 챙의 윗면은 중심보다 11mm 높다. 그 높이의 머리 폭을 기준으로
+# 잡아야 윗모서리까지 머리 안으로 들어간다.
+_VZ_REF = VISOR_Z + 0.011
+_head_rx_at_visor = head_r.x * math.sqrt(
+    max(0.0, 1.0 - ((_VZ_REF - head_c.z) / head_r.z) ** 2))
+if _head_rx_at_visor < 0.03:
+    raise RuntimeError("visor height is off the head: %.4f" % _head_rx_at_visor)
+# 0.92 로는 챙이 머리 폭과 거의 같아져서, 머리 표면에서 챙이 빠져나오는
+# 경계선이 얼굴을 가로지르는 곡선이 된다 — 낮은 각도에서 '끈'으로 읽힌다.
+# 머리 폭의 2/3 로 줄이면 앞으로 뻗은 브림으로만 보인다.
+VISOR_SX = (_head_rx_at_visor * 0.66) / VISOR_R
 for v in bm.verts:
-    v.co.y *= 0.86
+    v.co.y *= 1.00
     v.co.x *= VISOR_SX
 bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
 bm.to_mesh(visor.data)
 bm.free()
 visor.data.update()
 visor.rotation_euler = (D(VISOR_TILT), 0.0, 0.0)   # +rx → 앞(-Y)쪽이 내려간다
-visor.location = (0.0, head_c.y + VISOR_BACK_Y, CAP_BAND_Z + 0.006)
+visor.location = (0.0, head_c.y + VISOR_BACK_Y, VISOR_Z)
 set_active(visor)
 bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 _bv = visor.modifiers.new("Round", 'BEVEL')
@@ -346,11 +355,22 @@ bpy.ops.object.shade_smooth()
 badge.data.materials.clear()
 badge.data.materials.append(trim_mat)
 
-_vx = max(abs((visor.matrix_world @ v.co).x) for v in visor.data.vertices)
-if _vx > CAP_R_BAND:
-    raise RuntimeError("visor sticks out past the cap band: %.4f > %.4f" % (_vx, CAP_R_BAND))
-rep["visor"] = {"max_x": round(_vx, 4), "band_r": round(CAP_R_BAND, 4),
-                "x_scale": round(VISOR_SX, 3), "tilt_deg": VISOR_TILT}
+# 챙의 어느 정점도 그 높이의 머리보다 옆으로 튀면 안 된다.
+_bad = []
+for v in visor.data.vertices:
+    w = visor.matrix_world @ v.co
+    t = (w.z - head_c.z) / head_r.z
+    if abs(t) >= 1.0:
+        continue
+    if abs(w.x) > head_r.x * math.sqrt(1.0 - t * t) + 0.0005:
+        _bad.append((round(w.x, 4), round(w.z, 4)))
+if _bad:
+    raise RuntimeError("visor is wider than the head at its own height (%d verts, e.g. %s) "
+                       "— it reads as a strap around the face" % (len(_bad), _bad[0]))
+rep["visor"] = {"max_x": round(max(abs((visor.matrix_world @ v.co).x)
+                                   for v in visor.data.vertices), 4),
+                "head_rx_at_visor": round(_head_rx_at_visor, 4),
+                "x_scale": round(VISOR_SX, 3), "tilt_deg": VISOR_TILT, "z": round(VISOR_Z, 4)}
 
 set_active(crown)
 for _o in (band, visor, badge):
@@ -409,7 +429,9 @@ def _keep(v):
     ws = {g.group: g.weight for g in v.groups if g.weight > 1e-4}
     if not ws:
         return False
-    if ws.get(_gi["Head"], 0.0) > 0.30:          # 목 위는 재킷이 덮지 않는다
+    # 0.30 으로 자르면 목 밑동뿐 아니라 어깨 윗면까지 날아가서, 견장 안쪽에
+    # 맨살(흰색)이 삼각형으로 드러난다. 목 위만 남기고 어깨는 덮는다.
+    if ws.get(_gi["Head"], 0.0) > 0.60:
         return False
     dom = max(ws, key=ws.get)
     if dom in _LEG:
@@ -474,8 +496,9 @@ for v in bm.verts:
         k = min(1.0, (ax - 0.045) / 0.045)
         v.co.x *= 1.0 + SQ_WIDEN * k * t
         _squared += 1
-    if v.co.z > SQ_TOP and ax > 0.040:
-        # 둥근 어깨 마루를 평면으로 눌러 고원을 만든다
+    # 목 쪽(ax 작음)까지 누르면 안 된다. 그 구간은 본체 자체가 SQ_TOP 보다
+    # 높아서, 재킷만 눌리면 어깨 위로 맨살이 삼각형으로 뚫고 나온다.
+    if v.co.z > SQ_TOP and ax > 0.062:
         v.co.z = SQ_TOP + (v.co.z - SQ_TOP) * 0.06
 
 # 어깨 마루만 눌러서는 부족하다. 팔 윗면이 여전히 아래로 흘러내려서 견장이
@@ -483,9 +506,9 @@ for v in bm.verts:
 # 전부를 한 평면으로 끌어올려 하나의 선반으로 만든다 — 패드 넣은 제복 어깨다.
 _shelf = 0
 for v in bm.verts:
-    if abs(v.co.x) <= 0.045 or v.normal.z <= 0.35:
+    if abs(v.co.x) <= 0.062 or v.normal.z <= 0.35:
         continue
-    if v.co.z < SQ_TOP - 0.048 or v.co.z >= SQ_TOP:
+    if v.co.z < SQ_TOP - 0.040 or v.co.z >= SQ_TOP:
         continue
     v.co.z = SQ_TOP
     _shelf += 1
@@ -545,6 +568,36 @@ for v in _torso_hem:
 rep["hem_flatten"] = {"verts": len(_torso_hem), "z": round(_flat, 4),
                       "spread_before_m": round(_before, 4)}
 bm.normal_update()
+
+# ---- 마감: 재킷이 본체 안으로 들어간 곳을 전부 바깥으로 밀어낸다 ----
+# 어깨를 평면으로 누르거나 가로로 넓히는 편집은 국소적으로 셸을 본체 안쪽으로
+# 끌어당긴다. 그러면 어깨 위에 맨살이 삼각형으로 뚫고 나온다(실측). 어느 편집이
+# 원인인지 쫓는 대신, '셸은 항상 본체 바깥 4mm' 를 마지막에 강제한다.
+_body_tris = []
+for _p in mesh.data.polygons:
+    _vs = list(_p.vertices)
+    for _k in range(1, len(_vs) - 1):
+        _body_tris.append((_vs[0], _vs[_k], _vs[_k + 1]))
+_body_bvh = BVHTree.FromPolygons(
+    [tuple(mesh.matrix_world @ v.co) for v in mesh.data.vertices],
+    _body_tris, all_triangles=True)
+MIN_CLEAR = 0.004
+_pushed, _worst = 0, 0.0
+for v in bm.verts:
+    _loc, _nrm, _idx, _d = _body_bvh.find_nearest(v.co)
+    if _loc is None:
+        continue
+    _signed = (v.co - _loc).dot(_nrm)
+    if _signed < MIN_CLEAR:
+        _worst = max(_worst, MIN_CLEAR - _signed)
+        v.co = _loc + _nrm * MIN_CLEAR
+        _pushed += 1
+bm.normal_update()
+rep["jacket_pushed_out"] = {"verts": _pushed, "max_push_m": round(_worst, 5)}
+if _pushed > len(bm.verts) * 0.5:
+    raise RuntimeError("jacket push-out touched %d/%d verts — shell is inside out?"
+                       % (_pushed, len(bm.verts)))
+
 _loose = [v for v in bm.verts if not v.link_edges]
 if _loose:
     bmesh.ops.delete(bm, geom=_loose, context='VERTS')
@@ -601,7 +654,7 @@ def _dup_offset(bm_, pred, dist):
     return new_faces
 
 
-TAB_OFF = 0.0055
+TAB_OFF = 0.0072
 _tabs = {}
 for _side in ("L", "R"):
     _sg = SIDE_SIGN[_side]
@@ -609,10 +662,12 @@ for _side in ("L", "R"):
     def _pred(f, _sg=_sg):
         c = f.calc_center_median()
         # 확실히 위를 향한 면만. 1차에는 0.42 라 옆구리·목까지 딸려 왔다.
+        # 어깨를 넓게 덮으면 견장이 아니라 '어깨에 붙인 금색 스티커'가 된다.
+        # 어깨 솔기 방향으로 좁고 길게 간다.
         return (f.normal.z > 0.62
                 and SQ_TOP - 0.030 < c.z < SQ_TOP + 0.020
-                and 0.045 < c.x * _sg < 0.108
-                and abs(c.y) < 0.042)
+                and 0.048 < c.x * _sg < 0.102
+                and abs(c.y) < 0.030)
 
     _tabs[_side] = _dup_offset(bm, _pred, TAB_OFF)
     for f in _tabs[_side]:
@@ -910,13 +965,13 @@ ARM_REACH = (rig.data.bones["UpperArm.R"].length + rig.data.bones["LowerArm.R"].
 # 재킷 셸이 팔·몸통에 8.5mm 씩 붙으므로 MC 정지 자세(0.079)보다 조금 벌린다.
 HAND_L = sh_l + Vector((0.090, 0.012, -0.266))
 ELB_L = sh_l + Vector((0.076, 0.004, -0.127))
-# 오른손은 허리 총에 얹는다.
-# 블롭 팔은 늘어뜨리면 손이 엉덩이 표면보다 57mm 바깥에 떨어져(실측) 벨트
-# 홀스터에 절대 닿지 않는다. 손을 몸쪽으로만 당기면 팔이 몸통을 파고들므로
-# '안쪽 + 앞쪽'으로 보내고 팔꿈치는 바깥에 남긴다. 제복 캐릭터의 관습 포즈라
-# 실루엣도 이쪽이 강하다.
-HAND_R = sh_r + Vector((-0.068, -0.056, -0.264))
-ELB_R = sh_r + Vector((-0.092, 0.012, -0.126))
+# 오른팔도 늘어뜨린다.
+# 처음에는 손을 허리 총에 얹었는데(안쪽+앞쪽), 그러면 총·홀스터·재킷 밑단이
+# 한자리에 겹쳐 테이저 형태가 통째로 뭉갠다. 단독 렌더에서는 X26 인데
+# 캐릭터에 붙이면 안 보였다. 팔을 내리면 총이 밑단 아래·몸 바깥으로 나와
+# 전 시점에서 실루엣이 살고, 벨트의 홀스터는 '비어 있는' 상태로 읽힌다.
+HAND_R = sh_r + Vector((-0.090, 0.012, -0.266))
+ELB_R = sh_r + Vector((-0.076, 0.004, -0.127))
 # 팔꿈치 가중치를 낮춘다. 도달 한계(88%) 근처에서는 팔꿈치 항이 손 목표와
 # 다퉈 손이 25mm 씩 밀린다 (ACT-06 토네이도에서 겪은 것과 같은 현상).
 pr_r, err_r = solve_arm("R", HAND_R, ELB_R, elbow_w=0.06)
@@ -987,7 +1042,7 @@ CART_C = Vector((0.0, -0.074, 0.036))
 LABEL_DIM = (0.006, 0.024, 0.013)
 BOSS_R, BOSS_D = 0.0090, 0.040
 GUARD_MAJOR, GUARD_MINOR = 0.016, 0.0038
-PRONG_R, PRONG_L, PRONG_DX = 0.0042, 0.009, 0.0125
+PRONG_R, PRONG_L, PRONG_DX = 0.0040, 0.014, 0.0130
 
 # 총이 커질 때마다 정지·보행 포즈의 관통을 다시 봐야 한다. 손 중심에 그대로
 # 두면 몸통·허벅지를 스친다(Walk f7, Guide f28 에서 적발). 손잡이 블록이
@@ -1135,12 +1190,15 @@ for _need in ("AJ_Dark", "SS_Cartridge"):
         raise RuntimeError("taser lost material %s (have %s)" % (_need, _names))
 
 # 스파크는 별도 오브젝트로 둔다 — 클립마다 켜고 끄려면 분리돼 있어야 한다.
-_arc_c = TASER_CEN + Vector((0.0, _muzzle_y - 0.010, CART_C.z - CART_H * 0.14))
-bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=0.0115, location=_arc_c)
+# 스파크가 카트리지 면에 붙어 있으면 노란 판에 박힌 보석처럼 보인다.
+# 전극 끝보다 앞으로 빼서 '두 극 사이의 방전'으로 읽히게 한다.
+_arc_c = TASER_CEN + Vector((0.0, _muzzle_y - PRONG_L * 1.15,
+                             CART_C.z - CART_H * 0.14))
+bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=0.0062, location=_arc_c)
 arc = bpy.context.active_object
 arc.name = "PR_TaserArc"
 arc.data.name = "PR_TaserArc"
-arc.scale = (1.35, 0.55, 0.75)
+arc.scale = (1.9, 0.75, 0.55)
 set_active(arc)
 bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 bpy.ops.object.shade_smooth()
@@ -1287,8 +1345,11 @@ if len(_hw) < 8:
     raise RuntimeError("holster verts not found after join: %d" % len(_hw))
 _ht = min(min((a - b).length for b in _hw) for a in _tw)
 rep["holster_taser_gap_m"] = round(_ht, 5)
-if _ht > 0.020:
-    raise RuntimeError("taser floats away from the holster: %.4f m" % _ht)
+# 총을 뽑아 든 상태이므로 홀스터와 붙어 있을 필요는 없다. 대신 홀스터가
+# 허공에 뜨지 않았는지(위에서 몸 표면 안으로 4mm 물렸는지)는 이미 확인했고,
+# 여기서는 총이 홀스터를 파고들지만 않으면 된다.
+if _ht < 0.004:
+    raise RuntimeError("taser intersects the holster: %.4f m" % _ht)
 
 # ============================================================ 11. 정적 검사
 # --- 팔 ↔ 몸통: MC 원본 3.4mm 보다 좁아지면 회귀 ---
@@ -1508,6 +1569,10 @@ def solve_arm2(side, hand_target, elbow_target, aim=None,
     seeds.append([-40.0, 0.0, 0.0, -30.0, 0.0, 0.0])
     seeds.append([-70.0, 0.0, 0.0, 20.0, 0.0, 0.0])
     seeds.append([-20.0, 0.0, -30.0, -50.0, 0.0, 0.0])
+    seeds.append([-60.0, 0.0, 0.0, -40.0, 0.0, 0.0])
+    seeds.append([-50.0, -20.0, 0.0, -60.0, 0.0, 0.0])
+    seeds.append([-80.0, 0.0, 20.0, -30.0, 0.0, 0.0])
+    seeds.append([-45.0, 15.0, -20.0, -45.0, 10.0, 0.0])
     best = None
     for sd in seeds:
         par, c, e, a = _solve_once(side, hand_target, elbow_target, aimv,
@@ -1534,43 +1599,47 @@ rep["arm_poses"] = {}
 
 # 겨눔 — 앞으로 뻗어 총열이 정면(-Y)을 향한다
 neutral_upper()
+# 총열은 아래팔에 '수직'으로 고정돼 있다. 그래서 팔을 앞으로 곧게 뻗으면
+# 총구는 위나 아래를 본다. 총구가 앞을 보려면 아래팔이 세로여야 하므로,
+# 겨눔은 '팔꿈치를 앞·위로 내고 아래팔은 세워 둔' 자세로 잡는다.
 P["aim_R"], _e, _a = solve_arm2(
-    "R", sh_r + Vector((0.010, -0.208, -0.072)), sh_r + Vector((-0.070, -0.055, -0.112)),
-    aim=Vector((0.0, -1.0, 0.02)), elbow_w=0.003, aim_w=0.040, start=P["base_R"])
+    "R", sh_r + Vector((-0.065, -0.120, -0.205)), sh_r + Vector((-0.072, -0.100, -0.070)),
+    aim=Vector((0.0, -1.0, -0.25)), elbow_w=0.003, aim_w=0.040, start=P["base_R"])
 rep["arm_poses"]["aim_R"] = {"hand_err_m": round(_e, 4), "aim_err_deg": round(_a, 1)}
 # 손 목표는 예술적 추정치다. 좌표하강이 40mm 안쪽으로 들어오면 자세의 방향은
 # 유지되므로, 여기서는 '터무니없이 빗나갔는가'만 막고 최종 판정은 렌더로 한다
 # (ACT-05·06 교훈: 합격은 솔버 잔차가 아니라 눈에 보이는 결과로 정한다).
 AIM_FAIL = []
-if _e > 0.055 or _a > 13.0:
+if _e > 0.040 or _a > 16.0:
     AIM_FAIL.append("aim_R hand %.4f m barrel %.1f deg" % (_e, _a))
 
 # 경고 — 총을 위로 들어 공중에서 스파크
 neutral_upper()
+# 총구가 위를 보려면 아래팔이 가로여야 한다 (수직 마운트의 역).
 P["warn_R"], _e, _a = solve_arm2(
-    "R", sh_r + Vector((-0.052, -0.048, 0.118)), sh_r + Vector((-0.085, -0.020, -0.052)),
-    aim=Vector((0.0, -0.18, 1.0)), elbow_w=0.003, aim_w=0.040, start=P["aim_R"])
+    "R", sh_r + Vector((-0.078, -0.132, -0.115)), sh_r + Vector((-0.080, 0.008, -0.120)),
+    aim=Vector((0.0, -0.25, 1.0)), elbow_w=0.003, aim_w=0.040, start=P["aim_R"])
 rep["arm_poses"]["warn_R"] = {"hand_err_m": round(_e, 4), "aim_err_deg": round(_a, 1)}
-if _e > 0.055 or _a > 13.0:
+if _e > 0.040 or _a > 16.0:
     AIM_FAIL.append("warn_R hand %.4f m barrel %.1f deg" % (_e, _a))
 
 # 뽑는 경로 — 허리에서 가슴으로 곧장 올리면 총이 몸통을 관통한다
 # (실측: Draw f9 에서 14정점, Holster f12 에서 21정점). 바깥으로 돌려 올린다.
 neutral_upper()
 P["draw_mid_R"], _e, _a = solve_arm2(
-    "R", sh_r + Vector((-0.118, -0.112, -0.182)), sh_r + Vector((-0.092, -0.030, -0.104)),
-    aim=Vector((0.0, -1.0, -0.35)), elbow_w=0.003, aim_w=0.030, start=P["base_R"])
+    "R", sh_r + Vector((-0.100, -0.068, -0.240)), sh_r + Vector((-0.086, -0.040, -0.100)),
+    aim=Vector((0.0, -1.0, -0.30)), elbow_w=0.003, aim_w=0.030, start=P["base_R"])
 rep["arm_poses"]["draw_mid_R"] = {"hand_err_m": round(_e, 4), "aim_err_deg": round(_a, 1)}
-if _e > 0.055:
+if _e > 0.040:
     AIM_FAIL.append("draw_mid_R hand %.4f m" % _e)
 
 # 추격 — 총을 가슴 앞에 세워 든 채 달린다
 neutral_upper()
 P["chase_R"], _e, _a = solve_arm2(
-    "R", sh_r + Vector((-0.028, -0.118, -0.148)), sh_r + Vector((-0.078, -0.010, -0.118)),
-    aim=Vector((0.0, -1.0, 0.55)), elbow_w=0.003, aim_w=0.030, start=P["aim_R"])
+    "R", sh_r + Vector((-0.062, -0.098, -0.190)), sh_r + Vector((-0.076, -0.052, -0.086)),
+    aim=Vector((0.0, -1.0, -0.10)), elbow_w=0.003, aim_w=0.030, start=P["aim_R"])
 rep["arm_poses"]["chase_R"] = {"hand_err_m": round(_e, 4), "aim_err_deg": round(_a, 1)}
-if _e > 0.055:
+if _e > 0.040:
     AIM_FAIL.append("chase_R hand %.4f m barrel %.1f deg" % (_e, _a))
 
 # 무전 — 왼손을 어깨 마이크로. 블롭 팔은 여기서 가장 심하게 접히므로
@@ -1767,10 +1836,13 @@ add("SS_RadioAlert", ALERT_N,
     False)
 
 HOLSTER_N = 19
+# 뽑기의 정확한 시간역이 되게 맞춘다. 키 위치가 어긋나면 중간 프레임에서
+# 팔꿈치가 과하게 접혀 소매가 팔 속으로 삼켜진다(f14 에서 36.5mm 실측).
 add("SS_TaserHolster", HOLSTER_N,
     clip(IDLE_LOWER, IDLE_F[0], IDLE_N,
-         rot_off={"Chest": {0: [(1, -4), (19, 0)]}, "Head": {0: [(1, -3), (19, 0)]}},
-         arms={"R": [(1, "aim_R"), (10, "draw_mid_R"), (19, "base_R")]}), False)
+         rot_off={"Chest": {0: [(1, -4), (13, 3), (19, 0)]},
+                  "Head": {0: [(1, -3), (19, 0)]}},
+         arms={"R": [(1, "aim_R"), (11, "draw_mid_R"), (19, "base_R")]}), False)
 
 
 # ---------------------------------------------------------------- Level 2

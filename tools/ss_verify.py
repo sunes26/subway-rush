@@ -250,7 +250,24 @@ def point_inside(bvh, p):
     return hits % 2 == 1
 
 
-GARMENT_BASE = [None]
+# 제복 셸의 '기준 침투 깊이'는 반드시 정지 포즈에서 잰다.
+# 첫 클립에서 잡으면 정렬 순서에 따라 SS_Chase(달리는 자세)가 기준이 되어
+# 기준선이 들쭉날쭉해진다.
+ad.action = None
+sc.frame_set(1)
+dg.update()
+_me0 = mesh.evaluated_get(dg)
+_wv0 = [mesh.matrix_world @ v.co for v in _me0.data.vertices]
+_bvh0, _ = body_bvh(_me0, mesh)
+_base_depth = 0.0
+for _i in garment_idx:
+    _q = _wv0[_i]
+    if point_inside(_bvh0, _q):
+        _n = _bvh0.find_nearest(_q)
+        if _n[0] is not None:
+            _base_depth = max(_base_depth, (_q - _n[0]).length)
+GARMENT_BASE = [_base_depth]
+R["garment_rest_depth_m"] = round(_base_depth, 5)
 R["anim"] = {}
 for name in sorted(ACTS):
     nf, loop = ACTS[name]
@@ -392,8 +409,6 @@ for name in sorted(ACTS):
     if pen["prop"] > 0:
         fail("%s prop penetrates body at f%s (%d verts)"
              % (name, pen["prop_frame"], pen["prop"]))
-    if GARMENT_BASE[0] is None:
-        GARMENT_BASE[0] = pen["garment"]
     if pen["garment"] > GARMENT_BASE[0] + 0.010:
         fail("%s garment swallowed at f%s (depth %.4f vs base %.4f)"
              % (name, pen["garment_frame"], pen["garment"], GARMENT_BASE[0]))
