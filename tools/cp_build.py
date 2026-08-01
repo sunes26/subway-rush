@@ -908,7 +908,7 @@ def f_asideidle(f):
 # 도는 게 아니다 — 그래서 Hips 수평 이동이 아예 없다(루트 모션 걱정도 없다).
 TOR_N = 76
 TOR_F0, TOR_F1 = 16, 62          # 회전 구간
-TOR_TURNS = 2.0                  # 한 바퀴 이상 (=720도)
+TOR_TURNS = 3.0                  # 3바퀴 (=1080도). 360의 배수라 시작/종료가 닫힌다
 TOR_HAND_FWD = 0.215             # 몸 중심 → 손잡이 (앞쪽). 팔 도달 안쪽
 TOR_HAND_Z = 0.585               # 손잡이 높이
 TOR_TILT = 11.0                  # 바깥 끝이 살짝 들리는 원심 기울기
@@ -943,12 +943,30 @@ def _tor_w(f):
     return 1.0
 
 
+TOR_RAMP = 0.18          # 가속/감속 구간이 회전 전체에서 차지하는 비율
+
+
 def _tor_psi(f):
+    """각속도를 사다리꼴로 준다.
+
+    smoothstep 으로 주면 중간 각속도가 평균의 1.5배까지 튄다. 3바퀴에서는
+    프레임당 회전이 과해져 끊겨 보인다. 사다리꼴이면 피크가 1/(1-ramp) 배
+    (여기선 1.22배)로 억제된다.
+    """
     if f <= TOR_F0:
         return 0.0
     if f >= TOR_F1:
         return TOR_TURNS * 360.0
-    return TOR_TURNS * 360.0 * ease((f - TOR_F0) / float(TOR_F1 - TOR_F0))
+    u = (f - TOR_F0) / float(TOR_F1 - TOR_F0)
+    r = TOR_RAMP
+    v = 1.0 / (1.0 - r)
+    if u < r:
+        sfrac = v * u * u / (2.0 * r)
+    elif u > 1.0 - r:
+        sfrac = 1.0 - v * (1.0 - u) ** 2 / (2.0 * r)
+    else:
+        sfrac = v * (u - r / 2.0)
+    return TOR_TURNS * 360.0 * sfrac
 
 
 def _tor_swing_matrix(psi):
