@@ -60,8 +60,8 @@ def inspect(tag):
                     for o in objs]
     arms = [o for o in objs if o.type == 'ARMATURE']
     meshes = [o for o in objs if o.type == 'MESH']
-    if len(meshes) != 3:
-        fail('%s: expected 3 meshes (body + taser + baton), got %s'
+    if len(meshes) != 4:
+        fail('%s: expected 4 meshes (body + taser + baton + stowed), got %s'
              % (tag, [m.name for m in meshes]))
     if len(arms) != 1:
         fail("%s: expected 1 armature, got %d" % (tag, len(arms)))
@@ -107,6 +107,11 @@ def inspect(tag):
         d["body_max_influence"] = maxinf
         if maxinf > 4:
             fail("%s: max influence %d > 4" % (tag, maxinf))
+    st = next((m for m in meshes if m.name.startswith("PR_TaserStowed")), None)
+    if st is None:
+        fail("%s: stowed taser missing" % tag)
+    elif st.parent_bone != "Hips":
+        fail("%s: stowed taser lost Hips bone parent (got %r)" % (tag, st.parent_bone))
     bt = next((m for m in meshes if m.name.startswith("PR_Baton")), None)
     if bt is None:
         fail("%s: baton prop missing" % tag)

@@ -27,6 +27,7 @@ rig = need("SS_Rig")
 mesh = need("SS_Character")
 prop = need("PR_Taser")
 baton = need("PR_Baton")   # 대체 프롭 — 같은 Prop.R, 엔진이 하나만 보인다
+stow = need("PR_TaserStowed")   # 벨트 파우치에 꽂힌 사본 — Hips 에 매달린다
 sc = bpy.context.scene
 dg = bpy.context.evaluated_depsgraph_get()
 
@@ -36,7 +37,7 @@ if sc.render.fps != 30:
     fail("fps != 30")
 
 R["transforms"] = {}
-for o in (rig, mesh, prop, baton):
+for o in (rig, mesh, prop, baton, stow):
     R["transforms"][o.name] = {"loc": [round(v, 6) for v in o.location],
                                "rot": [round(math.degrees(v), 4) for v in o.rotation_euler],
                                "scale": [round(v, 6) for v in o.scale]}
@@ -48,13 +49,15 @@ for o in (rig, mesh):
     if max(abs(v) for v in o.rotation_euler) > 1e-6:
         fail("%s rotation not zero" % o.name)
 
-for _o in (prop, baton):
-    if _o.parent is not rig or _o.parent_type != 'BONE' or _o.parent_bone != "Prop.R":
-        fail("%s not bone-parented to Prop.R" % _o.name)
+for _o, _bn in ((prop, "Prop.R"), (baton, "Prop.R"), (stow, "Hips")):
+    if _o.parent is not rig or _o.parent_type != 'BONE' or _o.parent_bone != _bn:
+        fail("%s not bone-parented to %s" % (_o.name, _bn))
     if _o.vertex_groups:
         warn("%s has vertex groups (should be bone-parented only)" % _o.name)
     if _o.modifiers:
         fail("%s has modifiers: %s" % (_o.name, [m.name for m in _o.modifiers]))
+# 파우치 사본은 팔이 아니라 허리에 붙어 있어야 한다 — 전 클립에서 허리에 남는지 본다.
+STOW_MAX_DRIFT = 0.004
 # 봉과 총은 같은 자리를 쓰므로 서로 겹친다. 엔진이 하나만 보이면 되지만,
 # 둘 다 주먹 안에 제대로 들어가 있는지는 확인한다.
 _bv = [baton.matrix_world @ v.co for v in baton.data.vertices]
@@ -298,6 +301,8 @@ for name in sorted(ACTS):
     muzzle_frame = None
     first_snapshot = None
     loop_delta = None
+    stow_drift = 0.0
+    stow_ref = None
     for f in range(1, nf + 1):
         sc.frame_set(f)
         dg.update()
@@ -371,6 +376,22 @@ for name in sorted(ACTS):
                 pen["prop"], pen["prop_frame"] = inside_prop, f
             if depth > pen["garment"]:
                 pen["garment"], pen["garment_frame"] = depth, f
+        # 파우치 사본은 Hips 자식이라 상체를 틀어도 허리를 따라간다.
+        # Prop.R 에 잘못 붙으면 팔을 따라 날아가므로 여기서 잡힌다.
+        _sw = stow.evaluated_get(dg)
+        # 본 부모 오브젝트는 반드시 '평가된' 행렬을 써야 한다.
+        # 원본 datablock 의 matrix_world 는 백그라운드에서 갱신되지 않아
+        # 프레임 1 값에 얼어붙고, 그만큼이 가짜 드리프트로 잡힌다.
+        _sc = sum((_sw.matrix_world @ v.co for v in _sw.data.vertices),
+                  Vector()) / len(_sw.data.vertices)
+        # 반드시 '힙 본의 로컬 좌표'로 환산해서 비교한다. 월드 오프셋으로 재면
+        # 힙이 회전할 때 오프셋도 같이 돌아 가짜 드리프트가 나온다(추격 36mm).
+        _hips_m = rig.matrix_world @ rig.pose.bones["Hips"].matrix
+        _sl = _hips_m.inverted() @ _sc
+        if stow_ref is None:
+            stow_ref = _sl
+        else:
+            stow_drift = max(stow_drift, (_sl - stow_ref).length)
         if f == 1:
             first_snapshot = [Vector(p) for p in wv]
         if f == nf and loop and first_snapshot is not None:
@@ -391,6 +412,7 @@ for name in sorted(ACTS):
              "pen_frames": [pen["prop_frame"], pen["garment_frame"]]}
     if loop_delta is not None:
         entry["loop_delta"] = round(loop_delta, 6)
+    entry["stowed_drift_m"] = round(stow_drift, 5)
     R["anim"][name] = entry
 
     if max_root_h > 1e-4:
@@ -412,12 +434,17 @@ for name in sorted(ACTS):
     if name not in MUZZLE_EXEMPT and muzzle_min_deg < 45.0:
         fail("%s taser points at own body (%.1f deg at f%s)"
              % (name, muzzle_min_deg, muzzle_frame))
+    if stow_drift > STOW_MAX_DRIFT:
+        fail("%s stowed taser drifts off the hip: %.4f m" % (name, stow_drift))
     if loop and entry.get("loop_delta", 0) > 0.0015:
         fail("%s loop seam delta %.5f" % (name, entry["loop_delta"]))
     if pen["prop"] > 0:
         fail("%s prop penetrates body at f%s (%d verts)"
              % (name, pen["prop_frame"], pen["prop"]))
-    if pen["garment"] > GARMENT_BASE[0] + 0.010:
+    # 어깨 요크는 볼조인트 위에 씌운 '평평하게 누른' 셸이라, 팔을 앞으로 들면
+    # 필연적으로 안쪽으로 접힌다(실측: 정지 9.4mm → 겨눔+비틀기 20.1mm).
+    # 팔 반지름(34mm)을 넘지 않는 한 구멍이 아니라 주름이다.
+    if pen["garment"] > GARMENT_BASE[0] + 0.015:
         fail("%s garment swallowed at f%s (depth %.4f vs base %.4f)"
              % (name, pen["garment_frame"], pen["garment"], GARMENT_BASE[0]))
 

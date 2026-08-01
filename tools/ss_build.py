@@ -493,7 +493,7 @@ for v in bm.verts:
 # 어깨 윗면을 평면으로 눌러 고원을 만들고, 가로로 넓혀 각을 세운다.
 SQ_TOP = SHOULDER_Z + 0.016        # 어깨 고원 높이
 SQ_BAND = 0.034                    # 선반이 만들어지는 z 폭
-SQ_WIDEN = 0.20                    # 선반 끝에서의 가로 확장 비율
+SQ_WIDEN = 0.11                    # 선반 끝에서의 가로 확장 비율
 # 실패 두 번의 결과다. 0.13 을 어깨 아래 45mm 까지 고르게 먹였더니 몸통 전체가
 # 넓어져 판초가 됐고(1차), 0.06 으로 줄였더니 아무것도 안 보였다(2차).
 # 각져 보이는 건 '넓이'가 아니라 '평평한 마루 + 그 아래로 꺾이는 선반'이다.
@@ -511,7 +511,9 @@ for v in bm.verts:
     # 목 쪽(ax 작음)까지 누르면 안 된다. 그 구간은 본체 자체가 SQ_TOP 보다
     # 높아서, 재킷만 눌리면 어깨 위로 맨살이 삼각형으로 뚫고 나온다.
     if v.co.z > SQ_TOP and ax > 0.062:
-        v.co.z = SQ_TOP + (v.co.z - SQ_TOP) * 0.06
+        # 0.06 은 마루를 완전히 평면으로 눌러 어깨가 '직각'으로 보였다.
+        # 살짝 남겨 둬야 각지되 딱딱하지 않다.
+        v.co.z = SQ_TOP + (v.co.z - SQ_TOP) * 0.34
 
 # 어깨 마루만 눌러서는 부족하다. 팔 윗면이 여전히 아래로 흘러내려서 견장이
 # 허공에 걸친 막대처럼 보였다(3차 렌더). 어깨부터 팔 바깥 끝까지 '위를 향한 면'
@@ -520,9 +522,10 @@ _shelf = 0
 for v in bm.verts:
     if abs(v.co.x) <= 0.062 or v.normal.z <= 0.35:
         continue
-    if v.co.z < SQ_TOP - 0.040 or v.co.z >= SQ_TOP:
+    if v.co.z < SQ_TOP - 0.032 or v.co.z >= SQ_TOP:
         continue
-    v.co.z = SQ_TOP
+    # 평면에 완전히 붙이면 어깨선이 자로 그은 듯해진다. 80%만 끌어올린다.
+    v.co.z += (SQ_TOP - v.co.z) * 0.80
     _shelf += 1
 if _shelf < 30:
     raise RuntimeError("shoulder shelf raised too few verts: %d" % _shelf)
@@ -787,16 +790,19 @@ for _bz in (0.596, 0.556, 0.516):
         _btn_objs.append(b)
 rep["buttons"] = len(_btn_objs)
 
-# ---- 숄더 마이크: 왼쪽 견장 앞쪽에 얹는 작은 블록 ----
+# ---- 어깨 무전기 파우치 ----
 # 프롭을 손에 들리지 않는다. 왼손을 어깨로 올려 누르는 동작만으로 무전이 읽힌다.
+# 맨 상자로 두면 그냥 '검은 사각 기둥'이라, 골드 스트랩과 안테나를 붙여
+# 무전기가 꽂힌 파우치로 읽히게 한다.
 MIC_X = SIDE_SIGN["L"] * 0.082
 MIC_Y = -0.026
 MIC_Z = SQ_TOP + TAB_OFF + 0.012
+MIC_W, MIC_D, MIC_H = 0.024, 0.019, 0.030
 bpy.ops.mesh.primitive_cube_add(size=1.0, location=(MIC_X, MIC_Y, MIC_Z))
 mic = bpy.context.active_object
-mic.name = "SS_ShoulderMic"
-mic.data.name = "SS_ShoulderMic"
-mic.scale = (0.021, 0.017, 0.026)
+mic.name = "SS_RadioPouch"
+mic.data.name = "SS_RadioPouch"
+mic.scale = (MIC_W, MIC_D, MIC_H)
 set_active(mic)
 bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 _bv = mic.modifiers.new("Round", 'BEVEL')
@@ -807,10 +813,42 @@ bpy.ops.object.modifier_apply(modifier=_bv.name)
 bpy.ops.object.shade_smooth()
 mic.data.materials.clear()
 mic.data.materials.append(AJ_DARK)
+_mic_parts = []
+# 골드 스트랩 — 파우치를 가로지른다
+bpy.ops.mesh.primitive_cube_add(size=1.0,
+                                location=(MIC_X, MIC_Y, MIC_Z - MIC_H * 0.16))
+_strap = bpy.context.active_object
+_strap.name = "SS_RadioStrap"
+_strap.scale = (MIC_W * 1.10, MIC_D * 1.10, 0.0075)
+set_active(_strap)
+bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+bpy.ops.object.shade_smooth()
+_strap.data.materials.clear()
+_strap.data.materials.append(trim_mat)
+_mic_parts.append(_strap)
+# 안테나 — 위로 짧게. 이게 있어야 무전기로 읽힌다.
+bpy.ops.mesh.primitive_cylinder_add(
+    vertices=8, radius=0.0026, depth=0.026,
+    location=(MIC_X - SIDE_SIGN["L"] * 0.006, MIC_Y + 0.003, MIC_Z + MIC_H * 0.5 + 0.011))
+_ant = bpy.context.active_object
+_ant.name = "SS_RadioAnt"
+set_active(_ant)
+bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+bpy.ops.object.shade_smooth()
+_ant.data.materials.clear()
+_ant.data.materials.append(AJ_DARK)
+_mic_parts.append(_ant)
+set_active(mic)
+for _o in _mic_parts:
+    _o.select_set(True)
+bpy.context.view_layer.objects.active = mic
+bpy.ops.object.join()
+mic = need_obj("SS_RadioPouch")
 _vg = mic.vertex_groups.new(name="Shoulder.L")
 _vg.add(range(len(mic.data.vertices)), 1.0, 'REPLACE')
-rep["shoulder_mic"] = {"verts": len(mic.data.vertices),
-                       "pos": [round(MIC_X, 4), round(MIC_Y, 4), round(MIC_Z, 4)]}
+rep["radio_pouch"] = {"verts": len(mic.data.vertices),
+                      "pos": [round(MIC_X, 4), round(MIC_Y, 4), round(MIC_Z, 4)],
+                      "dims": [MIC_W, MIC_D, MIC_H]}
 
 # ---- 벨트: 재킷 밑단을 감싼다 ----
 # 조끼를 뺀 자리를 메운다. 흉부를 가로지르던 경계선 대신 허리에 가로선을 만들어
@@ -1187,6 +1225,46 @@ for p in _parts:
 bpy.context.view_layer.objects.active = grip
 bpy.ops.object.join()
 taser = need_obj("PR_Taser")
+
+# ---- 스파크 ----
+# 반드시 '마운트를 숙이기 전, 로컬 원점 상태'에서 만들어 함께 조인한다.
+# 숙인 뒤에 옛 로컬 좌표로 놓았더니 스파크만 허공에 떨어져 있었다(실측).
+# 별도 오브젝트로 두면 클립마다 가시성을 키잉해야 하는데 glTF 가 이를 제대로
+# 싣지 못한다. 슬롯만 나눠 한 메시로 합치고 엔진이 이미시브를 토글한다.
+_arc_c = Vector((0.0, CART_C.y - CART_D * 0.5 - PRONG_L * 1.15,
+                 CART_C.z - CART_H * 0.14))
+bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=0.0062, location=_arc_c)
+arc = bpy.context.active_object
+arc.name = "PR_TaserArc"
+arc.data.name = "PR_TaserArc"
+arc.scale = (1.9, 0.75, 0.55)
+set_active(arc)
+bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+bpy.ops.object.shade_smooth()
+arc.data.materials.clear()
+arc.data.materials.append(arc_mat)
+set_active(taser)
+arc.select_set(True)
+bpy.context.view_layer.objects.active = taser
+bpy.ops.object.join()
+taser = need_obj("PR_Taser")
+if {m.name for m in taser.data.materials if m} != {"AJ_Dark", "SS_Cartridge", "SS_Arc"}:
+    raise RuntimeError("taser materials wrong: %s" % [m.name for m in taser.data.materials])
+
+# ---- 파우치에 꽂힌 사본 ----
+# 총을 든 클립은 Taser 계열뿐이고, 나머지에서는 벨트 파우치에 들어가 있어야
+# 한다. glTF 가 가시성 키잉을 못 실으므로 사본을 하나 더 두고 엔진이 고른다.
+# Prop.R(팔)이 아니라 Hips 에 매달아야 팔이 움직여도 허리에 남는다.
+set_active(taser)
+bpy.ops.object.duplicate()
+stow = bpy.context.active_object
+stow.name = "PR_TaserStowed"
+stow.data.name = "PR_TaserStowed"
+STOW_TILT = 84.0                                   # 총구가 거의 수직 아래
+stow.rotation_euler = (D(STOW_TILT), 0.0, 0.0)
+set_active(stow)
+bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+
 # 손을 내린 자세에서 총열이 정면을 수평으로 겨누면 '총구가 앞을 향한 채
 # 걸어다니는' 그림이 된다. 손목 본이 없으므로 마운트 자체를 숙여 둔다.
 # 이러면 겨눔 포즈도 쉬워진다 — 아래팔을 앞으로 들면 총열이 수평이 된다.
@@ -1207,22 +1285,6 @@ _names = [m.name for m in taser.data.materials if m]
 for _need in ("AJ_Dark", "SS_Cartridge"):
     if _need not in _names:
         raise RuntimeError("taser lost material %s (have %s)" % (_need, _names))
-
-# 스파크는 별도 오브젝트로 둔다 — 클립마다 켜고 끄려면 분리돼 있어야 한다.
-# 스파크가 카트리지 면에 붙어 있으면 노란 판에 박힌 보석처럼 보인다.
-# 전극 끝보다 앞으로 빼서 '두 극 사이의 방전'으로 읽히게 한다.
-_arc_c = TASER_CEN + Vector((0.0, _muzzle_y - PRONG_L * 1.15,
-                             CART_C.z - CART_H * 0.14))
-bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=0.0062, location=_arc_c)
-arc = bpy.context.active_object
-arc.name = "PR_TaserArc"
-arc.data.name = "PR_TaserArc"
-arc.scale = (1.9, 0.75, 0.55)
-set_active(arc)
-bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-bpy.ops.object.shade_smooth()
-arc.data.materials.clear()
-arc.data.materials.append(arc_mat)
 
 # --- 쥐고 있는지 검사 ---
 # 프롭이 손 '바깥'에 있을 때는 표면 최단거리로 접촉을 봤지만(ZP 폰), 손잡이가
@@ -1269,18 +1331,11 @@ def bone_attach(obj, bone):
     obj.matrix_basis = pm.inverted() @ w
     bpy.context.view_layer.update()
 
-
-# 스파크를 별도 오브젝트로 두면 클립마다 가시성을 키잉해야 하는데 glTF 가
-# 이를 제대로 싣지 못한다. 슬롯만 나눠 한 메시로 합치고, 엔진에서 SS_Arc
-# 머티리얼의 이미시브를 켜고 끄게 한다 (ZP_ScreenGlow 와 같은 방식).
-set_active(taser)
-arc.select_set(True)
-bpy.context.view_layer.objects.active = taser
-bpy.ops.object.join()
-taser = need_obj("PR_Taser")
-if {m.name for m in taser.data.materials if m} != {"AJ_Dark", "SS_Cartridge", "SS_Arc"}:
-    raise RuntimeError("taser materials wrong: %s" % [m.name for m in taser.data.materials])
 bone_attach(taser, "Prop.R")
+rep["taser_attach"] = {"parent_bone": taser.parent_bone,
+                       "mount_tilt_deg": MOUNT_TILT}
+
+
 rep["taser"] = {"verts": len(taser.data.vertices),
                 "tris": sum(len(p.vertices) - 2 for p in taser.data.polygons),
                 "dims": [round(v, 4) for v in taser.dimensions],
@@ -1372,85 +1427,97 @@ bpy.ops.object.shade_smooth()
 bone_attach(baton, "Prop.R")
 # 프리뷰 렌더·검사 기본값은 테이저다. 봉은 숨겨 두고 엔진이 골라 쓴다.
 baton.hide_render = True
-baton.hide_viewport = True
 rep["baton"] = {"verts": len(baton.data.vertices),
                 "tris": sum(len(p.vertices) - 2 for p in baton.data.polygons),
                 "dims": [round(v, 4) for v in baton.dimensions],
                 "mats": [m.name for m in baton.data.materials if m],
                 "open_edges": _b_open}
 
-# ============================================================ 10. 허리 홀스터
-# 테이저가 간 자리에서 역산한다. 먼저 박으면 총이 홀스터에서 떨어진다.
+# =========================================================== 10. 벨트 파우치
+# 총을 뽑지 않은 클립에서는 여기 들어가 있다. 위치는 벨트선(상의 밑단)에
+# 맞춘다 — 허벅지 홀스터로 내리면 상의·하의 경계에서 벗어난다.
 dg.update()
-_tw = [taser.matrix_world @ v.co for v in taser.data.vertices]
-HOLS_Z = (min(p.z for p in _tw) + max(p.z for p in _tw)) / 2.0
-HOLS_Y = sum(p.y for p in _tw) / len(_tw)
-# 몸통 표면까지 붙인다 — 허공에 뜬 상자로 보이면 안 된다
+
+# 파우치 위치 — 벨트선에 맞춘다. 벨트는 상의 밑단(HEM_Z)에 둘러 있다.
+POUCH_W, POUCH_D, POUCH_H = 0.038, 0.040, 0.076
+POUCH_Z = HEM_Z - 0.014                     # 벨트선을 살짝 걸치고 아래로 내려온다
+POUCH_Y = -0.012
 _hipband = [mesh.matrix_world @ _me.data.vertices[v.index].co for v in mesh.data.vertices
-            if abs((mesh.matrix_world @ _me.data.vertices[v.index].co).z - HOLS_Z) < 0.030
+            if abs((mesh.matrix_world @ _me.data.vertices[v.index].co).z - POUCH_Z) < 0.030
             and sum(g.weight for g in v.groups
                     if g.group in (gi["Hips"], gi["Spine"])) > 0.5]
 if len(_hipband) < 20:
-    raise RuntimeError("hip band not found for the holster: %d" % len(_hipband))
+    raise RuntimeError("hip band not found for the pouch: %d" % len(_hipband))
 _hip_x = max(p.x * SIDE_SIGN["R"] for p in _hipband)
-HOLS_W, HOLS_D, HOLS_H = 0.028, 0.030, 0.058
-# 홀스터 X 도 테이저에서 역산한다. 엉덩이 표면에만 맞춰 붙이면 손이 그보다
-# 바깥에 있어 총이 33mm 떠 보인다 (실측). 바깥 면을 테이저 안쪽 면에 맞추고,
-# 안쪽 면이 몸 표면 안으로 물리는지를 따로 검사한다.
-_t_in = min(p.x * SIDE_SIGN["R"] for p in _tw)
-_h_c = (_t_in + 0.002) - HOLS_W * 0.5
-# 안쪽 면은 반드시 몸 표면 안으로 4mm 물려야 한다. 떠 있으면 허리에 상자를
-# 매단 꼴이 된다. 테이저 정렬보다 이 조건이 우선이고, 밀린 만큼은 아래
-# 홀스터↔테이저 간격 검사(20mm)가 받아 준다.
-BURY = 0.004
-_h_cap = _hip_x - BURY + HOLS_W * 0.5
-if _h_c > _h_cap:
-    _h_c = _h_cap
-if _h_c - HOLS_W * 0.5 > _hip_x:
-    raise RuntimeError("holster floats off the hip: inner %.4f vs body %.4f"
-                       % (_h_c - HOLS_W * 0.5, _hip_x))
-HOLS_X = SIDE_SIGN["R"] * _h_c
-bpy.ops.mesh.primitive_cube_add(size=1.0, location=(HOLS_X, HOLS_Y, HOLS_Z))
-hols = bpy.context.active_object
-hols.name = "SS_Holster"
-hols.data.name = "SS_Holster"
-hols.scale = (HOLS_W, HOLS_D, HOLS_H)
-set_active(hols)
+# 안쪽 면이 몸 표면 안으로 5mm 물려야 한다. 안 그러면 허리에 상자를 매단 꼴이다.
+POUCH_X = SIDE_SIGN["R"] * (_hip_x - 0.005 + POUCH_W * 0.5)
+POUCH_C = Vector((POUCH_X, POUCH_Y, POUCH_Z))
+
+pouch = bpy.ops.mesh.primitive_cube_add(size=1.0, location=POUCH_C)
+pouch = bpy.context.active_object
+pouch.name = "SS_Pouch"
+pouch.data.name = "SS_Pouch"
+pouch.scale = (POUCH_W, POUCH_D, POUCH_H)
+set_active(pouch)
 bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-_bv = hols.modifiers.new("Round", 'BEVEL')
-_bv.width = 0.005
+_bv = pouch.modifiers.new("Round", 'BEVEL')
+_bv.width = 0.006
 _bv.segments = 2
 _bv.limit_method = 'ANGLE'
 bpy.ops.object.modifier_apply(modifier=_bv.name)
 bpy.ops.object.shade_smooth()
-hols.data.materials.clear()
-hols.data.materials.append(AJ_DARK)
-_vg = hols.vertex_groups.new(name="Hips")
-_vg.add(range(len(hols.data.vertices)), 1.0, 'REPLACE')
+pouch.data.materials.clear()
+pouch.data.materials.append(AJ_DARK)
+_vg = pouch.vertex_groups.new(name="Hips")
+_vg.add(range(len(pouch.data.vertices)), 1.0, 'REPLACE')
+
+# 덮개 잠금 — 골드. 이게 없으면 그냥 검은 상자다.
+bpy.ops.mesh.primitive_cube_add(
+    size=1.0, location=(POUCH_X, POUCH_Y - POUCH_D * 0.5 - 0.002, POUCH_Z + POUCH_H * 0.26))
+_snap = bpy.context.active_object
+_snap.name = "SS_PouchSnap"
+_snap.scale = (POUCH_W * 0.62, 0.010, 0.013)
+set_active(_snap)
+bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+bpy.ops.object.shade_smooth()
+_snap.data.materials.clear()
+_snap.data.materials.append(trim_mat)
+_vg = _snap.vertex_groups.new(name="Hips")
+_vg.add(range(len(_snap.data.vertices)), 1.0, 'REPLACE')
+
 set_active(mesh)
-hols.select_set(True)
+pouch.select_set(True)
+_snap.select_set(True)
 bpy.context.view_layer.objects.active = mesh
 bpy.ops.object.join()
 mesh = need_obj("SS_Character")
 gi = {g.name: g.index for g in mesh.vertex_groups}
 dg.update()
 _me = mesh.evaluated_get(dg)
-rep["holster"] = {"pos": [round(HOLS_X, 4), round(HOLS_Y, 4), round(HOLS_Z, 4)],
-                  "dims": [HOLS_W, HOLS_D, HOLS_H]}
+rep["pouch"] = {"pos": [round(v, 4) for v in POUCH_C],
+                "dims": [POUCH_W, POUCH_D, POUCH_H]}
 
-# 홀스터 ↔ 테이저 근접 — 떨어져 있으면 총이 허공에 뜬 걸로 보인다
-_hw = [mesh.matrix_world @ _me.data.vertices[v.index].co for v in mesh.data.vertices
-       if sum(g.weight for g in v.groups if g.group == gi["Hips"]) > 0.99
-       and abs((mesh.matrix_world @ _me.data.vertices[v.index].co).z - HOLS_Z) < HOLS_H]
-if len(_hw) < 8:
-    raise RuntimeError("holster verts not found after join: %d" % len(_hw))
-_ht = min(min((a - b).length for b in _hw) for a in _tw)
-rep["holster_taser_gap_m"] = round(_ht, 5)
-# 총을 뽑아 든 상태이므로 홀스터와 붙어 있을 필요는 없다. 대신 홀스터가
-# 허공에 뜨지 않았는지(위에서 몸 표면 안으로 4mm 물렸는지)는 이미 확인했고,
-# 여기서는 총이 홀스터를 파고들지만 않으면 된다.
-if _ht < 0.004:
-    raise RuntimeError("taser intersects the holster: %.4f m" % _ht)
+# ---- 파우치에 꽂힌 사본을 제자리에 놓는다 ----
+# 총구가 아래를 향한 채 파우치 안으로 들어가고, 손잡이 윗부분만 드러난다.
+_sv = [stow.matrix_world @ v.co for v in stow.data.vertices]
+_sc = sum(_sv, Vector()) / len(_sv)
+stow.location = stow.location + (POUCH_C - _sc) + Vector((0.0, 0.0, 0.022))
+set_active(stow)
+bpy.ops.object.transform_apply(location=True, rotation=False, scale=False)
+bone_attach(stow, "Hips")
+# hide_render 만 쓴다. hide_viewport 는 오브젝트를 뎁스그래프에서 빼 버려서
+# 본 부모 변환이 갱신되지 않고, 검사기가 프레임 1 값에 얼어붙은 걸 본다.
+stow.hide_render = True          # 기본 프리뷰는 '든' 상태. 엔진이 골라 쓴다.
+dg.update()
+_sv = [stow.matrix_world @ v.co for v in stow.data.vertices]
+rep["taser_stowed"] = {"verts": len(stow.data.vertices),
+                       "z_span": [round(min(p.z for p in _sv), 4),
+                                  round(max(p.z for p in _sv), 4)],
+                       "tilt_deg": STOW_TILT}
+# 손잡이 끝이 파우치 위로 드러나야 '꽂혀 있다'로 읽힌다
+_pouch_top = POUCH_Z + POUCH_H * 0.5
+if max(p.z for p in _sv) - _pouch_top < 0.008:
+    raise RuntimeError("stowed taser is fully swallowed by the pouch")
 
 # ============================================================ 11. 정적 검사
 # --- 팔 ↔ 몸통: MC 원본 3.4mm 보다 좁아지면 회귀 ---
@@ -1749,7 +1816,9 @@ if _e > 0.055:
 # 위팔과 겹쳐 몸통을 파고든다.
 neutral_upper()
 P["radio_L"], _e, _a = solve_arm2(
-    "L", sh_l + Vector((0.004, -0.096, -0.058)), sh_l + Vector((0.104, -0.012, -0.086)),
+    # 도달률 38% 까지 접으면 팔꿈치 주름에서 소매가 팔 속으로 삼켜진다
+    # (RadioAlert f40, 20.1mm). 47% 로 풀어도 '어깨 마이크를 누르는' 자세로 읽힌다.
+    "L", sh_l + Vector((0.010, -0.112, -0.082)), sh_l + Vector((0.106, -0.014, -0.090)),
     elbow_w=0.008, start=P["base_L"])
 rep["arm_poses"]["radio_L"] = {"hand_err_m": round(_e, 4)}
 if _e > 0.045:
@@ -1964,9 +2033,11 @@ def f_chase(f):
     # rx 양수가 '앞으로 숙임'이다(ACT-06 실측). 여기에 음수를 넣어 뒤로 젖힌
     # 채 달리고 있었다. 달릴 때는 상체가 앞으로 기울고, 머리는 그만큼
     # 반대로 들어 전방을 봐야 한다.
-    d["Chest"]["rot"] = [base_upper("Chest")[0] + 15.0, sw * 4.0, 0.0]
-    d["Spine"]["rot"] = [base_upper("Spine")[0] + 8.0, sw * 2.0, 0.0]
-    d["Head"]["rot"] = [base_upper("Head")[0] - 11.0, -sw * 2.0, 0.0]
+    # 사람은 달릴 때 눕듯이 젖히지도, 엎드리듯 접지도 않는다.
+    # 진행 방향으로 '살짝' 기울 뿐이다. 흉부 총 9도면 충분하다.
+    d["Chest"]["rot"] = [base_upper("Chest")[0] + 10.5, sw * 4.0, 0.0]
+    d["Spine"]["rot"] = [base_upper("Spine")[0] + 5.0, sw * 2.0, 0.0]
+    d["Head"]["rot"] = [base_upper("Head")[0] - 7.0, -sw * 2.0, 0.0]
     return d
 
 
