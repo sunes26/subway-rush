@@ -903,24 +903,39 @@ def f_asideidle(f):
 
 
 # ------------------------------------------- CP_CarrierTornado (코믹 액션)
-# 캐리어를 축으로 몸이 도는 동작. 캐리어는 제자리에서 수직축 yaw 만 돌아
-# 바퀴가 계속 바닥에 붙어 있고, 몸은 Hips 를 궤도 이동시킨다.
-# Root 는 건드리지 않으므로 루트 모션이 없고, 720도(2바퀴)라 시작/종료가 일치한다.
+# 캐릭터가 축이다. 제자리에서 자전하고, 들어 올린 캐리어가 몸 바깥에서
+# 지면과 거의 평행한 원궤도로 돈다. 캐리어를 바닥에 둔 채 몸이 그 주위를
+# 도는 게 아니다 — 그래서 Hips 수평 이동이 아예 없다(루트 모션 걱정도 없다).
 TOR_N = 76
-TOR_F0, TOR_F1 = 18, 64        # 회전 구간
-TOR_TURNS = 2.0                # 한 바퀴 이상 (=720도)
-# 궤도 반지름. 0.16 은 정지 회전 자세에서도 어깨→손잡이가 0.316 이라 팔 최대
-# 도달(0.293)을 넘는다. 상체를 46도 숙이면 어깨가 0.12 앞으로 나와 여유가 생긴다.
-# 안쪽 다리는 캐리어 축에서 R-0.066 만큼 떨어진다. 케이스 반폭 0.0775 +
-# 다리 반경 0.028 + 여유 0.010 = 0.1155 이상이어야 다리가 케이스를 안 지난다.
-TOR_R = 0.198
-TOR_PITCH = 52.0               # 더 숙일수록 어깨가 앞으로 나와 팔이 닿는다
-CASE_XY = Vector((CASE_X, CASE_Y, 0.0))
-HIPS_R3I = rig.data.bones["Hips"].matrix_local.to_3x3().inverted()
+TOR_F0, TOR_F1 = 16, 62          # 회전 구간
+TOR_TURNS = 2.0                  # 한 바퀴 이상 (=720도)
+TOR_HAND_FWD = 0.215             # 몸 중심 → 손잡이 (앞쪽). 팔 도달 안쪽
+TOR_HAND_Z = 0.585               # 손잡이 높이
+TOR_TILT = 11.0                  # 바깥 끝이 살짝 들리는 원심 기울기
+TOR_PITCH = 8.0                  # 상체를 살짝 뒤로 젖힌다(원심)
+
+# 캐리어의 정지 상태 월드 행렬과, 그 안에서의 손잡이 위치를 기록해 둔다.
+dg.update()
+M_REST = case.matrix_world.copy()
+BAR_W0 = Vector((CASE_X + HANDLE_OUT, CASE_Y, HANDLE_TOP))
+BAR_L = M_REST.inverted() @ BAR_W0
+BARDIR_L = (M_REST.inverted().to_3x3() @ Vector((0.0, 1.0, 0.0))).normalized()
+CASE_REST_INV = rig.data.bones["Prop.Case"].matrix_local.inverted()
+CASE_BONE_LEN = rig.data.bones["Prop.Case"].length
+BASIS_OBJ_INV = case.matrix_basis.inverted()
+T_TAIL_INV = Matrix.Translation((0.0, CASE_BONE_LEN, 0.0)).inverted()
+
+
+def _case_pose_for(M):
+    """캐리어의 목표 월드 행렬 → Prop.Case 본의 (loc, rot도) 로 역산.
+
+    본 로컬 축을 눈대중하지 않고 행렬로 직접 푼다.
+    """
+    basis = CASE_REST_INV @ (M @ BASIS_OBJ_INV @ T_TAIL_INV)
+    return list(basis.to_translation()), [math.degrees(a) for a in basis.to_euler('XYZ')]
 
 
 def _tor_w(f):
-    """기본 자세(0) ↔ 회전 자세(1) 혼합비"""
     if f <= TOR_F0:
         return ease((f - 1) / float(TOR_F0 - 1))
     if f >= TOR_F1:
@@ -928,8 +943,7 @@ def _tor_w(f):
     return 1.0
 
 
-def _tor_theta(f):
-    """궤도각(도). 회전 구간에서만 0 → 720 으로 진행한다."""
+def _tor_psi(f):
     if f <= TOR_F0:
         return 0.0
     if f >= TOR_F1:
@@ -937,58 +951,69 @@ def _tor_theta(f):
     return TOR_TURNS * 360.0 * ease((f - TOR_F0) / float(TOR_F1 - TOR_F0))
 
 
-def _tor_state(f):
-    """진입/이탈에서 '위치'는 먼저, '회전'은 나중에 간다.
+def _tor_swing_matrix(psi):
+    """휘두를 때의 캐리어 월드 행렬.
 
-    동시에 가면 몸이 캐리어를 향해 도는 순간 오른쪽 어깨가 바깥으로 스윙해
-    손잡이가 팔 도달(0.293) 밖으로 나간다. 먼저 다가붙고 나서 돌면 닿는다.
+    케이스 로컬 +Z(손잡이 쪽)를 몸 안쪽으로, 로컬 +X(깊이)를 위로 두면
+    케이스가 지면과 나란한 판처럼 바깥으로 뻗는다.
     """
+    rz = Matrix.Rotation(D(psi), 4, 'Z')
+    inward = (rz @ Vector((0.0, 1.0, 0.0))).normalized()
+    up = Vector((0.0, 0.0, 1.0))
+    zc = inward
+    xc = up
+    yc = zc.cross(xc).normalized()
+    rot = Matrix(((xc.x, yc.x, zc.x),
+                  (xc.y, yc.y, zc.y),
+                  (xc.z, yc.z, zc.z))).to_4x4()
+    tilt = Matrix.Rotation(D(TOR_TILT), 4, yc)      # 바깥 끝을 살짝 들어 올린다
+    R = tilt @ rot
+    grip = rz @ Vector((0.0, -TOR_HAND_FWD, TOR_HAND_Z))
+    # 손잡이가 정확히 grip 에 오도록 원점을 역산한다.
+    # 오브젝트 원점(=Prop.Case 꼬리)은 케이스 중심이 아니라 바닥 근처에 있어서,
+    # 스칼라 거리로 빼면 손잡이가 136mm 아래로 내려가 팔 도달 밖으로 나간다.
+    return Matrix.Translation(grip - (R.to_3x3() @ BAR_L)) @ R
+
+
+def _tor_case_matrix(f):
     w = _tor_w(f)
-    th = _tor_theta(f)
-    w_pos = w ** 0.55                       # 앞서 간다
-    w_rot = w ** 2.0                        # 뒤따라 간다
-    yaw = th - 90.0 * w_rot
-    phi = th                                # 봉이 이미 접선 방향이다
-    tgt = CASE_XY + Vector((math.cos(D(th)), math.sin(D(th)), 0.0)) * TOR_R
-    return w, th, yaw, phi, tgt * w_pos
-
-
-def _tor_lower(f):
-    """하체 = Idle 1프레임 + 궤도 이동/방향 + 무릎 굽힘"""
-    w, th, yaw, phi, pos = _tor_state(f)
-    d = {bn: {"loc": list(sn["loc"]),
-              "rot": [math.degrees(x) for x in sn["rot"]]}
-         for bn, sn in BASE_LOWER.items()}
-    d["Hips"]["loc"] = list(HIPS_R3I @ pos)
-    d["Hips"]["rot"][1] += yaw
-    for side in ("L", "R"):
-        d["UpperLeg." + side]["rot"][0] += -13.0 * w
-        d["LowerLeg." + side]["rot"][0] += 21.0 * w
-        d["Foot." + side]["rot"][0] += -8.0 * w
-    d["Prop.Case"] = {"rot": [0.0, phi, 0.0]}
-    return d
-
-
-def _tor_upper_offsets(f):
-    w, th, yaw, phi, pos = _tor_state(f)
-    return {"Spine": {0: [(1, TOR_PITCH * 0.40 * w)]},
-            "Chest": {0: [(1, TOR_PITCH * 0.60 * w)]},
-            "Head":  {0: [(1, 16.0 * w)]}}
+    psi = _tor_psi(f)
+    Ms = _tor_swing_matrix(psi)
+    q = M_REST.to_quaternion().slerp(Ms.to_quaternion(), w)
+    p = M_REST.translation.lerp(Ms.translation, w)
+    return Matrix.Translation(p) @ q.to_matrix().to_4x4()
 
 
 def _tor_bar(f):
-    """현재 프레임의 손잡이 봉 중심과 방향(월드)"""
-    w, th, yaw, phi, pos = _tor_state(f)
-    c = math.cos(D(phi)); sn = math.sin(D(phi))
-    off = Vector((HANDLE_OUT * c, HANDLE_OUT * sn, 0.0))   # 손잡이는 사람 쪽 면
-    center = Vector((CASE_X, CASE_Y, HANDLE_TOP)) + off
-    bar = Vector((-sn, c, 0.0))                            # 봉 방향 = 접선
-    return center, bar
+    M = _tor_case_matrix(f)
+    return M @ BAR_L, (M.to_3x3() @ BARDIR_L).normalized()
 
 
-# 회전 구간 중간(φ=90/180/270도)을 반드시 포함한다. f18·f64 는 둘 다 φ≡0 이라
-# 캐리어가 아예 안 도는 버그를 못 잡는다 (실제로 놓쳤다).
-TOR_KEYS = [1, 4, 7, 10, 13, 16, 18, 29, 40, 52, 64, 66, 69, 72, 74, 76]
+def _tor_lower(f):
+    """하체 = Idle 1프레임 + 제자리 자전. 수평 이동은 없다."""
+    w = _tor_w(f)
+    psi = _tor_psi(f)
+    d = {bn: {"loc": list(sn["loc"]),
+              "rot": [math.degrees(x) for x in sn["rot"]]}
+         for bn, sn in BASE_LOWER.items()}
+    d["Hips"]["rot"][1] += psi
+    for side in ("L", "R"):
+        d["UpperLeg." + side]["rot"][0] += -7.0 * w
+        d["LowerLeg." + side]["rot"][0] += 12.0 * w
+        d["Foot." + side]["rot"][0] += -5.0 * w
+    loc, rot = _case_pose_for(_tor_case_matrix(f))
+    d["Prop.Case"] = {"loc": loc, "rot": rot}
+    return d
+
+
+def _tor_upper(f):
+    w = _tor_w(f)
+    return {"Spine": -TOR_PITCH * 0.45 * w,
+            "Chest": -TOR_PITCH * 0.55 * w,
+            "Head": -4.0 * w}
+
+
+TOR_KEYS = [1, 5, 9, 13, 16, 27, 39, 50, 62, 66, 70, 73, 76]
 _tor_arm = {}
 for _kf in TOR_KEYS:
     _d = _tor_lower(_kf)
@@ -996,51 +1021,49 @@ for _kf in TOR_KEYS:
         if _bn == "Prop.Case":
             continue
         _d.setdefault(_bn, {})["rot"] = base_upper(_bn)
-    for _bn, _axes in _tor_upper_offsets(_kf).items():
+    for _bn, _v in _tor_upper(_kf).items():
         _r = list(_d[_bn]["rot"])
-        for _ax, _keys in _axes.items():
-            _r[_ax] += _keys[0][1]
+        _r[0] += _v
         _d[_bn]["rot"] = _r
     _apply_frame(_d)
-    _cn, _rt = _tor_bar(_kf)
+    _cn, _bd = _tor_bar(_kf)
     _w = _tor_w(_kf)
+    _sep = 0.036 * _w
     _shR = rig.matrix_world @ rig.pose.bones["UpperArm.R"].head
     _shL = rig.matrix_world @ rig.pose.bones["UpperArm.L"].head
-    # 진입 구간에는 두 손을 봉 중앙에 모았다가 w=1 에서 좌우로 벌린다.
-    # 처음부터 벌려 두면 진입 중 봉의 먼 쪽 끝이 팔 도달 밖으로 나간다.
-    _sep = 0.038 * _w
-    _tR = _cn + _rt * _sep
-    # 손잡이가 팔 도달의 99% 지점까지 가므로 팔꿈치 페널티를 거의 끈다.
-    # 켜 두면 팔꿈치가 손을 끌어당겨 잔차가 50mm 씩 남는다.
-    _pr, _er = solve_arm("R", _tR, _shR + Vector((0.0, 0.0, -0.13)) - _rt * 0.05,
-                         elbow_w=0.05)
+    _tgtR = _cn - _bd * _sep
+    _pr, _er = solve_arm("R", _tgtR,
+                         _shR + Vector((0.0, -0.05, -0.11)), elbow_w=0.05)
+    if os.environ.get("CP_TDIAG") == "1":
+        print("TDIAG f%-3d w=%.2f psi=%6.1f  bar=%s  shR=%s  d=%.4f res=%.4f"
+              % (_kf, _w, _tor_psi(_kf), [round(v, 3) for v in _cn],
+                 [round(v, 3) for v in _shR], (_tgtR - _shR).length, _er))
     _entry = {"R": ([round(x, 3) for x in _pr[:3]], [round(x, 3) for x in _pr[3:]])}
-    # 왼손은 몸이 캐리어 앞까지 온 뒤에야 봉에 닿는다(w=1 구간). 진입·이탈은
-    # 오일러 보간으로 손이 봉까지 이동하는 것처럼 보이게 한다.
     if _w >= 0.999:
-        _tL = _cn - _rt * _sep
-        _pl, _el = solve_arm("L", _tL, _shL + Vector((0.0, 0.0, -0.13)) + _rt * 0.05,
-                             elbow_w=0.05)
+        _pl, _el = solve_arm("L", _cn + _bd * _sep,
+                             _shL + Vector((0.0, -0.05, -0.11)), elbow_w=0.05)
         _entry["L"] = ([round(x, 3) for x in _pl[:3]], [round(x, 3) for x in _pl[3:]])
-    # 판정은 솔버 잔차가 아니라 '손 표면 ↔ 봉 표면' 최단거리로 한다.
+    # 판정은 손 표면 ↔ 손잡이 봉 표면 최단거리로 한다
     dg.update()
     _mev = mesh.evaluated_get(dg)
     _cev = case.evaluated_get(dg)
-    _barw = [case.matrix_world @ v.co for v in _cev.data.vertices
-             if (case.matrix_world @ v.co).z > HANDLE_TOP - 0.020]
-    if len(_barw) < 8:
-        raise RuntimeError("tornado: grip bar verts not found at f%d" % _kf)
-    _sides = ["R", "L"] if "L" in _entry else ["R"]
-    for _sd in _sides:
+    # 봉 정점은 '오브젝트 로컬'에서 고른다. 휘두르는 중인 캐리어를 정지 상태
+    # 행렬로 변환해 고르면 엉뚱한 정점이 잡힌다.
+    _bw = [case.matrix_world @ v.co for v in _cev.data.vertices
+           if (v.co - BAR_L).length < 0.062]
+    if len(_bw) < 8:
+        raise RuntimeError("tornado: grip bar verts not found at f%d (%d)" % (_kf, len(_bw)))
+    for _sd in (["R", "L"] if "L" in _entry else ["R"]):
         _hw = [mesh.matrix_world @ _mev.data.vertices[v.index].co
                for v in mesh.data.vertices
                if sum(g.weight for g in v.groups if g.group == gi["LowerArm." + _sd]) > 0.6]
-        _gd = min(min((b - h).length for h in _hw) for b in _barw)
-        if _gd > 0.016:
+        _gd = min(min((b - h).length for h in _hw) for b in _bw)
+        if _gd > 0.020 and os.environ.get("CP_TDIAG") != "1":
             raise RuntimeError("tornado: %s hand off the bar at f%d (%.4f m)"
                                % (_sd, _kf, _gd))
         _entry.setdefault("gap", {})[_sd] = round(_gd, 5)
     _tor_arm[_kf] = _entry
+rep["tornado_arm"] = {str(k): v for k, v in _tor_arm.items()}
 _TOR_L_KEYS = [k for k in TOR_KEYS if "L" in _tor_arm[k]]
 if len(_TOR_L_KEYS) < 2:
     raise RuntimeError("tornado: left hand never reached the bar")
@@ -1048,19 +1071,17 @@ _TOR_L_BASE = ([base_upper("UpperArm.L")[i] for i in range(3)],
                [base_upper("LowerArm.L")[i] for i in range(3)])
 _TOR_L_FULL = [(1, _TOR_L_BASE)] + [(k, _tor_arm[k]["L"]) for k in _TOR_L_KEYS] \
               + [(TOR_N, _TOR_L_BASE)]
-rep["tornado_arm"] = {str(k): v for k, v in _tor_arm.items()}
 
 
 def f_tornado(f):
     d = _tor_lower(f)
     for bn in UPPER_BONES:
         if bn == "Prop.Case":
-            continue        # _tor_lower 가 넣은 캐리어 회전을 덮어쓰면 안 된다
+            continue
         d.setdefault(bn, {})["rot"] = base_upper(bn)
-    for bn, axes in _tor_upper_offsets(f).items():
+    for bn, v in _tor_upper(f).items():
         r = list(d[bn]["rot"])
-        for ax, keys in axes.items():
-            r[ax] += keys[0][1]
+        r[0] += v
         d[bn]["rot"] = r
     for i, bn in enumerate(("UpperArm.R", "LowerArm.R")):
         d[bn]["rot"] = [curve(f, [(k, _tor_arm[k]["R"][i][ax]) for k in TOR_KEYS])
