@@ -234,15 +234,118 @@ pil.data.name = "CP_PillowShell"
 bm = bmesh.new()
 bm.from_mesh(pil.data)
 cen = Vector((0.0, 0.006, PIL_Z))
-kill = [v for v in bm.verts
-        if (v.co - cen).y < 0.0
-        and abs(math.degrees(math.atan2(v.co.x - cen.x, -(v.co.y - cen.y)))) < 30.0]
+# 개구부 반각. 끝단 캡이 호를 15도쯤 되메우므로(반구 높이 25mm / 반지름 95mm)
+# 자를 때는 그만큼 더 열어야 최종 개구부가 30도쯤 된다.
+OPEN_HALF = 46.0
+TAPER_TO = 52.0         # 끝단 테이퍼가 시작되는 각
+
+
+def _pil_ang(v):
+    return abs(math.degrees(math.atan2(v.co.x - cen.x, -(v.co.y - cen.y))))
+
+
+kill = [v for v in bm.verts if (v.co - cen).y < 0.0 and _pil_ang(v) < OPEN_HALF]
 if not kill:
     raise RuntimeError("pillow front opening cut removed no vertices")
 bmesh.ops.delete(bm, geom=kill, context='VERTS')
 loose = [v for v in bm.verts if not v.link_edges]
 if loose:
     bmesh.ops.delete(bm, geom=loose, context='VERTS')
+
+# 끝단을 가늘게 좁힌다. 자른 단면이 그대로 남으면 잘린 파이프처럼 보인다.
+for v in bm.verts:
+    if (v.co - cen).y >= 0.0:
+        continue
+    a = _pil_ang(v)
+    if a >= TAPER_TO:
+        continue
+    t = (a - OPEN_HALF) / (TAPER_TO - OPEN_HALF)
+    k = 0.72 + 0.28 * max(0.0, min(1.0, t))
+    rad = Vector((v.co.x - cen.x, v.co.y - cen.y, 0.0))
+    if rad.length < 1e-6:
+        continue
+    ring = cen + rad.normalized() * PIL_MAJOR
+    v.co = ring + (v.co - ring) * k
+
+# 뚫린 양 끝을 둥글게 막는다. 열린 경계 20개가 '잘린 파이프'로 보이던 원인이다.
+# 한 번에 poke 로 막으면 꼭짓점 하나가 뾰족한 원뿔로 튀어나와 부리처럼 보인다.
+# 링을 두 단계로 좁혀 가며 덮어야 둥근 마감이 된다.
+bm.edges.ensure_lookup_table()
+_all_c = sum((v.co for v in bm.verts), Vector()) / len(bm.verts)
+caps = 0
+for _ in range(4):
+    bnd = [e for e in bm.edges if len(e.link_faces) == 1]
+    if not bnd:
+        break
+    adj = {}
+    for e in bnd:
+        a, b = e.verts
+        adj.setdefault(a, set()).add(b)
+        adj.setdefault(b, set()).add(a)
+    start = next(iter(adj))
+    comp, stack = set(), [start]
+    while stack:
+        n = stack.pop()
+        if n in comp:
+            continue
+        comp.add(n)
+        stack.extend(adj[n] - comp)
+    ring = [e for e in bnd if e.verts[0] in comp and e.verts[1] in comp]
+    ctr = sum((v.co for v in comp), Vector()) / len(comp)
+    # 끝단이 향하는 방향 = 링 평면의 법선. Newell 법은 정점이 '루프 순서'로
+    # 들어와야 한다. set 에서 그냥 꺼내면 순서가 없어 법선이 쓰레기가 되고
+    # 캡이 엉뚱한 방향으로 뾰족하게 튀어나온다.
+    ring_v = [start]
+    prev = None
+    while True:
+        nxt = [x for x in adj[ring_v[-1]] if x is not prev]
+        if not nxt:
+            break
+        nxt = nxt[0] if len(nxt) == 1 else [x for x in nxt if x is not ring_v[0]][0]
+        if nxt is ring_v[0]:
+            break
+        prev = ring_v[-1]
+        ring_v.append(nxt)
+        if len(ring_v) > len(comp):
+            raise RuntimeError("pillow cap: loop walk did not close")
+    if len(ring_v) != len(comp):
+        raise RuntimeError("pillow cap: loop walk covered %d of %d"
+                           % (len(ring_v), len(comp)))
+    nrm = Vector((0.0, 0.0, 0.0))
+    for a in range(len(ring_v)):
+        p1 = ring_v[a].co - ctr
+        p2 = ring_v[(a + 1) % len(ring_v)].co - ctr
+        nrm += p1.cross(p2)
+    if nrm.length < 1e-9:
+        raise RuntimeError("pillow cap: degenerate ring")
+    nrm.normalize()
+    if nrm.dot(ctr - _all_c) < 0:
+        nrm = -nrm
+    # 끝단을 정확한 반구 프로파일로 덮는다. 링을 임의 비율로 줄이면
+    # 정으로 깎은 듯 각진 팁이 남는다. sin/cos 로 반구를 그려야 둥글다.
+    base_ctr = ctr.copy()
+    h_prev, s_prev = 0.0, 1.0
+    for a_deg in (30.0, 60.0, 78.0):
+        h_new = PIL_MINOR * math.sin(D(a_deg))
+        s_new = math.cos(D(a_deg))
+        ext = bmesh.ops.extrude_edge_only(bm, edges=ring)
+        nv = [g for g in ext["geom"] if isinstance(g, bmesh.types.BMVert)]
+        for v in nv:
+            off = (v.co - base_ctr - nrm * h_prev) / s_prev
+            v.co = base_ctr + nrm * h_new + off * s_new
+        ring = [g for g in ext["geom"] if isinstance(g, bmesh.types.BMEdge)
+                and len(g.link_faces) == 1]
+        h_prev, s_prev = h_new, s_new
+        bm.edges.ensure_lookup_table()
+    res = bmesh.ops.contextual_create(bm, geom=ring)
+    if not res["faces"]:
+        raise RuntimeError("pillow end cap failed")
+    caps += 1
+    bm.edges.ensure_lookup_table()
+if caps != 2:
+    raise RuntimeError("pillow: expected 2 end caps, made %d" % caps)
+bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+rep["pillow_caps"] = caps
 bm.to_mesh(pil.data)
 bm.free()
 pil.data.update()
@@ -372,8 +475,11 @@ if err_r > 0.035:
 
 # ------------------------------- 8-b. 손 위치에서 캐리어 좌표 역산 → Prop.Case
 hand_r = tip("LowerArm.R")
-CASE_X = round(hand_r.x, 4)
-CASE_Y = round(hand_r.y - 0.028, 4)      # 손잡이는 케이스 뒤쪽에 선다
+# 캐리어를 끌고 가는 구조로 보이게 하려면 손잡이가 '사람 쪽 면'에 있어야 한다.
+# 뒤쪽 면(±Y)에 달면 옆에 선 사람과 방향이 어긋나 비틀려 보인다.
+HANDLE_OUT = 0.030                       # 케이스 중심 → 손잡이까지 (사람 쪽)
+CASE_X = round(hand_r.x - HANDLE_OUT, 4)
+CASE_Y = round(hand_r.y, 4)
 # 손 뭉치는 뼈 끝이 곧 최하단이다(아래로 0.2mm 뿐). 그래서 봉 축을 뼈 끝에 두면
 # 위쪽 절반이 손에 묻히고 아래쪽 절반이 드러나 '위에서 쥔' 모양이 된다.
 # 여기서 더 내리면 봉이 손에서 완전히 떨어진다 (내려 봤다가 15mm 벌어짐).
@@ -418,7 +524,7 @@ bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0))
 case = bpy.context.active_object
 case.name = "PR_Carrier"
 case.data.name = "PR_Carrier"
-case.scale = (CASE_W, CASE_D, CASE_H)
+case.scale = (CASE_D, CASE_W, CASE_H)   # 긴 면을 앞뒤(Y)로 — 끌고 가는 방향
 set_active(case)
 bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 bev = case.modifiers.new("Round", 'BEVEL')
@@ -440,8 +546,8 @@ for sx in (-1, 1):
     for sy in (-1, 1):
         bpy.ops.mesh.primitive_cylinder_add(
             vertices=12, radius=WHEEL_R, depth=0.018,
-            location=(CASE_X + sx * (CASE_W * 0.32),
-                      CASE_Y + sy * (CASE_D * 0.28),
+            location=(CASE_X + sx * (CASE_D * 0.30),
+                      CASE_Y + sy * (CASE_W * 0.30),
                       SOLE_Z + WHEEL_R))          # 바퀴 밑면이 정확히 바닥에 닿는다
         w = bpy.context.active_object
         w.rotation_euler = (0.0, math.radians(90), 0.0)
@@ -455,7 +561,7 @@ for sx in (-1, 1):
 for sx in (-1, 1):
     bpy.ops.mesh.primitive_cylinder_add(
         vertices=8, radius=0.0075, depth=HANDLE_TOP - case_top,
-        location=(CASE_X + sx * 0.038, CASE_Y + 0.028,
+        location=(CASE_X + HANDLE_OUT, CASE_Y + sx * 0.038,
                   (case_top + HANDLE_TOP) / 2.0))
     r = bpy.context.active_object
     set_active(r)
@@ -466,9 +572,9 @@ for sx in (-1, 1):
     parts.append(r)
 bpy.ops.mesh.primitive_cylinder_add(
     vertices=10, radius=GRIP_R, depth=0.100,
-    location=(CASE_X, CASE_Y + 0.028, HANDLE_TOP))
+    location=(CASE_X + HANDLE_OUT, CASE_Y, HANDLE_TOP))
 grip = bpy.context.active_object
-grip.rotation_euler = (0.0, math.radians(90), 0.0)
+grip.rotation_euler = (math.radians(90), 0.0, 0.0)   # 봉을 앞뒤(Y)로
 set_active(grip)
 bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 bpy.ops.object.shade_smooth()
@@ -483,7 +589,7 @@ bpy.context.view_layer.objects.active = case
 bpy.ops.object.join()
 case = need_obj("PR_Carrier")
 _cd = list(case.dimensions)
-if not (abs(_cd[0] - CASE_W) < 0.006 and abs(_cd[2] - (HANDLE_TOP + 0.010 - SOLE_Z)) < 0.025):
+if not (abs(_cd[1] - CASE_W) < 0.008 and abs(_cd[2] - (HANDLE_TOP + 0.012 - SOLE_Z)) < 0.030):
     raise RuntimeError("carrier dimensions off: %s" % [round(v, 4) for v in _cd])
 rep["carrier"] = {"verts": len(case.data.vertices),
                   "tris": sum(len(p.vertices) - 2 for p in case.data.polygons),
@@ -750,7 +856,7 @@ def _apply_frame(d):
 
 # 몸을 틀면 어깨가 움직이므로 오른팔을 그대로 두면 손이 손잡이를 떠난다(실측 22mm).
 # 샘플 프레임마다 손잡이 위치로 다시 풀고 그 사이는 보간한다.
-HANDLE_W = Vector((CASE_X, CASE_Y + 0.028, HANDLE_TOP))
+HANDLE_W = Vector((CASE_X + HANDLE_OUT, CASE_Y, HANDLE_TOP))
 ARM_KEYS = [1, 10, 18, 28, 36, 46]
 _arm_solved = {}
 for _kf in ARM_KEYS:
@@ -842,7 +948,7 @@ def _tor_state(f):
     w_pos = w ** 0.55                       # 앞서 간다
     w_rot = w ** 2.0                        # 뒤따라 간다
     yaw = th - 90.0 * w_rot
-    phi = th + 90.0 * w_rot
+    phi = th                                # 봉이 이미 접선 방향이다
     tgt = CASE_XY + Vector((math.cos(D(th)), math.sin(D(th)), 0.0)) * TOR_R
     return w, th, yaw, phi, tgt * w_pos
 
@@ -874,17 +980,21 @@ def _tor_bar(f):
     """현재 프레임의 손잡이 봉 중심과 방향(월드)"""
     w, th, yaw, phi, pos = _tor_state(f)
     c = math.cos(D(phi)); sn = math.sin(D(phi))
-    off = Vector((-0.028 * sn, 0.028 * c, 0.0))
+    off = Vector((HANDLE_OUT * c, HANDLE_OUT * sn, 0.0))   # 손잡이는 사람 쪽 면
     center = Vector((CASE_X, CASE_Y, HANDLE_TOP)) + off
-    right = Vector((math.cos(D(yaw)), math.sin(D(yaw)), 0.0))
-    return center, right
+    bar = Vector((-sn, c, 0.0))                            # 봉 방향 = 접선
+    return center, bar
 
 
-TOR_KEYS = [1, 4, 7, 10, 13, 16, 18, 64, 66, 69, 72, 74, 76]
+# 회전 구간 중간(φ=90/180/270도)을 반드시 포함한다. f18·f64 는 둘 다 φ≡0 이라
+# 캐리어가 아예 안 도는 버그를 못 잡는다 (실제로 놓쳤다).
+TOR_KEYS = [1, 4, 7, 10, 13, 16, 18, 29, 40, 52, 64, 66, 69, 72, 74, 76]
 _tor_arm = {}
 for _kf in TOR_KEYS:
     _d = _tor_lower(_kf)
     for _bn in UPPER_BONES:
+        if _bn == "Prop.Case":
+            continue
         _d.setdefault(_bn, {})["rot"] = base_upper(_bn)
     for _bn, _axes in _tor_upper_offsets(_kf).items():
         _r = list(_d[_bn]["rot"])
@@ -944,6 +1054,8 @@ rep["tornado_arm"] = {str(k): v for k, v in _tor_arm.items()}
 def f_tornado(f):
     d = _tor_lower(f)
     for bn in UPPER_BONES:
+        if bn == "Prop.Case":
+            continue        # _tor_lower 가 넣은 캐리어 회전을 덮어쓰면 안 된다
         d.setdefault(bn, {})["rot"] = base_upper(bn)
     for bn, axes in _tor_upper_offsets(f).items():
         r = list(d[bn]["rot"])

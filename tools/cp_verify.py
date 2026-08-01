@@ -133,8 +133,8 @@ ACTS = {"CP_Idle": (61, True), "CP_MoveAside": (46, False),
 # 토네이도는 캐리어를 축으로 몸이 도는 동작이라 Hips 가 궤도 이동한다.
 # Root 는 어느 액션에서도 수평 이동이 없어야 하고(=루트 모션 없음), Hips 는
 # 이 액션에서만 허용하되 시작·종료가 0 으로 닫혀야 제자리 애니메이션이다.
-# 상한 = 캐리어까지 거리(0.224) + 궤도 반지름(0.198) ≈ 0.42
-HIPS_ORBIT_OK = {"CP_CarrierTornado": 0.45}
+# 상한 = 캐리어 축까지 거리(0.254) + 궤도 반지름(0.198) ≈ 0.452
+HIPS_ORBIT_OK = {"CP_CarrierTornado": 0.48}
 # 회전 중 발이 미끄러지는 건 설계다 — MC 대비 판정에서 제외한다.
 SLIDE_EXEMPT = {"CP_CarrierTornado"}
 acts_in_file = sorted(a.name for a in bpy.data.actions)
