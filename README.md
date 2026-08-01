@@ -163,8 +163,9 @@ UpperArm                      rx +  = 뒤로
   | 프롭 | 부모 본 | 언제 보인다 |
   |---|---|---|
   | `PR_Taser` | `Prop.R` (팔) | `SS_Taser*` · `SS_Chase` · `SS_RadioAlert` |
-  | `PR_TaserStowed` | **`Hips`** (허리) | 그 외 전부 — 벨트 파우치에 꽂힌 상태 |
+  | `PR_TaserStowed` | **`Hips`** (허리) | 그 외 전부 — 우측 벨트 파우치에 꽂힌 상태 |
   | `PR_Baton` | `Prop.R` (팔) | 삼단봉 버전. 테이저 대신 |
+  | `PR_BatonStowed` | **`Hips`** (허리) | 삼단봉 버전의 비휴대 상태 — 좌측 벨트 링 |
 
   파우치 사본을 `Prop.R` 에 매달면 팔을 따라 날아간다 — 반드시 `Hips` 다.
   `.blend` 기본값은 '든' 상태이고, 프리뷰는 `SS_BATON=1` 로 봉 버전을 따로 뽑는다.

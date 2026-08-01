@@ -36,8 +36,9 @@ _baton = bpy.data.objects.get("PR_Baton")
 if _taser is None or _baton is None:
     raise RuntimeError("props missing: PR_Taser / PR_Baton")
 _stow = bpy.data.objects.get("PR_TaserStowed")
-if _stow is None:
-    raise RuntimeError("PR_TaserStowed missing")
+_bstow = bpy.data.objects.get("PR_BatonStowed")
+if _stow is None or _bstow is None:
+    raise RuntimeError("stowed props missing")
 
 
 # 총을 손에 드는 클립은 Taser 계열과 추격·보고뿐이다.
@@ -49,9 +50,9 @@ HAND_CLIPS = {"SS_TaserDraw", "SS_TaserAim", "SS_TaserWarn", "SS_TaserFire",
 def set_props(action_name):
     in_hand = action_name in HAND_CLIPS
     _taser.hide_render = BATON or not in_hand
-    # 봉 버전 프리뷰는 늘 들고 있는 상태로 본다 — 봉의 파우치 사본은 없다.
-    _baton.hide_render = not BATON
+    _baton.hide_render = BATON is False or not in_hand
     _stow.hide_render = in_hand or BATON
+    _bstow.hide_render = in_hand or (not BATON)
 
 
 set_props("SS_Idle")

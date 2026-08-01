@@ -28,6 +28,7 @@ mesh = need("SS_Character")
 prop = need("PR_Taser")
 baton = need("PR_Baton")   # 대체 프롭 — 같은 Prop.R, 엔진이 하나만 보인다
 stow = need("PR_TaserStowed")   # 벨트 파우치에 꽂힌 사본 — Hips 에 매달린다
+bstow = need("PR_BatonStowed")  # 벨트 링에 꽂힌 봉 사본 — Hips
 sc = bpy.context.scene
 dg = bpy.context.evaluated_depsgraph_get()
 
@@ -37,7 +38,7 @@ if sc.render.fps != 30:
     fail("fps != 30")
 
 R["transforms"] = {}
-for o in (rig, mesh, prop, baton, stow):
+for o in (rig, mesh, prop, baton, stow, bstow):
     R["transforms"][o.name] = {"loc": [round(v, 6) for v in o.location],
                                "rot": [round(math.degrees(v), 4) for v in o.rotation_euler],
                                "scale": [round(v, 6) for v in o.scale]}
@@ -49,7 +50,8 @@ for o in (rig, mesh):
     if max(abs(v) for v in o.rotation_euler) > 1e-6:
         fail("%s rotation not zero" % o.name)
 
-for _o, _bn in ((prop, "Prop.R"), (baton, "Prop.R"), (stow, "Hips")):
+for _o, _bn in ((prop, "Prop.R"), (baton, "Prop.R"), (stow, "Hips"),
+                (bstow, "Hips")):
     if _o.parent is not rig or _o.parent_type != 'BONE' or _o.parent_bone != _bn:
         fail("%s not bone-parented to %s" % (_o.name, _bn))
     if _o.vertex_groups:
@@ -129,9 +131,9 @@ if flipped:
 
 # ---------------------------------------------------------- 애니메이션 검증
 ACTS = {"SS_Idle": (61, True), "SS_Walk": (31, True), "SS_Radio": (61, False),
-        "SS_Guide": (40, False), "SS_TaserDraw": (19, False), "SS_TaserAim": (46, True),
+        "SS_Guide": (40, False), "SS_TaserDraw": (23, False), "SS_TaserAim": (46, True),
         "SS_TaserWarn": (31, False), "SS_RadioAlert": (46, False),
-        "SS_TaserHolster": (19, False), "SS_Chase": (19, True), "SS_TaserFire": (25, False)}
+        "SS_TaserHolster": (23, False), "SS_Chase": (19, True), "SS_TaserFire": (25, False)}
 
 # MC 원본 실측 (tools 주석 참조 — SS 검사기와 동일한 방식으로 잰 값)
 MC_SLIDE = {"Idle": {"L": 0.0, "R": 0.0},
@@ -303,6 +305,7 @@ for name in sorted(ACTS):
     loop_delta = None
     stow_drift = 0.0
     stow_ref = None
+    stow_refs = {}
     for f in range(1, nf + 1):
         sc.frame_set(f)
         dg.update()
@@ -378,6 +381,17 @@ for name in sorted(ACTS):
                 pen["garment"], pen["garment_frame"] = depth, f
         # 파우치 사본은 Hips 자식이라 상체를 틀어도 허리를 따라간다.
         # Prop.R 에 잘못 붙으면 팔을 따라 날아가므로 여기서 잡힌다.
+        for _st in (stow, bstow):
+            _se = _st.evaluated_get(dg)
+            _sec = sum((_se.matrix_world @ v.co for v in _se.data.vertices),
+                       Vector()) / len(_se.data.vertices)
+            _hm = rig.matrix_world @ rig.pose.bones["Hips"].matrix
+            _sl2 = _hm.inverted() @ _sec
+            _k = _st.name
+            if _k not in stow_refs:
+                stow_refs[_k] = _sl2
+            else:
+                stow_drift = max(stow_drift, (_sl2 - stow_refs[_k]).length)
         _sw = stow.evaluated_get(dg)
         # 본 부모 오브젝트는 반드시 '평가된' 행렬을 써야 한다.
         # 원본 datablock 의 matrix_world 는 백그라운드에서 갱신되지 않아

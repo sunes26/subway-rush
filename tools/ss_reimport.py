@@ -28,8 +28,8 @@ IMPORTER_ARTIFACTS = {"Icosphere"}
 
 
 EXPECT_ACTS = {"SS_Idle": 61, "SS_Walk": 31, "SS_Radio": 61, "SS_Guide": 40,
-               "SS_TaserDraw": 19, "SS_TaserAim": 46, "SS_TaserWarn": 31,
-               "SS_RadioAlert": 46, "SS_TaserHolster": 19, "SS_Chase": 19,
+               "SS_TaserDraw": 23, "SS_TaserAim": 46, "SS_TaserWarn": 31,
+               "SS_RadioAlert": 46, "SS_TaserHolster": 23, "SS_Chase": 19,
                "SS_TaserFire": 25}
 EXPECT_BONES = 18
 EXPECT_MATS = {"MC_White", "SS_Uniform", "SS_Trim", "AJ_Dark", "SS_Arc", "SS_Cartridge"}
@@ -60,8 +60,8 @@ def inspect(tag):
                     for o in objs]
     arms = [o for o in objs if o.type == 'ARMATURE']
     meshes = [o for o in objs if o.type == 'MESH']
-    if len(meshes) != 4:
-        fail('%s: expected 4 meshes (body + taser + baton + stowed), got %s'
+    if len(meshes) != 5:
+        fail('%s: expected 5 meshes (body + taser + baton + 2 stowed), got %s'
              % (tag, [m.name for m in meshes]))
     if len(arms) != 1:
         fail("%s: expected 1 armature, got %d" % (tag, len(arms)))
@@ -107,12 +107,17 @@ def inspect(tag):
         d["body_max_influence"] = maxinf
         if maxinf > 4:
             fail("%s: max influence %d > 4" % (tag, maxinf))
+    bs = next((m for m in meshes if m.name.startswith("PR_BatonStowed")), None)
+    if bs is None:
+        fail("%s: stowed baton missing" % tag)
+    elif bs.parent_bone != "Hips":
+        fail("%s: stowed baton lost Hips bone parent (got %r)" % (tag, bs.parent_bone))
     st = next((m for m in meshes if m.name.startswith("PR_TaserStowed")), None)
     if st is None:
         fail("%s: stowed taser missing" % tag)
     elif st.parent_bone != "Hips":
         fail("%s: stowed taser lost Hips bone parent (got %r)" % (tag, st.parent_bone))
-    bt = next((m for m in meshes if m.name.startswith("PR_Baton")), None)
+    bt = next((m for m in meshes if m.name == "PR_Baton" or m.name.startswith("PR_Baton.")), None)
     if bt is None:
         fail("%s: baton prop missing" % tag)
     elif bt.parent_bone != "Prop.R":

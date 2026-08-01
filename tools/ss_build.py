@@ -1519,6 +1519,70 @@ _pouch_top = POUCH_Z + POUCH_H * 0.5
 if max(p.z for p in _sv) - _pouch_top < 0.008:
     raise RuntimeError("stowed taser is fully swallowed by the pouch")
 
+# ---- 삼단봉의 벨트 링 사본 ----
+# 총과 반대쪽(왼쪽) 허리에 고리로 매단다. 봉은 파우치에 넣지 않고 링에 꽂는다.
+RING_R, RING_MINOR = 0.017, 0.0042
+RING_X = SIDE_SIGN["L"] * (POUCH_X * SIDE_SIGN["R"] - 0.004)
+RING_Y = -0.004
+RING_Z = HEM_Z - 0.006
+bpy.ops.mesh.primitive_torus_add(major_segments=16, minor_segments=6,
+                                 major_radius=RING_R, minor_radius=RING_MINOR,
+                                 location=(RING_X, RING_Y, RING_Z))
+ring = bpy.context.active_object
+ring.name = "SS_BatonRing"
+ring.data.name = "SS_BatonRing"
+ring.rotation_euler = (0.0, D(90), 0.0)      # 고리 평면을 측면(YZ)으로 — 봉이 통과한다
+ring.scale = (1.0, 1.0, 0.62)
+set_active(ring)
+bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+bpy.ops.object.shade_smooth()
+ring.data.materials.clear()
+ring.data.materials.append(AJ_DARK)
+_vg = ring.vertex_groups.new(name="Hips")
+_vg.add(range(len(ring.data.vertices)), 1.0, 'REPLACE')
+set_active(mesh)
+ring.select_set(True)
+bpy.context.view_layer.objects.active = mesh
+bpy.ops.object.join()
+mesh = need_obj("SS_Character")
+gi = {g.name: g.index for g in mesh.vertex_groups}
+dg.update()
+_me = mesh.evaluated_get(dg)
+rep["baton_ring"] = {"pos": [round(RING_X, 4), round(RING_Y, 4), round(RING_Z, 4)],
+                     "r": RING_R}
+
+# 봉 사본 — 링을 통과해 아래로 늘어진다
+set_active(baton)
+bpy.ops.object.duplicate()
+bstow = bpy.context.active_object
+bstow.name = "PR_BatonStowed"
+bstow.data.name = "PR_BatonStowed"
+# 손에 든 각도(40°)를 풀어 거의 수직으로 세운 뒤 링 자리로 옮긴다.
+# 복제본의 오브젝트 원점은 월드 (0,0,0) 이므로 rotation_euler 로 돌리면
+# 봉이 통째로 날아간다. 반드시 자기 중심을 축으로 메시에 직접 건다.
+_bsv = [bstow.matrix_world @ v.co for v in bstow.data.vertices]
+_bsc = sum(_bsv, Vector()) / len(_bsv)
+_Rb = Matrix.Rotation(D(-MOUNT_TILT + 6.0), 4, 'X')
+_target = Vector((RING_X, RING_Y, RING_Z)) + Vector((0.0, 0.0, -0.022))
+_bmbs = bmesh.new()
+_bmbs.from_mesh(bstow.data)
+for v in _bmbs.verts:
+    v.co = _target + (_Rb @ (v.co - _bsc))
+_bmbs.to_mesh(bstow.data)
+_bmbs.free()
+bstow.data.update()
+bpy.context.view_layer.update()
+bone_attach(bstow, "Hips")
+bstow.hide_render = True
+dg.update()
+_bsv = [bstow.matrix_world @ v.co for v in bstow.data.vertices]
+rep["baton_stowed"] = {"verts": len(bstow.data.vertices),
+                       "z_span": [round(min(p.z for p in _bsv), 4),
+                                  round(max(p.z for p in _bsv), 4)]}
+# 링 위로 손잡이가 드러나야 '꽂혀 있다'로 읽힌다
+if max(p.z for p in _bsv) - (RING_Z + RING_R * 0.62) < 0.010:
+    raise RuntimeError("stowed baton does not show above the ring")
+
 # ============================================================ 11. 정적 검사
 # --- 팔 ↔ 몸통: MC 원본 3.4mm 보다 좁아지면 회귀 ---
 # 반드시 '맨몸' 정점끼리만 잰다. MC 기준선 3.4mm 자체가 맨몸 수치이고,
@@ -1772,8 +1836,11 @@ neutral_upper()
 # 총구는 위나 아래를 본다. 총구가 앞을 보려면 아래팔이 세로여야 하므로,
 # 겨눔은 '팔꿈치를 앞·위로 내고 아래팔은 세워 둔' 자세로 잡는다.
 P["aim_R"], _e, _a = solve_arm2(
-    "R", sh_r + Vector((-0.060, -0.155, -0.150)), sh_r + Vector((-0.082, -0.055, -0.108)),
-    aim=Vector((0.0, -1.0, -0.20)), elbow_w=0.003, aim_w=0.040, start=P["base_R"])
+    # 팔꿈치가 내려가 있으면 총이 허리에 머물러 '로우 레디'로만 읽힌다.
+    # 마운트가 40° 숙어 있으므로 총열이 수평이 되려면 아래팔이 수직에서 40° 다.
+    # 그 조건을 유지한 채 손을 가슴 높이로 올리려면 팔꿈치가 어깨보다 위여야 한다.
+    "R", sh_r + Vector((-0.075, -0.212, -0.092)), sh_r + Vector((-0.076, -0.118, 0.018)),
+    aim=Vector((0.0, -1.0, -0.06)), elbow_w=0.003, aim_w=0.040, start=P["base_R"])
 rep["arm_poses"]["aim_R"] = {"hand_err_m": round(_e, 4), "aim_err_deg": round(_a, 1)}
 # 손 목표는 예술적 추정치다. 좌표하강이 40mm 안쪽으로 들어오면 자세의 방향은
 # 유지되므로, 여기서는 '터무니없이 빗나갔는가'만 막고 최종 판정은 렌더로 한다
@@ -1786,18 +1853,29 @@ if _e > 0.055 or _a > 12.0:
 neutral_upper()
 # 총구가 위를 보려면 아래팔이 가로여야 한다 (수직 마운트의 역).
 P["warn_R"], _e, _a = solve_arm2(
-    "R", sh_r + Vector((-0.070, -0.086, 0.020)), sh_r + Vector((-0.088, -0.020, -0.110)),
+    # 팔을 접어 올리면 도달률 44% 까지 내려가 솔버가 손을 못 맞춘다.
+    # 위로 '뻗어' 올리는 자세로 바꾸면 63% 라 여유가 있고, 경고 동작으로도 더 크다.
+    "R", sh_r + Vector((-0.110, -0.050, 0.140)), sh_r + Vector((-0.120, -0.040, -0.070)),
     aim=Vector((0.0, -0.30, 1.0)), elbow_w=0.003, aim_w=0.040, start=P["aim_R"])
 rep["arm_poses"]["warn_R"] = {"hand_err_m": round(_e, 4), "aim_err_deg": round(_a, 1)}
 if _e > 0.055 or _a > 12.0:
     AIM_FAIL.append("warn_R hand %.4f m barrel %.1f deg" % (_e, _a))
 
+# 겨눔 직전 오버슛 — 목표보다 조금 더 올라갔다 내려앉아야 '멈춘' 느낌이 난다
+neutral_upper()
+P["aim_over_R"], _e, _a = solve_arm2(
+    "R", sh_r + Vector((-0.072, -0.206, -0.052)), sh_r + Vector((-0.074, -0.116, 0.038)),
+    aim=Vector((0.0, -1.0, 0.06)), elbow_w=0.003, aim_w=0.040, start=P["base_R"])
+rep["arm_poses"]["aim_over_R"] = {"hand_err_m": round(_e, 4), "aim_err_deg": round(_a, 1)}
+if _e > 0.055:
+    AIM_FAIL.append("aim_over_R hand %.4f m" % _e)
+
 # 뽑는 경로 — 허리에서 가슴으로 곧장 올리면 총이 몸통을 관통한다
 # (실측: Draw f9 에서 14정점, Holster f12 에서 21정점). 바깥으로 돌려 올린다.
 neutral_upper()
 P["draw_mid_R"], _e, _a = solve_arm2(
-    "R", sh_r + Vector((-0.104, -0.100, -0.200)), sh_r + Vector((-0.092, -0.038, -0.104)),
-    aim=Vector((0.0, -1.0, -0.45)), elbow_w=0.003, aim_w=0.030, start=P["base_R"])
+    "R", sh_r + Vector((-0.118, -0.118, -0.176)), sh_r + Vector((-0.098, -0.046, -0.086)),
+    aim=Vector((0.0, -1.0, -0.55)), elbow_w=0.003, aim_w=0.030, start=P["base_R"])
 rep["arm_poses"]["draw_mid_R"] = {"hand_err_m": round(_e, 4), "aim_err_deg": round(_a, 1)}
 if _e > 0.055:
     AIM_FAIL.append("draw_mid_R hand %.4f m" % _e)
@@ -1805,8 +1883,8 @@ if _e > 0.055:
 # 추격 — 총을 가슴 앞에 세워 든 채 달린다
 neutral_upper()
 P["chase_R"], _e, _a = solve_arm2(
-    "R", sh_r + Vector((-0.052, -0.112, -0.135)), sh_r + Vector((-0.080, -0.036, -0.104)),
-    aim=Vector((0.0, -1.0, 0.15)), elbow_w=0.003, aim_w=0.030, start=P["aim_R"])
+    "R", sh_r + Vector((-0.058, -0.150, -0.118)), sh_r + Vector((-0.080, -0.070, -0.020)),
+    aim=Vector((0.0, -1.0, 0.10)), elbow_w=0.003, aim_w=0.030, start=P["aim_R"])
 rep["arm_poses"]["chase_R"] = {"hand_err_m": round(_e, 4), "aim_err_deg": round(_a, 1)}
 if _e > 0.055:
     AIM_FAIL.append("chase_R hand %.4f m barrel %.1f deg" % (_e, _a))
@@ -1972,12 +2050,15 @@ add("SS_Guide", GUIDE_N,
     False)
 
 # ---------------------------------------------------------------- Level 1
-DRAW_N = 19
+DRAW_N = 23
 add("SS_TaserDraw", DRAW_N,
     clip(IDLE_LOWER, IDLE_F[0], IDLE_N,
-         rot_off={"Chest": {0: [(1, 0), (7, 2), (19, 6)]},
-                  "Head": {0: [(1, 0), (19, -2)]}},
-         arms={"R": [(1, "base_R"), (9, "draw_mid_R"), (19, "aim_R")]}), False)
+         rot_off={"Chest": {0: [(1, 0), (8, 1), (17, 8), (23, 6)]},
+                  "Head": {0: [(1, 0), (17, -3), (23, -2)]}},
+         # 파우치에서 뽑아 → 바깥으로 크게 돌려 올려 → 겨눔에서 살짝 오버슛 후 안착.
+         # 중간 키 없이 두 점만 이으면 '스르륵 올라가는' 밋밋한 동작이 된다.
+         arms={"R": [(1, "base_R"), (8, "draw_mid_R"), (17, "aim_over_R"),
+                     (23, "aim_R")]}), False)
 
 AIM_N = 46
 add("SS_TaserAim", AIM_N,
@@ -2009,14 +2090,14 @@ add("SS_RadioAlert", ALERT_N,
                "L": [(1, "base_L"), (12, "radio_L"), (34, "radio_L"), (46, "base_L")]}),
     False)
 
-HOLSTER_N = 19
+HOLSTER_N = 23
 # 뽑기의 정확한 시간역이 되게 맞춘다. 키 위치가 어긋나면 중간 프레임에서
 # 팔꿈치가 과하게 접혀 소매가 팔 속으로 삼켜진다(f14 에서 36.5mm 실측).
 add("SS_TaserHolster", HOLSTER_N,
     clip(IDLE_LOWER, IDLE_F[0], IDLE_N,
-         rot_off={"Chest": {0: [(1, 6), (13, 3), (19, 0)]},
-                  "Head": {0: [(1, -2), (19, 0)]}},
-         arms={"R": [(1, "aim_R"), (11, "draw_mid_R"), (19, "base_R")]}), False)
+         rot_off={"Chest": {0: [(1, 6), (13, 3), (23, 0)]},
+                  "Head": {0: [(1, -2), (23, 0)]}},
+         arms={"R": [(1, "aim_R"), (13, "draw_mid_R"), (23, "base_R")]}), False)
 
 
 # ---------------------------------------------------------------- Level 2
@@ -2051,8 +2132,8 @@ add("SS_TaserFire", FIRE_N,
                   "Head": {0: [(1, -2), (4, 2), (11, -3), (25, -2)]}},
          arms={"R": [(1, "aim_R")]},
          # 반동 — 총구가 위로 튀었다가 되돌아온다
-         arm_off={"R": {0: [(1, 0.0), (3, -13.0), (9, 3.0), (16, -1.0), (25, 0.0)],
-                        3: [(1, 0.0), (3, -7.0), (9, 2.0), (25, 0.0)]}}),
+         arm_off={"R": {0: [(1, 0.0), (3, -19.0), (8, 5.0), (15, -2.0), (25, 0.0)],
+                        3: [(1, 0.0), (3, -10.0), (8, 3.0), (25, 0.0)]}}),
     False)
 
 rep["clips"] = [{"name": n, "frames": nf, "loop": lp,

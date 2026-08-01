@@ -24,6 +24,7 @@ mesh = need("SS_Character")
 prop = need("PR_Taser")
 baton = need("PR_Baton")
 stow = need("PR_TaserStowed")
+bstow = need("PR_BatonStowed")
 sc = bpy.context.scene
 
 # ---------------------------------------------------------- 익스포트 전 점검
@@ -37,7 +38,7 @@ if max(abs(v - 1.0) for v in rig.scale) > 1e-6:
     raise RuntimeError("rig scale != 1")
 if not any(m.type == 'ARMATURE' for m in mesh.modifiers):
     raise RuntimeError("Armature modifier missing on SS_Character")
-for _o, _bn in ((prop, "Prop.R"), (baton, "Prop.R"), (stow, "Hips")):
+for _o, _bn in ((prop, "Prop.R"), (baton, "Prop.R"), (stow, "Hips"), (bstow, "Hips")):
     if _o.parent_bone != _bn:
         raise RuntimeError("%s not parented to %s" % (_o.name, _bn))
 
@@ -86,13 +87,13 @@ if len(ad.nla_tracks) != len(SS_ACTIONS):
 bpy.ops.object.select_all(action='DESELECT')
 # 봉은 씬에서 숨겨 두었다(기본은 테이저). 익스포트에는 반드시 포함돼야 하므로
 # 잠깐 보이게 돌려놓고 내보낸 뒤 되돌린다 — 숨긴 채로는 선택 자체가 안 된다.
-_hidden = [(o, o.hide_viewport, o.hide_render) for o in (baton, stow)]
+_hidden = [(o, o.hide_viewport, o.hide_render) for o in (baton, stow, bstow)]
 for _o, _a, _b in _hidden:
     _o.hide_viewport = False
     _o.hide_render = False
 bpy.context.view_layer.update()
 bpy.context.view_layer.update()
-for o in (rig, mesh, prop, baton, stow):
+for o in (rig, mesh, prop, baton, stow, bstow):
     o.select_set(True)
 bpy.context.view_layer.objects.active = rig
 checks["selected"] = sorted(o.name for o in bpy.context.selected_objects)
