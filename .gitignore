@@ -18,3 +18,7 @@ render/web/_cards.html
 game/node_modules/
 game/test-results/
 game/playwright-report/
+
+# python
+__pycache__/
+*.pyc
