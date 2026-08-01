@@ -92,7 +92,9 @@ def inspect(tag):
                             "parent_bone": m.parent_bone or None})
         total_v += len(m.data.vertices)
     d["total_verts"] = total_v
-    body = next((m for m in meshes if len(m.data.vertices) > 1000), None)
+    # 정점 수로 고르면 안 된다. glTF 임포터가 머티리얼·법선 경계에서 정점을
+    # 쪼개서 테이저가 444 → 1,594 개로 불어나 본체로 오인된다(실측).
+    body = next((m for m in meshes if m.name.startswith("SS_Character")), None)
     if body is None:
         fail("%s: body mesh missing" % tag)
     else:

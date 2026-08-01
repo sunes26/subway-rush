@@ -966,105 +966,150 @@ rep["hand_blob"] = {"center": [round(v, 4) for v in HAND_C],
 # 형태는 테이저 X26 계열을 따른다. 이 총이 총으로 읽히게 하는 요소는 셋이다 —
 #   ① 노란 전면 카트리지  ② 뒤가 낮고 앞이 높은 쐐기형 바디  ③ 뚫린 방아쇠울
 # 앞의 각진 블록만으로는 드라이어와 구별되지 않는다.
-GRIP_W, GRIP_D = 0.032, 0.036
-# X26 을 반영해 총이 커지면서(높이 88.7 → 111.5mm) 손잡이 밑동이 허벅지를
-# 파고들었다(Idle f10 에서 24정점). 밑동 노출을 줄이고 몸 바깥·위로 조금 민다.
-GRIP_H = HAND_H + 0.016
-GRIP_TILT = 12.0                                   # 손잡이 경사 (윗쪽이 앞으로)
-BODY_W, BODY_D, BODY_H = 0.038, 0.066, 0.034       # 바디
-CART_W, CART_D, CART_H = 0.043, 0.022, 0.052       # 전면 카트리지 (노랑, 더 높다)
-GUARD_MAJOR, GUARD_MINOR = 0.017, 0.0042           # 방아쇠울
-PRONG_R, PRONG_L = 0.0048, 0.013
-PRONG_DX = 0.0125
+# 형태는 테이저 X26 계열.
+#
+# 조립은 반드시 '로컬 원점'에서 한다. 파츠를 최종 위치(손 옆)에 바로 놓고
+# 회전을 적용하면, transform_apply(location=True) 시점에 오브젝트 원점이
+# 월드 (0,0,0) 으로 가 있어서 파츠가 자기 중심이 아니라 월드 원점을 축으로
+# 돌아 90mm 씩 날아간다. 원점에서 다 조립한 뒤 통째로 옮긴다.
+#
+# 실루엣을 만드는 건 덩어리 개수가 아니라 파츠 사이의 단차다 —
+#   ① 앞이 크고 뒤로 흘러내리는 쐐기 바디   ② 뒤로 눕힌 손잡이
+#   ③ 바디보다 크고 윗면이 뒤로 눕는 전면 카트리지
+#   ④ 뚫린 트리거 가드 — 실루엣의 구멍 하나가 '총'을 만든다
+#   ⑤ 측면 노란 라벨 + 원형 돌출
+GRIP_W, GRIP_D, GRIP_H = 0.029, 0.030, 0.054
+GRIP_TILT = 16.0
+BODY_W, BODY_D, BODY_H = 0.031, 0.068, 0.035
+BODY_C = Vector((0.0, -0.024, 0.038))
+CART_W, CART_D, CART_H = 0.042, 0.033, 0.044
+CART_C = Vector((0.0, -0.074, 0.036))
+LABEL_DIM = (0.006, 0.024, 0.013)
+BOSS_R, BOSS_D = 0.0090, 0.040
+GUARD_MAJOR, GUARD_MINOR = 0.016, 0.0038
+PRONG_R, PRONG_L, PRONG_DX = 0.0042, 0.009, 0.0125
 
-TASER_CEN = HAND_C + Vector((SIDE_SIGN["R"] * 0.006, -0.004, 0.006))
+# 총이 커질 때마다 정지·보행 포즈의 관통을 다시 봐야 한다. 손 중심에 그대로
+# 두면 몸통·허벅지를 스친다(Walk f7, Guide f28 에서 적발). 손잡이 블록이
+# 여전히 주먹 중심을 품는 범위 안에서 몸 바깥·앞·위로 민다.
+TASER_CEN = HAND_C + Vector((SIDE_SIGN["R"] * 0.011, -0.009, 0.007))
 _parts = []
-bpy.ops.mesh.primitive_cube_add(size=1.0, location=TASER_CEN)
-grip = bpy.context.active_object
-grip.name = "PR_Taser"
-grip.data.name = "PR_Taser"
-grip.scale = (GRIP_W, GRIP_D, GRIP_H)
-set_active(grip)
-bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-if max(abs(a - b) for a, b in zip(grip.dimensions, (GRIP_W, GRIP_D, GRIP_H))) > 1e-5:
-    raise RuntimeError("grip dimensions off: %s" % [round(v, 4) for v in grip.dimensions])
-# +rx 는 위쪽을 앞(-Y)으로 눕힌다 — 권총 손잡이 각도
-grip.rotation_euler = (D(GRIP_TILT), 0.0, 0.0)
-set_active(grip)
-bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-# 슬롯을 비워 두고 조인하면 빈 슬롯이 남아 뒤의 검사가 None 에서 터진다
-grip.data.materials.clear()
-grip.data.materials.append(AJ_DARK)
 
-# 바디 — 그립 위 앞쪽. 캐릭터는 -Y 를 본다.
-_body_c = TASER_CEN + Vector((0.0, -(GRIP_D * 0.5 + BODY_D * 0.5) + 0.020,
-                              GRIP_H * 0.5 + BODY_H * 0.5 - 0.012))
-bpy.ops.mesh.primitive_cube_add(size=1.0, location=_body_c)
-body = bpy.context.active_object
-body.name = "PR_TaserBody"
-body.scale = (BODY_W, BODY_D, BODY_H)
-set_active(body)
-bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-# 뒤를 낮춰 쐐기로 만든다. 직육면체 그대로면 벽돌로 보인다.
+
+def _box(name, cen, dim, mat, bevel=0.0022):
+    """로컬 좌표에 상자를 놓는다. 원점은 상자 중심에 남긴다 —
+    location 을 apply 하면 이후 회전이 월드 원점 기준이 된다."""
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=cen)
+    o = bpy.context.active_object
+    o.name = name
+    o.data.name = name
+    o.scale = dim
+    set_active(o)
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+    if max(abs(a - b) for a, b in zip(o.dimensions, dim)) > 1e-5:
+        raise RuntimeError("%s dimensions off: %s" % (name, [round(v, 4) for v in o.dimensions]))
+    if bevel > 0.0:
+        bv = o.modifiers.new("Round", 'BEVEL')
+        bv.width = bevel
+        bv.segments = 2
+        bv.limit_method = 'ANGLE'
+        bpy.ops.object.modifier_apply(modifier=bv.name)
+    o.data.materials.clear()
+    o.data.materials.append(mat)
+    return o
+
+
+# ---- 손잡이 (로컬 원점) ----
+grip = _box("PR_Taser", Vector((0.0, 0.0, 0.0)), (GRIP_W, GRIP_D, GRIP_H), AJ_DARK)
+_bm = bmesh.new()
+_bm.from_mesh(grip.data)
+for v in _bm.verts:
+    if v.co.z < -GRIP_H * 0.20:          # 밑동을 벌린다 — 각목처럼 보이지 않게
+        v.co.x *= 1.06
+        v.co.y *= 1.05
+_bm.to_mesh(grip.data)
+_bm.free()
+grip.data.update()
+grip.rotation_euler = (D(GRIP_TILT), 0.0, 0.0)     # 원점 = 손잡이 중심이라 안전
+set_active(grip)
+bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+
+# ---- 상단 본체 — 뒤로 흘러내리는 쐐기 ----
+body = _box("PR_TaserBody", BODY_C, (BODY_W, BODY_D, BODY_H), AJ_DARK)
 _bm = bmesh.new()
 _bm.from_mesh(body.data)
-_by0 = _body_c.y + BODY_D * 0.5
 for v in _bm.verts:
-    if v.co.z > _body_c.z and v.co.y > _body_c.y:
-        v.co.z -= BODY_H * 0.42
-    if v.co.z < _body_c.z and v.co.y > _body_c.y:
-        v.co.z += BODY_H * 0.10
+    t = (v.co.y + BODY_D * 0.5) / BODY_D           # 0 = 앞, 1 = 뒤
+    if t > 0.42:
+        k = (t - 0.42) / 0.58
+        v.co.z *= (1.0 - 0.50 * k)                 # 낮아지고
+        v.co.z -= BODY_H * 0.22 * k                # 아래로 흘러내리고
+        v.co.x *= (1.0 - 0.28 * k)                 # 좁아진다
 _bm.to_mesh(body.data)
 _bm.free()
 body.data.update()
-body.data.materials.clear()
-body.data.materials.append(AJ_DARK)
 _parts.append(body)
 
-# 전면 카트리지 — 이 총의 정체를 만드는 노란 블록. 바디보다 높고 넓다.
-_cart_c = Vector((_body_c.x, _body_c.y - BODY_D * 0.5 - CART_D * 0.5 + 0.003,
-                  _body_c.z + 0.004))
-bpy.ops.mesh.primitive_cube_add(size=1.0, location=_cart_c)
-cart = bpy.context.active_object
-cart.name = "PR_TaserCart"
-cart.scale = (CART_W, CART_D, CART_H)
-set_active(cart)
-bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-_bvc = cart.modifiers.new("Round", 'BEVEL')
-_bvc.width = 0.0030
-_bvc.segments = 2
-_bvc.limit_method = 'ANGLE'
-bpy.ops.object.modifier_apply(modifier=_bvc.name)
-cart.data.materials.clear()
-cart.data.materials.append(cart_mat)
+# ---- 전면 카트리지 (노랑) ----
+cart = _box("PR_TaserCart", CART_C, (CART_W, CART_D, CART_H), cart_mat, bevel=0.0026)
+_bm = bmesh.new()
+_bm.from_mesh(cart.data)
+for v in _bm.verts:
+    if v.co.y < 0.0 and v.co.z > CART_H * 0.10:    # 앞면 윗변을 뒤로 눕힌다
+        v.co.y += CART_D * 0.34
+    if v.co.y < 0.0 and v.co.z < -CART_H * 0.28:   # 앞 아래 모서리를 깎는다
+        v.co.y += CART_D * 0.20
+    if v.co.z < -CART_H * 0.30:                    # 아래로 갈수록 좁아진다
+        v.co.x *= 0.80
+_bm.to_mesh(cart.data)
+_bm.free()
+cart.data.update()
 _parts.append(cart)
 
-# 방아쇠울 — 뚫린 고리. 실루엣에 구멍이 하나 생기면 '총'으로 확 읽힌다.
-_guard_c = Vector((TASER_CEN.x, _body_c.y + BODY_D * 0.10,
-                   _body_c.z - BODY_H * 0.5 - GUARD_MAJOR * 0.72))
-bpy.ops.mesh.primitive_torus_add(major_segments=14, minor_segments=6,
+# ---- 측면 노란 라벨 ×2 ----
+for _sx in (-1, 1):
+    _parts.append(_box("PR_TaserLabel", Vector((_sx * (BODY_W * 0.5 + 0.0012),
+                                                BODY_C.y - BODY_D * 0.24,
+                                                BODY_C.z + 0.004)),
+                       LABEL_DIM, cart_mat, bevel=0.0012))
+
+# ---- 측면 원형 돌출 (바디를 관통) ----
+bpy.ops.mesh.primitive_cylinder_add(vertices=12, radius=BOSS_R, depth=BOSS_D,
+                                    location=(0.0, BODY_C.y - BODY_D * 0.10,
+                                              BODY_C.z - 0.001))
+boss = bpy.context.active_object
+boss.name = "PR_TaserBoss"
+boss.rotation_euler = (0.0, D(90), 0.0)
+set_active(boss)
+bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+boss.data.materials.clear()
+boss.data.materials.append(AJ_DARK)
+_parts.append(boss)
+
+# ---- 트리거 가드 — 손잡이 앞면과 바디 밑면을 잇는 뚫린 고리 ----
+bpy.ops.mesh.primitive_torus_add(major_segments=16, minor_segments=6,
                                  major_radius=GUARD_MAJOR, minor_radius=GUARD_MINOR,
-                                 location=_guard_c)
+                                 location=(0.0, -0.030, 0.009))
 guard = bpy.context.active_object
 guard.name = "PR_TaserGuard"
-guard.rotation_euler = (0.0, D(90), 0.0)          # 고리 평면을 측면(YZ)으로
-guard.scale = (1.0, 0.82, 0.55)                   # 앞뒤로 길고 납작하게
+guard.rotation_euler = (0.0, D(90), 0.0)           # 고리 평면을 측면(YZ)으로
+guard.scale = (1.0, 1.06, 0.95)
 set_active(guard)
-bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
 guard.data.materials.clear()
 guard.data.materials.append(AJ_DARK)
 _parts.append(guard)
 
-# 전극 프롱 2개 — 카트리지 앞면에서 앞(-Y)으로
-_muzzle_y = _cart_c.y - CART_D * 0.5
+# ---- 전극 포트 ×2 — 카트리지 앞면에서 살짝 튀어나온다 ----
+_muzzle_y = CART_C.y - CART_D * 0.5
 for _sx in (-1, 1):
     bpy.ops.mesh.primitive_cylinder_add(
         vertices=8, radius=PRONG_R, depth=PRONG_L,
-        location=(_cart_c.x + _sx * PRONG_DX, _muzzle_y - PRONG_L * 0.5, _cart_c.z))
+        location=(_sx * PRONG_DX, _muzzle_y - PRONG_L * 0.25, CART_C.z - CART_H * 0.14))
     p = bpy.context.active_object
     p.rotation_euler = (D(90), 0.0, 0.0)
     set_active(p)
-    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
     p.data.materials.clear()
     p.data.materials.append(AJ_DARK)
     _parts.append(p)
@@ -1075,13 +1120,13 @@ for p in _parts:
 bpy.context.view_layer.objects.active = grip
 bpy.ops.object.join()
 taser = need_obj("PR_Taser")
-_bv = taser.modifiers.new("Round", 'BEVEL')
-_bv.width = 0.0022
-_bv.segments = 2
-_bv.limit_method = 'ANGLE'
+# 원점에서 조립을 끝냈으니 이제 손 위치로 통째로 옮긴다
+taser.location = TASER_CEN
 set_active(taser)
-bpy.ops.object.modifier_apply(modifier=_bv.name)
-bpy.ops.object.shade_smooth()
+bpy.ops.object.transform_apply(location=True, rotation=False, scale=False)
+# 조인 뒤 전체 베벨을 다시 걸면 파츠 사이 단차가 뭉개져 한 덩어리로 보인다.
+# 베벨은 파츠별로 이미 걸었다. 셰이딩도 flat 이어야 각 면이 살아 로우폴리로 읽힌다.
+bpy.ops.object.shade_flat()
 # 조인하면 슬롯이 합쳐지므로 material_index 가 살아 있는지 확인하고,
 # 없는 슬롯만 채운다. 여기서 clear() 하면 카트리지 노랑이 통째로 날아간다.
 _names = [m.name for m in taser.data.materials if m]
@@ -1090,7 +1135,7 @@ for _need in ("AJ_Dark", "SS_Cartridge"):
         raise RuntimeError("taser lost material %s (have %s)" % (_need, _names))
 
 # 스파크는 별도 오브젝트로 둔다 — 클립마다 켜고 끄려면 분리돼 있어야 한다.
-_arc_c = Vector((_cart_c.x, _muzzle_y - PRONG_L * 0.80, _cart_c.z))
+_arc_c = TASER_CEN + Vector((0.0, _muzzle_y - 0.010, CART_C.z - CART_H * 0.14))
 bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=0.0115, location=_arc_c)
 arc = bpy.context.active_object
 arc.name = "PR_TaserArc"
@@ -1163,7 +1208,15 @@ rep["taser"] = {"verts": len(taser.data.vertices),
                 "tris": sum(len(p.vertices) - 2 for p in taser.data.polygons),
                 "dims": [round(v, 4) for v in taser.dimensions],
                 "mats": [m.name for m in taser.data.materials if m]}
-if taser.dimensions.z < 0.070 or taser.dimensions.y < 0.080:
+# 파츠가 자기 중심이 아닌 월드 원점을 축으로 돌아 날아가는 사고를 잡는다.
+# 치수 범위로 재면 어느 파츠가 얼마나 갔는지 알 수 없다 — 손잡이 중심에서
+# 가장 먼 정점까지의 거리가 설계상 최대(카트리지 앞 위 모서리)를 넘는지 본다.
+_far = max((taser.matrix_world @ v.co - TASER_CEN).length for v in taser.data.vertices)
+rep["taser_max_radius_m"] = round(_far, 4)
+if _far > 0.120:
+    raise RuntimeError("a taser part flew away: farthest vertex %.4f m from the grip"
+                       % _far)
+if taser.dimensions.z < 0.070 or taser.dimensions.y < 0.095:
     raise RuntimeError("taser too small to read as a weapon: %s"
                        % [round(v, 4) for v in taser.dimensions])
 
@@ -1668,10 +1721,13 @@ add("SS_Radio", RADIO_N,
 GUIDE_N = 40
 add("SS_Guide", GUIDE_N,
     clip(IDLE_LOWER, IDLE_F[0], IDLE_N,
-         rot_off={"Head": {1: [(1, 0), (12, 16), (28, 14), (40, 0)],
+         rot_off={"Head": {1: [(1, 0), (12, 22), (28, 19), (40, 0)],
                            0: [(1, 0), (12, -4), (28, -3), (40, 0)]},
-                  "Chest": {1: [(1, 0), (12, 8), (28, 7), (40, 0)]},
-                  "Spine": {1: [(1, 0), (12, 4), (28, 3), (40, 0)]}},
+                  # 상체만 크게 틀면 골반은 그대로라 오른팔이 엉덩이를 가로질러
+                  # 총이 몸통을 파고든다(f10 에서 21정점). 비트는 각을 줄이고
+                  # 머리 회전으로 방향을 읽히게 한다.
+                  "Chest": {1: [(1, 0), (12, 4), (28, 3.5), (40, 0)]},
+                  "Spine": {1: [(1, 0), (12, 2), (28, 1.5), (40, 0)]}},
          arms={"L": [(1, "base_L"), (12, "guide_L"), (28, "guide_L"), (40, "base_L")]}),
     False)
 

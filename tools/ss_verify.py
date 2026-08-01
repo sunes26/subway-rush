@@ -1,6 +1,7 @@
 """SS 소스 정적/애니메이션 검증. blender -b ss_character.blend --python ss_verify.py -- <report.json>"""
 import bpy, sys, os, math, json, bmesh
 from mathutils import Vector
+from mathutils.kdtree import KDTree
 from mathutils.bvhtree import BVHTree
 
 OUT = sys.argv[sys.argv.index("--") + 1]
@@ -176,7 +177,8 @@ if not garment_slots:
 garment_idx = sorted({vi for p in me.polygons if p.material_index in garment_slots
                       for vi in p.vertices})
 
-ARM_GROUPS = {gi["LowerArm.L"], gi["LowerArm.R"]}
+ARM_GROUPS = {gi["LowerArm.L"], gi["LowerArm.R"],
+              gi["UpperArm.L"], gi["UpperArm.R"]}
 DOM = {}
 for _v in me.vertices:
     _g = max(_v.groups, key=lambda x: x.weight, default=None)
@@ -201,12 +203,38 @@ def body_bvh(o_eval, obj):
     return BVHTree.FromPolygons([tuple(v) for v in verts], tris, all_triangles=True), tris
 
 
-def is_grip_contact(bvh, tris, pt):
-    """가장 가까운 본체 면이 아래팔(=손)이면 의도한 그립 접촉이다."""
-    hit = bvh.find_nearest(pt)
-    if hit[0] is None:
-        return False
-    return all(DOM.get(v, -1) in ARM_GROUPS for v in tris[hit[2]])
+# 그립 접촉 판정을 'BVH 의 최근접 면이 팔인가' 로 하면 안 된다.
+# BVH 는 제복 셸을 빼고 만드는데, 소매가 덮은 구간은 맨살 면이 아예 없어서
+# 팔 속의 점이 엉덩이 면으로 잡힌다(ACT-08 에서 15~27mm 깊이로 오검출).
+# 대신 '팔 정점 구름과 몸통 정점 구름 중 어느 쪽이 더 가까운가' 로 가른다.
+armR_idx = [v.index for v in me.vertices
+            if sum(g.weight for g in v.groups
+                   if g.group in (gi["UpperArm.R"], gi["LowerArm.R"])) > 0.5]
+torso_all_idx = [v.index for v in me.vertices
+                 if sum(g.weight for g in v.groups
+                        if g.group in (gi["Spine"], gi["Chest"], gi["Hips"])) > 0.5]
+if len(armR_idx) < 100 or len(torso_all_idx) < 200:
+    raise RuntimeError("grip-contact clouds too small: arm %d torso %d"
+                       % (len(armR_idx), len(torso_all_idx)))
+
+
+def _kd(points):
+    t = KDTree(len(points))
+    for i, p in enumerate(points):
+        t.insert(p, i)
+    t.balance()
+    return t
+
+
+def make_grip_test(wv):
+    """이 프레임의 자세에서 '총 쥔 팔 안'인지 판정하는 함수를 만든다."""
+    ka = _kd([wv[i] for i in armR_idx])
+    kt = _kd([wv[i] for i in torso_all_idx])
+
+    def test(pt):
+        return ka.find(pt)[2] < kt.find(pt)[2]
+
+    return test
 
 
 def point_inside(bvh, p):
@@ -304,8 +332,9 @@ for name in sorted(ACTS):
 
         if f % SAMPLE_EVERY == 1 or nf <= 20:
             bvh, btris = body_bvh(me_ev, mesh)
+            grip_test = make_grip_test(wv)
             inside_prop = sum(1 for p in pv
-                              if point_inside(bvh, p) and not is_grip_contact(bvh, btris, p))
+                              if point_inside(bvh, p) and not grip_test(p))
             depth = 0.0
             for i in garment_idx:
                 q = wv[i]
