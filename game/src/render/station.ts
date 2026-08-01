@@ -16,6 +16,7 @@ import {
   type BufferGeometry, type Material, type MeshStandardMaterial, type Object3D,
 } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { Reflector } from 'three/examples/jsm/objects/Reflector.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { PALETTE, TRAIN } from '../data/tuning'
 import { DOOR_XS, GATES } from '../data/world'
@@ -49,8 +50,13 @@ const VISIBLE_RANGE = 95
 /** 병합하지 않고 개별로 남길 부품 (상태에 따라 움직이거나 색이 바뀐다) */
 const DYNAMIC_NAME =
   /^(Z3_GATE_G\d_[NS]_flap|Z3_sign_G\d_face|Z3_GATE_G\d_floorlamp|Z5_psd_door_\d+|TR_door_|TR_dwin_|Z1_OBJ02_signal)/
+// ⚠ 여기 올린 머티리얼은 **쓰는 오브젝트마다 드로우 콜 1개**가 된다 (병합에서 빠지므로).
+// `SIGN_DARK`가 올라가 있었는데, 그 색으로 칠해진 것 중 실제로 상태에 따라 바뀌는 건
+// 게이트 표지판 **면**(`Z3_sign_G\d_face`)뿐이고 그건 위 이름 규칙이 이미 잡는다.
+// 나머지(표지판 테두리 9개 · 레일 · PIDS 케이스 · 출구번호판)는 전부 정적인데
+// 병합에서 빠져 Z3 에서만 콜 10개를 쓰고 있었다. 빼니 −11 콜.
 const DYNAMIC_MATERIAL = new Set([
-  'LED_RED', 'LED_GREEN', 'SIGN_RED', 'SIGN_GREEN', 'SIGN_DARK',
+  'LED_RED', 'LED_GREEN', 'SIGN_RED', 'SIGN_GREEN',
   'TL_RED', 'TL_GRN', 'TL_COUNT',
 ])
 
@@ -112,6 +118,17 @@ const SELF_LIT_MATERIALS = new Set([
   'TXT_WHITE',
 ])
 
+/**
+ * 진짜 거울. 이 머티리얼로 병합된 면은 Mesh 대신 `Reflector`로 만든다.
+ *
+ * Reflector는 프레임마다 씬을 한 번 더 그려 반사 텍스처를 만든다 — 비싸다.
+ * 그래서 **면 3장(남·여·다목적)을 한 오브젝트로 합쳐 패스를 하나로 묶고**,
+ * 화장실에서 멀어지면 `visible=false`로 꺼서 그 패스 자체를 건너뛴다.
+ */
+const MIRROR_MATERIAL = 'WC_MIRROR'
+/** 이 거리 밖에서는 반사를 끈다. 화장실 안에서만 보이면 된다. */
+const MIRROR_RANGE = 14
+
 const baseColor = (m: Material | Material[]): number => {
   const one = (Array.isArray(m) ? m[0] : m) as MeshStandardMaterial | undefined
   const tint = one?.name ? MATERIAL_TINT[one.name] : undefined
@@ -154,10 +171,51 @@ const collect = (
   return { buckets, overhead, dynamics }
 }
 
+/**
+ * 병합된 평면들을 반사면으로 바꾼다.
+ *
+ * `Reflector`가 요구하는 두 가지를 맞춰야 한다.
+ *  1. **로컬 +Z 가 거울 법선.** 병합 지오메트리는 월드 좌표라 법선이 제멋대로다.
+ *  2. **반사 평면은 오브젝트의 월드 "위치"를 지난다.** 지오메트리만 옮겨 놓고
+ *     오브젝트를 원점에 두면 반사면이 원점에 생겨 **벽 너머가 비친다** — 실제로 그랬다.
+ *
+ * 그래서 지오메트리를 중심으로 옮기고(local = q⁻¹·(world − center)),
+ * 오브젝트를 그 중심에 세운다.
+ */
+const makeMirror = (geo: BufferGeometry, color: number): Reflector | null => {
+  geo.computeVertexNormals()
+  const na = geo.getAttribute('normal')
+  if (!na || na.count === 0) return null
+  const normal = new Vector3(na.getX(0), na.getY(0), na.getZ(0)).normalize()
+  geo.computeBoundingBox()
+  const center = geo.boundingBox!.getCenter(new Vector3())
+  const q = new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), normal)
+  geo.translate(-center.x, -center.y, -center.z)
+  geo.applyQuaternion(q.clone().invert())
+  const mirror = new Reflector(geo, {
+    // 화장실 거울은 작고 가까이서만 본다 — 512면 충분하고 패스 비용이 1/4이다
+    textureWidth: 512,
+    textureHeight: 512,
+    color: new Color(color),
+  })
+  mirror.position.copy(center)
+  mirror.quaternion.copy(q)
+  mirror.name = `mirror:${MIRROR_MATERIAL}`
+  return mirror
+}
+
 const mergeBuckets = (buckets: Map<string, Bucket>, into: Group): void => {
   for (const [name, b] of buckets) {
     const merged = b.geos.length === 1 ? b.geos[0] : mergeGeometries(b.geos, false)
     if (!merged) continue
+    if (name === MIRROR_MATERIAL) {
+      const mirror = makeMirror(merged, b.color)
+      if (mirror) {
+        into.add(mirror)
+        if (b.geos.length > 1) for (const g of b.geos) g.dispose()
+        continue
+      }
+    }
     const glass = GLASS_MATERIALS.has(name)
     const decal = DECAL_MATERIALS.has(name)
     const mat = glass
@@ -337,6 +395,14 @@ export const loadStation = async (
     }
   }
 
+  // 거울은 프레임마다 씬을 한 번 더 그린다. 화장실 근처가 아니면 꺼서 그 패스를 건너뛴다.
+  const mirrors: { obj: Object3D; center: Vector3 }[] = []
+  root.traverse((o) => {
+    if (o.name.startsWith('mirror:')) {
+      mirrors.push({ obj: o, center: new Box3().setFromObject(o).getCenter(new Vector3()) })
+    }
+  })
+
   const bank = (
     geos: { left: BufferGeometry[]; right: BufferGeometry[] },
     color: number, parent: Group, glass = false,
@@ -448,6 +514,8 @@ export const loadStation = async (
       // ── 존 가시성: 안개 far 밖의 존은 그리지 않는다
       const p = new Vector3(s.player.pos.x, s.player.pos.z, -s.player.pos.y)
       for (const z of zoneGroups) z.group.visible = z.box.distanceToPoint(p) < VISIBLE_RANGE
+      // 반사는 씬을 한 번 더 그린다 — 가까울 때만 켠다
+      for (const mi of mirrors) mi.obj.visible = mi.center.distanceTo(p) < MIRROR_RANGE
       void overheadOn
 
       // ── 게이트 사인 · 램프 · 기호

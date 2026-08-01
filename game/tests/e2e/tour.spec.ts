@@ -34,6 +34,8 @@ const SHOTS: readonly Shot[] = [
   { name: '09-z2-shops', pos: { x: 27, y: 22, z: B1 }, yaw: 1.2, note: 'Z2 북측 편의점·카페' },
   // 화장실 파사드가 y=26.0 으로 앞으로 나왔다 — 예전 y24.5는 벽에 코가 닿는다
   { name: '09b-z2-wc', pos: { x: 44.5, y: 19.5, z: B1 }, yaw: Math.PI / 2, note: 'Z2 화장실 정면 — 남·여·다목적' },
+  // 거울은 화장실 안에서만 켜진다(MIRROR_RANGE 14m) — 세면대 앞에 서서 본다
+  { name: '09d-z2-wc-mirror', pos: { x: 39.4, y: 27.4, z: B1 }, yaw: -Math.PI / 2, pitch: -0.05, note: 'Z2 화장실 거울 — 반사 확인' },
   { name: '09c-z2-lost', pos: { x: 50, y: 20.5, z: B1 }, yaw: Math.PI / 2, note: 'Z2 유실물 보관소' },
   { name: '01b-z1-stop', pos: { x: -55, y: 24, z: 0 }, yaw: Math.PI, note: '정류장 — 표지판이 진행 반대편에 있는지' },
   { name: '10-z3-gates', pos: { x: 56.5, y: 16, z: B1 }, yaw: 0, note: 'Z3 개찰구 정면 — 게이트 9기 · 피치 2.0m' },
@@ -44,6 +46,12 @@ const SHOTS: readonly Shot[] = [
   { name: '15-z5-platform', pos: { x: 128, y: 6, z: B2 }, yaw: 0, note: 'Z5 승강장 — 동쪽' },
   { name: '16-z5-psd', pos: { x: 130, y: 9, z: B2 }, yaw: Math.PI / 2, note: 'Z5 안전문 정면' },
   { name: '17-z5-wide', pos: { x: 150, y: 4, z: B2 }, yaw: 0.35, note: 'Z5 승강장 원경' },
+  // 기둥 역명판. 양면이라 두 장을 다 찍는다 —
+  // 한 면만 찍으면 반대 면의 법선이 뒤집혀도(= 사인이 사라져도) 통과한다.
+  // 실제로 남면 하나만 있던 시절 승강장에서 아무것도 안 보였고, 초록 띠는
+  // 한쪽 감김이 뒤집혀 계속 안 보이고 있었다.
+  { name: '18-z5-colsign-n', pos: { x: 124, y: 5.4, z: B2 }, yaw: -Math.PI / 2, pitch: 0.05, note: 'Z5 기둥 역명판 — 북면(주 통행측)' },
+  { name: '19-z5-colsign-s', pos: { x: 124, y: 2.6, z: B2 }, yaw: Math.PI / 2, pitch: 0.12, note: 'Z5 기둥 역명판 — 남면' },
 ]
 
 /**
@@ -83,7 +91,11 @@ test('맵 순회 촬영', async ({ page }) => {
   page.on('pageerror', (e) => errors.push(String(e)))
 
   await page.goto('/')
-  await page.waitForFunction(() => !!window.__game?.stationStats(), null, { timeout: 45_000 })
+  // 45s → 90s. 실사 대조 마감(§22)으로 GLB 가 6.0 → 7.4 MB 가 되면서
+  // **전체 스위트를 이어서 돌릴 때만** 이 대기가 8초쯤에 터졌다(단독 실행은 항상 통과).
+  // 앞선 11개 테스트가 돌고 난 뒤라 디스크·GPU 가 데워진 상태의 편차다.
+  // 로드 시간은 게임 품질과 무관하니 여기서 재는 게 아니다 — 프레임 시간은 `feel.spec` 이 본다.
+  await page.waitForFunction(() => !!window.__game?.stationStats(), null, { timeout: 90_000 })
 
   // 역사 GLB가 실제로 올라왔는지 — 폴백 그레이박스를 찍고 "봤다"고 하면 안 된다
   const stats = await page.evaluate(() => window.__game!.stationStats())

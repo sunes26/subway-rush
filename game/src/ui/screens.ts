@@ -63,7 +63,7 @@ export const createScreens = (mount: HTMLElement): Screens => {
       <div class="keys">
         <kbd>W A S D</kbd><kbd>SHIFT 스프린트</kbd><kbd>SPACE 점프</kbd><kbd>마우스 시점</kbd><kbd>V 시점 전환</kbd>
       </div>
-      <div class="hint">개찰구는 여섯 개고, 살아있는 건 그중 하나다.<br>
+      <div class="hint">개찰구는 아홉 개고, 살아있는 건 그중 하나다.<br>
         표지판이 <b style="color:#00A84D">▲</b> 면 열려 있고 <b style="color:#E5484D">✕</b> 면 고장이다.
         한 화면에 다 안 들어오니 <b>고개를 돌려 봐야 한다.</b><br>
         안 보고 태그하면 8초가 날아간다.</div>

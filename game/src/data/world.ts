@@ -280,7 +280,14 @@ export const DOOR_XS: readonly number[] = Array.from({ length: 8 }, (_, k) =>
  * 한쪽만 고치면 통과 가능한 유령 기둥이 되므로 값을 바꿀 땐 양쪽을 같이 본다.
  */
 const Z5_COLUMN_Y = 4.0
+/**
+ * x=84 · x=140 은 뺀다 — 8m 등간격이 하필 **환승계단 두 곳 위**에 떨어졌다.
+ * (OBJ-32 x84.2~88.8 · OBJ-34 x137.6~143.2, 둘 다 y가 4.0을 지난다)
+ * 기둥이 계단 한복판에 박혀 있었다. Blender `Z5_colr_*` 에서도 같이 지웠다.
+ */
+const Z5_COLUMN_SKIP = new Set([84, 140])
 const Z5_COLUMN_XS = Array.from({ length: 15 }, (_, i) => 84 + i * 8)
+  .filter((x) => !Z5_COLUMN_SKIP.has(x))
 const Z5_COLUMNS: Solid[] = Z5_COLUMN_XS.map((x) =>
   solid(`Z5-COL-${x}`, at(x, Z5_COLUMN_Y, 1.1, 1.1), FLOOR.B2, 4.5, 'column'),
 )
@@ -387,6 +394,12 @@ export const SOLIDS: readonly Solid[] = [
   ...wallWithGaps('OBJ-05-W', 'y', [-1.3, -0.9], [22, 34], [[25.4, 30.6]], 0, 7.79, 'wall', 3.4),
   parapet('OBJ-05-S', [-0.9, 25.0, 14.6, 25.4], 0, 4.0),
   parapet('OBJ-05-N', [-0.9, 30.6, 14.6, 31.0], 0, 4.0),
+  // 출구계단 **계단실 측벽**. 위 두 벽은 z0=0 부터라 지상만 막고,
+  // 계단을 내려가는 동안(z −6~0)에는 옆이 뚫려 있었다 —
+  // 시각(`Z1_st_wall`)은 처음부터 있었으니 벽을 통과해 계단 밖으로 나갈 수 있었다.
+  // 위쪽 끝을 z=0 에 맞춰야 인도를 걸을 때 이 벽에 걸리지 않는다.
+  parapet('Z1-STW-S', [2.0, 25.2, 14.88, 25.4], FLOOR.B1, 6.0),
+  parapet('Z1-STW-N', [2.0, 30.6, 14.88, 30.8], FLOOR.B1, 6.0),
   // 인도 동쪽 끝 (건물 남/북 우회 차단)
   parapet('Z1-END-E-S', [1.6, 22, 2.0, 25.4], 0, 4.5),
   parapet('Z1-END-E-N', [1.6, 30.6, 2.0, 34], 0, 4.5),
@@ -399,35 +412,35 @@ export const SOLIDS: readonly Solid[] = [
   solid('OBJ-10-CHARGE', at(10, 21, 1.2, 0.7), FLOOR.B1, 1.6, 'machine'),
   solid('OBJ-15-BOARD', at(26, 16, 1.0, 1.0), FLOOR.B1, 2.8, 'sign'),
   solid('ACT-02-BENCH', at(42, 15, 2.4, 0.8), FLOOR.B1, 0.9, 'bench'),
-  // 화장실이 y26까지 나오면서 예전 자리(x47)는 여자 화장실 출입구를 정면으로 막았다.
-  // 남·여 출입구 사이 벽(x 42.5~46.9) 앞으로 옮긴다.
-  solid('OBJ-11-BENCH', at(44.6, 25, 2.4, 0.8), FLOOR.B1, 0.9, 'bench'),
+  // 화장실 확장(파사드 y26 → y25)에 맞춰 두 번 물렸다.
+  // x는 남·여 출입구 사이 벽 앞, y는 파사드에 등을 붙인 위치다.
+  solid('OBJ-11-BENCH', at(44.6, 24.73, 2.4, 0.8), FLOOR.B1, 0.9, 'bench'),
   solid('OBJ-13-LOST', at(50, 23.6, 3.0, 1.2), FLOOR.B1, 2.6, 'kiosk'),
   // ── OBJ-14 화장실 (남 · 여 · 다목적) ───────────────────────────────
   // 좌표는 전부 `tools/build_wc.py`의 상수와 같은 값이다. **한쪽만 고치면
   // 벽 없는 데서 막히거나 벽을 통과한다** — 예전 통짜 박스가 정확히 그랬다.
   // 이제 들어갈 수 있는 방이므로 벽·칸막이·위생기구를 각각 막는다.
   ...wallWithGaps(
-    'WC-S', 'x', [26.0, 26.2], [38.0, 51.0],
-    [[41.3, 42.5], [46.9, 48.1], [49.3, 50.5]],   // 남 · 여 · 다목적 출입구
+    'WC-S', 'x', [25.0, 25.2], [36.0, 51.0],
+    [[40.3, 41.5], [46.9, 48.1], [49.3, 50.5]],   // 남 · 여 · 다목적 출입구
     FLOOR.B1, 3.2, 'wall',
   ),
-  solid('WC-N', [38.0, 29.8, 51.0, 30.0], FLOOR.B1, 3.2, 'wall'),
-  solid('WC-W', [38.0, 26.0, 38.2, 30.0], FLOOR.B1, 3.2, 'wall'),
-  solid('WC-E', [50.8, 26.0, 51.0, 30.0], FLOOR.B1, 3.2, 'wall'),
-  solid('WC-DIV-MF', [42.9, 26.0, 43.1, 30.0], FLOOR.B1, 3.2, 'wall'),
-  solid('WC-DIV-FA', [48.5, 26.0, 48.7, 30.0], FLOOR.B1, 3.2, 'wall'),
+  solid('WC-N', [36.0, 29.8, 51.0, 30.0], FLOOR.B1, 3.2, 'wall'),
+  solid('WC-W', [36.0, 25.0, 36.2, 30.0], FLOOR.B1, 3.2, 'wall'),
+  solid('WC-E', [50.8, 25.0, 51.0, 30.0], FLOOR.B1, 3.2, 'wall'),
+  solid('WC-DIV-MF', [41.9, 25.0, 42.1, 30.0], FLOOR.B1, 3.2, 'wall'),
+  solid('WC-DIV-FA', [48.5, 25.0, 48.7, 30.0], FLOOR.B1, 3.2, 'wall'),
   // 가림벽 — 입구에서 안이 바로 보이지 않게 하는 벽. 시각과 충돌이 같이 있어야 의미가 있다
-  solid('WC-SCR-M', [40.7, 26.2, 40.9, 27.5], FLOOR.B1, 2.0, 'wall'),
-  solid('WC-SCR-F', [46.5, 26.2, 46.7, 27.5], FLOOR.B1, 2.0, 'wall'),
+  solid('WC-SCR-M', [39.7, 25.2, 39.9, 26.6], FLOOR.B1, 2.0, 'wall'),
+  solid('WC-SCR-F', [46.3, 25.2, 46.5, 26.6], FLOOR.B1, 2.0, 'wall'),
   // 대변기 부스는 통째로 막는다. 칸막이만 막으면 플레이어가 부스 안에 갇힌다
-  solid('WC-BOOTH-M', [38.2, 28.3, 40.7, 29.8], FLOOR.B1, 1.9, 'wall'),
-  solid('WC-BOOTH-F', [43.1, 28.3, 46.5, 29.8], FLOOR.B1, 1.9, 'wall'),
-  solid('WC-CNT-M', [38.4, 26.2, 40.4, 26.75], FLOOR.B1, 0.8, 'prop'),
-  solid('WC-CNT-F', [43.3, 26.2, 46.05, 26.75], FLOOR.B1, 0.8, 'prop'),
-  solid('WC-CNT-A', [50.1, 26.2, 50.8, 26.75], FLOOR.B1, 0.8, 'prop'),
-  solid('WC-URINAL', [42.48, 27.0, 42.9, 28.96], FLOOR.B1, 1.28, 'prop'),
-  solid('WC-WCA', [49.0, 29.18, 49.38, 29.7], FLOOR.B1, 0.82, 'prop'),
+  solid('WC-BOOTH-M', [36.2, 28.2, 39.7, 29.8], FLOOR.B1, 1.9, 'wall'),
+  solid('WC-BOOTH-F', [42.1, 28.2, 46.3, 29.8], FLOOR.B1, 1.9, 'wall'),
+  solid('WC-CNT-M', [36.4, 25.2, 38.95, 25.75], FLOOR.B1, 0.8, 'prop'),
+  solid('WC-CNT-F', [42.3, 25.2, 45.4, 25.75], FLOOR.B1, 0.8, 'prop'),
+  solid('WC-CNT-A', [50.1, 25.2, 50.8, 25.75], FLOOR.B1, 0.8, 'prop'),
+  solid('WC-URINAL', [41.56, 26.19, 41.9, 28.07], FLOOR.B1, 1.28, 'prop'),
+  solid('WC-WCA', [48.92, 29.18, 49.49, 29.8], FLOOR.B1, 0.82, 'prop'),
   solid('OBJ-16-UMBRELLA', at(38, 5, 1.0, 0.6), FLOOR.B1, 1.0, 'prop'),
   solid('OBJ-17-NEWSSTAND', at(32, 4.6, 2.6, 1.4), FLOOR.B1, 2.4, 'kiosk'),
   // 유리 점포로 다시 지으면서 북벽(y30)까지 붙였다 — 예전엔 뒤에 0.9m 죽은 공간이 남았다.
@@ -483,8 +496,12 @@ export const SOLIDS: readonly Solid[] = [
   // ───────────── Z5 (B2) ─────────────
   parapet('Z5-END-W', [77.6, 0, 78.0, 12], FLOOR.B2, 5.0),
   parapet('Z5-END-E', [206, 0, 206.4, 12], FLOOR.B2, 5.0),
-  // 승강장 남측 벽 — Z4 착지 개구부(y1~9.5, x119~128)만 열림
-  ...wallWithGaps('Z5-S', 'x', [-0.4, 0], [78, 206], [[119, 128]], FLOOR.B2, 5.0, 'wall', PARAPET_H),
+  // 승강장 남측 외벽. 개구부 없음.
+  //
+  // 예전엔 x119~128 이 뚫려 있었고 주석은 "Z4 착지 개구부"라고 적혀 있었는데,
+  // 착지는 y1~9.5 에서 일어나고 이 벽은 y −0.4~0 이다. 서로 만나지 않는다.
+  // 시각(`Z5_wall_S`)은 처음부터 통짜여서 **벽이 보이는데 걸어 나갈 수 있었다.**
+  parapet('Z5-S', [78, -0.4, 206, 0], FLOOR.B2, 5.0),
   // 승강장 기둥 — 신도림역 실사 계측(인물 1.72m 기준 지름 ≈1.1m)을 따랐다.
   // 시각은 16각 원기둥이고 충돌은 정사각 AABB다. 판정이 조금 관대한 쪽이라
   // "보이는데 안 막히는" 반대 경우보다 낫다 (GDD §11 — 판정은 관대하게).
