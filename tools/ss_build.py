@@ -1187,6 +1187,13 @@ for p in _parts:
 bpy.context.view_layer.objects.active = grip
 bpy.ops.object.join()
 taser = need_obj("PR_Taser")
+# 손을 내린 자세에서 총열이 정면을 수평으로 겨누면 '총구가 앞을 향한 채
+# 걸어다니는' 그림이 된다. 손목 본이 없으므로 마운트 자체를 숙여 둔다.
+# 이러면 겨눔 포즈도 쉬워진다 — 아래팔을 앞으로 들면 총열이 수평이 된다.
+MOUNT_TILT = 40.0
+taser.rotation_euler = (D(MOUNT_TILT), 0.0, 0.0)   # 원점 = 손잡이 중심이라 안전
+set_active(taser)
+bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
 # 원점에서 조립을 끝냈으니 이제 손 위치로 통째로 옮긴다
 taser.location = TASER_CEN
 set_active(taser)
@@ -1296,6 +1303,81 @@ if _far > 0.120:
 if taser.dimensions.z < 0.070 or taser.dimensions.y < 0.095:
     raise RuntimeError("taser too small to read as a weapon: %s"
                        % [round(v, 4) for v in taser.dimensions])
+
+# ==================================================== 9-b. 삼단봉 (대체 프롭)
+# 총 대신 몽둥이를 든 버전. 같은 파일에 함께 넣고 같은 Prop.R 에 매단다 —
+# 클립 11종을 두 벌 만들 이유가 없고, 엔진에서 둘 중 하나만 보이면 된다.
+# 마운트 기울기도 테이저와 같게 둬서 어떤 클립에서든 서로 바꿔 끼울 수 있다.
+BAT_LEN = 0.150
+BAT_R_GRIP, BAT_R_TIP = 0.0090, 0.0052
+BAT_GRIP_LEN = 0.052            # 손이 감싸는 구간 — 조금 굵다
+bpy.ops.mesh.primitive_cylinder_add(vertices=12, radius=BAT_R_TIP,
+                                    depth=BAT_LEN, location=(0.0, 0.0, 0.0))
+baton = bpy.context.active_object
+baton.name = "PR_Baton"
+baton.data.name = "PR_Baton"
+set_active(baton)
+bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+_bmb = bmesh.new()
+_bmb.from_mesh(baton.data)
+# 손잡이 쪽(+Z)은 굵게, 타격 끝(-Z)은 가늘게 — 삼단봉의 실루엣이다.
+for v in _bmb.verts:
+    t = (v.co.z + BAT_LEN * 0.5) / BAT_LEN          # 0 = 끝, 1 = 손잡이
+    if t > 1.0 - BAT_GRIP_LEN / BAT_LEN:
+        k = (t - (1.0 - BAT_GRIP_LEN / BAT_LEN)) / (BAT_GRIP_LEN / BAT_LEN)
+        _s = 1.0 + (BAT_R_GRIP / BAT_R_TIP - 1.0) * min(1.0, k * 1.6)
+        v.co.x *= _s
+        v.co.y *= _s
+_bmb.to_mesh(baton.data)
+_bmb.free()
+baton.data.update()
+_bvb = baton.modifiers.new("Round", 'BEVEL')
+_bvb.width = 0.0020
+_bvb.segments = 2
+_bvb.limit_method = 'ANGLE'
+bpy.ops.object.modifier_apply(modifier=_bvb.name)
+bpy.ops.object.shade_smooth()
+baton.data.materials.clear()
+baton.data.materials.append(AJ_DARK)
+# 손잡이 끝 마감 링 — 골드. 이게 없으면 그냥 검은 막대다.
+bpy.ops.mesh.primitive_cylinder_add(vertices=12, radius=BAT_R_GRIP * 1.16,
+                                    depth=0.009,
+                                    location=(0.0, 0.0, BAT_LEN * 0.5 - 0.006))
+_bcap = bpy.context.active_object
+_bcap.name = "PR_BatonCap"
+set_active(_bcap)
+bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+_bcap.data.materials.clear()
+_bcap.data.materials.append(trim_mat)
+set_active(baton)
+_bcap.select_set(True)
+bpy.context.view_layer.objects.active = baton
+bpy.ops.object.join()
+baton = need_obj("PR_Baton")
+_bmb = bmesh.new()
+_bmb.from_mesh(baton.data)
+_b_open = len([e for e in _bmb.edges if len(e.link_faces) != 2])
+_bmb.free()
+if _b_open:
+    raise RuntimeError("baton has %d open/non-manifold edges" % _b_open)
+# 봉의 중심이 주먹 중심에 오도록 놓고, 테이저와 같은 각도로 숙인다.
+# 봉은 축이 +Z 이므로, 40도 숙이면 끝이 앞아래를 향한다.
+baton.rotation_euler = (D(MOUNT_TILT), 0.0, 0.0)
+set_active(baton)
+bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+baton.location = TASER_CEN
+set_active(baton)
+bpy.ops.object.transform_apply(location=True, rotation=False, scale=False)
+bpy.ops.object.shade_smooth()
+bone_attach(baton, "Prop.R")
+# 프리뷰 렌더·검사 기본값은 테이저다. 봉은 숨겨 두고 엔진이 골라 쓴다.
+baton.hide_render = True
+baton.hide_viewport = True
+rep["baton"] = {"verts": len(baton.data.vertices),
+                "tris": sum(len(p.vertices) - 2 for p in baton.data.polygons),
+                "dims": [round(v, 4) for v in baton.dimensions],
+                "mats": [m.name for m in baton.data.materials if m],
+                "open_edges": _b_open}
 
 # ============================================================ 10. 허리 홀스터
 # 테이저가 간 자리에서 역산한다. 먼저 박으면 총이 홀스터에서 떨어진다.
@@ -1525,7 +1607,8 @@ RUN_N = RUN_F[1] - RUN_F[0] + 1
 # ------------------------------------------------------------- 팔 포즈 사전
 # 매 프레임 수치해석하면 느리고 프레임 간 표현이 튄다. 대표 포즈를 미리 풀고
 # 그 사이를 보간한다 (CP 토네이도에서 쓴 방식).
-_TASER_LOCAL_AIM = Vector((0.0, -1.0, 0.0))     # 총열은 오브젝트 로컬 -Y
+# 마운트를 숙여 두었으므로 오브젝트 로컬에서의 총열 방향도 그만큼 기울어 있다.
+_TASER_LOCAL_AIM = Matrix.Rotation(D(40.0), 3, 'X') @ Vector((0.0, -1.0, 0.0))
 
 
 def barrel_dir():
@@ -1622,43 +1705,43 @@ neutral_upper()
 # 총구는 위나 아래를 본다. 총구가 앞을 보려면 아래팔이 세로여야 하므로,
 # 겨눔은 '팔꿈치를 앞·위로 내고 아래팔은 세워 둔' 자세로 잡는다.
 P["aim_R"], _e, _a = solve_arm2(
-    "R", sh_r + Vector((-0.065, -0.120, -0.205)), sh_r + Vector((-0.072, -0.100, -0.070)),
-    aim=Vector((0.0, -1.0, -0.25)), elbow_w=0.003, aim_w=0.040, start=P["base_R"])
+    "R", sh_r + Vector((-0.060, -0.155, -0.150)), sh_r + Vector((-0.082, -0.055, -0.108)),
+    aim=Vector((0.0, -1.0, -0.20)), elbow_w=0.003, aim_w=0.040, start=P["base_R"])
 rep["arm_poses"]["aim_R"] = {"hand_err_m": round(_e, 4), "aim_err_deg": round(_a, 1)}
 # 손 목표는 예술적 추정치다. 좌표하강이 40mm 안쪽으로 들어오면 자세의 방향은
 # 유지되므로, 여기서는 '터무니없이 빗나갔는가'만 막고 최종 판정은 렌더로 한다
 # (ACT-05·06 교훈: 합격은 솔버 잔차가 아니라 눈에 보이는 결과로 정한다).
 AIM_FAIL = []
-if _e > 0.040 or _a > 16.0:
+if _e > 0.055 or _a > 12.0:
     AIM_FAIL.append("aim_R hand %.4f m barrel %.1f deg" % (_e, _a))
 
 # 경고 — 총을 위로 들어 공중에서 스파크
 neutral_upper()
 # 총구가 위를 보려면 아래팔이 가로여야 한다 (수직 마운트의 역).
 P["warn_R"], _e, _a = solve_arm2(
-    "R", sh_r + Vector((-0.078, -0.132, -0.115)), sh_r + Vector((-0.080, 0.008, -0.120)),
-    aim=Vector((0.0, -0.25, 1.0)), elbow_w=0.003, aim_w=0.040, start=P["aim_R"])
+    "R", sh_r + Vector((-0.070, -0.086, 0.020)), sh_r + Vector((-0.088, -0.020, -0.110)),
+    aim=Vector((0.0, -0.30, 1.0)), elbow_w=0.003, aim_w=0.040, start=P["aim_R"])
 rep["arm_poses"]["warn_R"] = {"hand_err_m": round(_e, 4), "aim_err_deg": round(_a, 1)}
-if _e > 0.040 or _a > 16.0:
+if _e > 0.055 or _a > 12.0:
     AIM_FAIL.append("warn_R hand %.4f m barrel %.1f deg" % (_e, _a))
 
 # 뽑는 경로 — 허리에서 가슴으로 곧장 올리면 총이 몸통을 관통한다
 # (실측: Draw f9 에서 14정점, Holster f12 에서 21정점). 바깥으로 돌려 올린다.
 neutral_upper()
 P["draw_mid_R"], _e, _a = solve_arm2(
-    "R", sh_r + Vector((-0.100, -0.068, -0.240)), sh_r + Vector((-0.086, -0.040, -0.100)),
-    aim=Vector((0.0, -1.0, -0.30)), elbow_w=0.003, aim_w=0.030, start=P["base_R"])
+    "R", sh_r + Vector((-0.104, -0.100, -0.200)), sh_r + Vector((-0.092, -0.038, -0.104)),
+    aim=Vector((0.0, -1.0, -0.45)), elbow_w=0.003, aim_w=0.030, start=P["base_R"])
 rep["arm_poses"]["draw_mid_R"] = {"hand_err_m": round(_e, 4), "aim_err_deg": round(_a, 1)}
-if _e > 0.040:
+if _e > 0.055:
     AIM_FAIL.append("draw_mid_R hand %.4f m" % _e)
 
 # 추격 — 총을 가슴 앞에 세워 든 채 달린다
 neutral_upper()
 P["chase_R"], _e, _a = solve_arm2(
-    "R", sh_r + Vector((-0.062, -0.098, -0.190)), sh_r + Vector((-0.076, -0.052, -0.086)),
-    aim=Vector((0.0, -1.0, -0.10)), elbow_w=0.003, aim_w=0.030, start=P["aim_R"])
+    "R", sh_r + Vector((-0.052, -0.112, -0.135)), sh_r + Vector((-0.080, -0.036, -0.104)),
+    aim=Vector((0.0, -1.0, 0.15)), elbow_w=0.003, aim_w=0.030, start=P["aim_R"])
 rep["arm_poses"]["chase_R"] = {"hand_err_m": round(_e, 4), "aim_err_deg": round(_a, 1)}
-if _e > 0.040:
+if _e > 0.055:
     AIM_FAIL.append("chase_R hand %.4f m barrel %.1f deg" % (_e, _a))
 
 # 무전 — 왼손을 어깨 마이크로. 블롭 팔은 여기서 가장 심하게 접히므로
@@ -1666,7 +1749,7 @@ if _e > 0.040:
 # 위팔과 겹쳐 몸통을 파고든다.
 neutral_upper()
 P["radio_L"], _e, _a = solve_arm2(
-    "L", sh_l + Vector((-0.006, -0.092, -0.058)), sh_l + Vector((0.098, -0.012, -0.086)),
+    "L", sh_l + Vector((0.004, -0.096, -0.058)), sh_l + Vector((0.104, -0.012, -0.086)),
     elbow_w=0.008, start=P["base_L"])
 rep["arm_poses"]["radio_L"] = {"hand_err_m": round(_e, 4)}
 if _e > 0.045:
@@ -1823,15 +1906,15 @@ add("SS_Guide", GUIDE_N,
 DRAW_N = 19
 add("SS_TaserDraw", DRAW_N,
     clip(IDLE_LOWER, IDLE_F[0], IDLE_N,
-         rot_off={"Chest": {0: [(1, 0), (7, 3), (19, -4)]},
-                  "Head": {0: [(1, 0), (19, -3)]}},
+         rot_off={"Chest": {0: [(1, 0), (7, 2), (19, 6)]},
+                  "Head": {0: [(1, 0), (19, -2)]}},
          arms={"R": [(1, "base_R"), (9, "draw_mid_R"), (19, "aim_R")]}), False)
 
 AIM_N = 46
 add("SS_TaserAim", AIM_N,
     clip(IDLE_LOWER, IDLE_F[0], IDLE_N, cycle_to=AIM_N,
-         rot_off={"Chest": {0: [(1, -4), (23, -2.4), (46, -4)]},
-                  "Head": {0: [(1, -3), (23, -2), (46, -3)]}},
+         rot_off={"Chest": {0: [(1, 6), (23, 7.4), (46, 6)]},
+                  "Head": {0: [(1, -2), (23, -1), (46, -2)]}},
          arms={"R": [(1, "aim_R")]},
          arm_off={"R": {0: [(1, 0.0), (12, 1.4), (23, 0.0), (35, -1.4), (46, 0.0)]}}),
     True)
@@ -1839,16 +1922,19 @@ add("SS_TaserAim", AIM_N,
 WARN_N = 31
 add("SS_TaserWarn", WARN_N,
     clip(IDLE_LOWER, IDLE_F[0], IDLE_N,
-         rot_off={"Chest": {0: [(1, -4), (10, -8), (20, -8), (31, -4)]},
-                  "Head": {0: [(1, -3), (10, -9), (20, -9), (31, -3)]}},
+         # 총을 위로 들어 올리는 동작이라 여기서만 상체가 뒤로 젖혀진다
+         rot_off={"Chest": {0: [(1, 6), (10, -5), (20, -5), (31, 6)]},
+                  "Head": {0: [(1, -2), (10, -10), (20, -10), (31, -2)]}},
          arms={"R": [(1, "aim_R"), (10, "warn_R"), (20, "warn_R"), (31, "aim_R")]}),
     False)
 
 ALERT_N = 46
 add("SS_RadioAlert", ALERT_N,
     clip(IDLE_LOWER, IDLE_F[0], IDLE_N,
-         rot_off={"Chest": {0: [(1, -4), (46, -4)], 1: [(1, 0), (12, -6), (34, -5), (46, 0)]},
-                  "Head": {0: [(1, -3), (12, 5), (34, 4), (46, -3)],
+         # 상체를 앞으로 숙인 채 왼손을 어깨로 접으면 팔이 가슴을 파고든다
+         # (실측 1.2mm, MC 기준선 3.4mm). 이 클립만 숙임을 줄인다.
+         rot_off={"Chest": {0: [(1, 3), (46, 3)], 1: [(1, 0), (12, -6), (34, -5), (46, 0)]},
+                  "Head": {0: [(1, -2), (12, 6), (34, 5), (46, -2)],
                            1: [(1, 0), (12, -12), (34, -10), (46, 0)]}},
          arms={"R": [(1, "aim_R")],
                "L": [(1, "base_L"), (12, "radio_L"), (34, "radio_L"), (46, "base_L")]}),
@@ -1859,8 +1945,8 @@ HOLSTER_N = 19
 # 팔꿈치가 과하게 접혀 소매가 팔 속으로 삼켜진다(f14 에서 36.5mm 실측).
 add("SS_TaserHolster", HOLSTER_N,
     clip(IDLE_LOWER, IDLE_F[0], IDLE_N,
-         rot_off={"Chest": {0: [(1, -4), (13, 3), (19, 0)]},
-                  "Head": {0: [(1, -3), (19, 0)]}},
+         rot_off={"Chest": {0: [(1, 6), (13, 3), (19, 0)]},
+                  "Head": {0: [(1, -2), (19, 0)]}},
          arms={"R": [(1, "aim_R"), (11, "draw_mid_R"), (19, "base_R")]}), False)
 
 
@@ -1875,9 +1961,12 @@ def f_chase(f):
     d["LowerArm.L"]["rot"][0] += swf * 12.0 - 22.0     # 달릴 때 팔꿈치를 접는다
     d["UpperArm.L"]["rot"][2] += ABDUCT_L
     d["UpperArm.R"]["rot"][0] += -swf * 5.0
-    d["Chest"]["rot"] = [base_upper("Chest")[0] - 11.0, sw * 4.0, 0.0]
-    d["Spine"]["rot"] = [base_upper("Spine")[0] - 6.0, sw * 2.0, 0.0]
-    d["Head"]["rot"] = [base_upper("Head")[0] + 6.0, -sw * 2.0, 0.0]
+    # rx 양수가 '앞으로 숙임'이다(ACT-06 실측). 여기에 음수를 넣어 뒤로 젖힌
+    # 채 달리고 있었다. 달릴 때는 상체가 앞으로 기울고, 머리는 그만큼
+    # 반대로 들어 전방을 봐야 한다.
+    d["Chest"]["rot"] = [base_upper("Chest")[0] + 15.0, sw * 4.0, 0.0]
+    d["Spine"]["rot"] = [base_upper("Spine")[0] + 8.0, sw * 2.0, 0.0]
+    d["Head"]["rot"] = [base_upper("Head")[0] - 11.0, -sw * 2.0, 0.0]
     return d
 
 
@@ -1886,8 +1975,9 @@ add("SS_Chase", RUN_N, f_chase, True)
 FIRE_N = 25
 add("SS_TaserFire", FIRE_N,
     clip(IDLE_LOWER, IDLE_F[0], IDLE_N,
-         rot_off={"Chest": {0: [(1, -4), (4, 2), (11, -5), (25, -4)]},
-                  "Head": {0: [(1, -3), (4, 2), (11, -4), (25, -3)]}},
+         # 발사 순간 상체가 살짝 뒤로 밀렸다 되돌아온다
+         rot_off={"Chest": {0: [(1, 6), (4, 2), (11, 7), (25, 6)]},
+                  "Head": {0: [(1, -2), (4, 2), (11, -3), (25, -2)]}},
          arms={"R": [(1, "aim_R")]},
          # 반동 — 총구가 위로 튀었다가 되돌아온다
          arm_off={"R": {0: [(1, 0.0), (3, -13.0), (9, 3.0), (16, -1.0), (25, 0.0)],

@@ -20,6 +20,7 @@ def need(name):
     return o
 
 
+BATON = os.environ.get("SS_BATON", "0") == "1"   # 봉 버전 프리뷰
 rig = need("SS_Rig")
 mesh = need("SS_Character")
 cam = need("Camera")
@@ -28,6 +29,14 @@ sc.camera = cam
 sc.render.image_settings.file_format = 'PNG'
 sc.render.image_settings.color_mode = 'RGB'
 sc.render.film_transparent = False
+
+# 기본은 테이저. SS_BATON=1 이면 봉을 보이고 총을 숨긴다.
+_taser = bpy.data.objects.get("PR_Taser")
+_baton = bpy.data.objects.get("PR_Baton")
+if _taser is None or _baton is None:
+    raise RuntimeError("props missing: PR_Taser / PR_Baton")
+_taser.hide_render = BATON
+_baton.hide_render = not BATON
 
 if FLAT:
     for m in bpy.data.materials:

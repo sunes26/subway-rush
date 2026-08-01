@@ -22,6 +22,7 @@ def need(name):
 rig = need("SS_Rig")
 mesh = need("SS_Character")
 prop = need("PR_Taser")
+baton = need("PR_Baton")
 sc = bpy.context.scene
 
 # ---------------------------------------------------------- 익스포트 전 점검
@@ -35,8 +36,9 @@ if max(abs(v - 1.0) for v in rig.scale) > 1e-6:
     raise RuntimeError("rig scale != 1")
 if not any(m.type == 'ARMATURE' for m in mesh.modifiers):
     raise RuntimeError("Armature modifier missing on SS_Character")
-if prop.parent_bone != "Prop.R":
-    raise RuntimeError("taser not parented to Prop.R")
+for _o in (prop, baton):
+    if _o.parent_bone != "Prop.R":
+        raise RuntimeError("%s not parented to Prop.R" % _o.name)
 
 # 정점당 영향 4개 제한 + 정규화 (glTF 는 상위 4개만 남긴다)
 bpy.ops.object.select_all(action='DESELECT')
@@ -81,7 +83,13 @@ if len(ad.nla_tracks) != len(SS_ACTIONS):
 
 # 익스포트 대상만 선택 (카메라 · 라이트 제외)
 bpy.ops.object.select_all(action='DESELECT')
-for o in (rig, mesh, prop):
+# 봉은 씬에서 숨겨 두었다(기본은 테이저). 익스포트에는 반드시 포함돼야 하므로
+# 잠깐 보이게 돌려놓고 내보낸 뒤 되돌린다 — 숨긴 채로는 선택 자체가 안 된다.
+_baton_hidden = (baton.hide_viewport, baton.hide_render)
+baton.hide_viewport = False
+baton.hide_render = False
+bpy.context.view_layer.update()
+for o in (rig, mesh, prop, baton):
     o.select_set(True)
 bpy.context.view_layer.objects.active = rig
 checks["selected"] = sorted(o.name for o in bpy.context.selected_objects)
@@ -130,6 +138,10 @@ bpy.ops.export_scene.fbx(
     path_mode='COPY',
     embed_textures=False,
 )
+
+# 봉 숨김 복구 — GLB·FBX 를 모두 내보낸 뒤에 되돌려야 한다.
+# FBX 앞에서 되돌렸다가 FBX 에만 봉이 빠졌다.
+baton.hide_viewport, baton.hide_render = _baton_hidden
 
 rep["checks"] = checks
 rep["files"] = {"glb": {"path": GLB, "bytes": os.path.getsize(GLB)},

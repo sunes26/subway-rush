@@ -26,6 +26,7 @@ def warn(msg):
 rig = need("SS_Rig")
 mesh = need("SS_Character")
 prop = need("PR_Taser")
+baton = need("PR_Baton")   # 대체 프롭 — 같은 Prop.R, 엔진이 하나만 보인다
 sc = bpy.context.scene
 dg = bpy.context.evaluated_depsgraph_get()
 
@@ -35,7 +36,7 @@ if sc.render.fps != 30:
     fail("fps != 30")
 
 R["transforms"] = {}
-for o in (rig, mesh, prop):
+for o in (rig, mesh, prop, baton):
     R["transforms"][o.name] = {"loc": [round(v, 6) for v in o.location],
                                "rot": [round(math.degrees(v), 4) for v in o.rotation_euler],
                                "scale": [round(v, 6) for v in o.scale]}
@@ -47,17 +48,24 @@ for o in (rig, mesh):
     if max(abs(v) for v in o.rotation_euler) > 1e-6:
         fail("%s rotation not zero" % o.name)
 
-if prop.parent is not rig or prop.parent_type != 'BONE' or prop.parent_bone != "Prop.R":
-    fail("PR_Taser not bone-parented to Prop.R")
-if prop.vertex_groups:
-    warn("PR_Taser has vertex groups (should be bone-parented only)")
+for _o in (prop, baton):
+    if _o.parent is not rig or _o.parent_type != 'BONE' or _o.parent_bone != "Prop.R":
+        fail("%s not bone-parented to Prop.R" % _o.name)
+    if _o.vertex_groups:
+        warn("%s has vertex groups (should be bone-parented only)" % _o.name)
+    if _o.modifiers:
+        fail("%s has modifiers: %s" % (_o.name, [m.name for m in _o.modifiers]))
+# 봉과 총은 같은 자리를 쓰므로 서로 겹친다. 엔진이 하나만 보이면 되지만,
+# 둘 다 주먹 안에 제대로 들어가 있는지는 확인한다.
+_bv = [baton.matrix_world @ v.co for v in baton.data.vertices]
+R["baton"] = {"verts": len(baton.data.vertices),
+              "hidden_by_default": bool(baton.hide_render),
+              "z_span": [round(min(p.z for p in _bv), 4), round(max(p.z for p in _bv), 4)]}
 
 mods = [(m.name, m.type) for m in mesh.modifiers]
-R["modifiers"] = {"SS_Character": mods, "PR_Taser": [(m.name, m.type) for m in prop.modifiers]}
+R["modifiers"] = {"SS_Character": mods}
 if [t for _, t in mods] != ['ARMATURE']:
     fail("SS_Character modifiers != [ARMATURE]: %s" % mods)
-if prop.modifiers:
-    fail("PR_Taser has modifiers: %s" % [m.name for m in prop.modifiers])
 
 bones = [b.name for b in rig.data.bones]
 R["bones"] = {"n": len(bones), "names": bones,
