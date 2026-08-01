@@ -107,7 +107,7 @@ if MODE in ("views", "all"):
     cam_normal()
 
 SHEETS = [("CP_Idle", 61), ("CP_MoveAside", 46), ("CP_AsideIdle", 61),
-          ("CP_CarrierTornado", 76)]
+          ("CP_CarrierTornado", 76), ("CP_CarrierTornado_Loop", 14)]
 NS = 15          # AJ 규격: 액션당 15 샘플
 
 if MODE in ("sheets", "all"):
@@ -115,7 +115,7 @@ if MODE in ("sheets", "all"):
     meta = []
     for act, nframes in SHEETS:
         set_action(act)
-        loop = act in ("CP_Idle", "CP_AsideIdle")
+        loop = act in ("CP_Idle", "CP_AsideIdle", "CP_CarrierTornado_Loop")
         span = (nframes - 1) if loop else (nframes - 1)
         frames = []
         for i in range(NS):

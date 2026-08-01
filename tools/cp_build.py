@@ -926,13 +926,25 @@ BASIS_OBJ_INV = case.matrix_basis.inverted()
 T_TAIL_INV = Matrix.Translation((0.0, CASE_BONE_LEN, 0.0)).inverted()
 
 
+_CASE_PREV = {"e": None}
+
+
+def _case_pose_reset():
+    _CASE_PREV["e"] = None
+
+
 def _case_pose_for(M):
     """캐리어의 목표 월드 행렬 → Prop.Case 본의 (loc, rot도) 로 역산.
 
     본 로컬 축을 눈대중하지 않고 행렬로 직접 푼다.
+    오일러는 직전 프레임과 '호환되는' 표현으로 뽑는다 — 표현이 뒤집히면
+    키 사이 보간이 반대 방향으로 돌아 한 프레임 튄다.
     """
     basis = CASE_REST_INV @ (M @ BASIS_OBJ_INV @ T_TAIL_INV)
-    return list(basis.to_translation()), [math.degrees(a) for a in basis.to_euler('XYZ')]
+    prev = _CASE_PREV["e"]
+    e = basis.to_euler('XYZ', prev) if prev is not None else basis.to_euler('XYZ')
+    _CASE_PREV["e"] = e
+    return list(basis.to_translation()), [math.degrees(a) for a in e]
 
 
 def _tor_w(f):
@@ -1110,13 +1122,58 @@ def f_tornado(f):
     return d
 
 
+# ------------------------------- CP_CarrierTornado_Loop (연속 회전용 루프)
+# 회전 구간만 떼어내 등속 1바퀴로 만든다. 진입/이탈 동작은 넣지 않는다.
+# w=1 구간이라 몸 기준 상대 배치가 완전히 고정이고, 바뀌는 건 자전각과
+# 캐리어 궤도각뿐이다 — 그래서 팔 값도 메인 클립의 w=1 키를 그대로 쓴다.
+# 프레임 수는 메인 클립의 정속 구간(28.6도/프레임)에 맞춰 13프레임 = 1바퀴.
+# 프로젝트 관례대로 마지막 프레임이 첫 프레임과 같은 자세가 되도록 1..14 로 낸다
+# (360도는 0도와 같은 방향이므로 메시가 정확히 일치한다).
+TORL_N = 14
+TORL_STEPS = TORL_N - 1
+if TOR_F0 not in _tor_arm or "L" not in _tor_arm[TOR_F0]:
+    raise RuntimeError("loop: w=1 arm key not found (f%d)" % TOR_F0)
+_TORL_ARM = _tor_arm[TOR_F0]
+_TORL_UPPER = {"Spine": -TOR_PITCH * 0.45, "Chest": -TOR_PITCH * 0.55, "Head": -4.0}
+
+
+def f_tornado_loop(f):
+    psi = 360.0 * (f - 1) / float(TORL_STEPS)          # 등속
+    d = {bn: {"loc": list(sn["loc"]),
+              "rot": [math.degrees(x) for x in sn["rot"]]}
+         for bn, sn in BASE_LOWER.items()}
+    d["Hips"]["rot"][1] += psi                          # 제자리 자전. 위치 이동 없음
+    for side in ("L", "R"):
+        d["UpperLeg." + side]["rot"][0] += -7.0
+        d["LowerLeg." + side]["rot"][0] += 12.0
+        d["Foot." + side]["rot"][0] += -5.0
+    loc, rot = _case_pose_for(_tor_swing_matrix(psi))
+    d["Prop.Case"] = {"loc": loc, "rot": rot}
+    for bn in UPPER_BONES:
+        if bn == "Prop.Case":
+            continue
+        d.setdefault(bn, {})["rot"] = base_upper(bn)
+    for bn, v in _TORL_UPPER.items():
+        r = list(d[bn]["rot"])
+        r[0] += v
+        d[bn]["rot"] = r
+    for i, bn in enumerate(("UpperArm.R", "LowerArm.R")):
+        d[bn]["rot"] = list(_TORL_ARM["R"][i])
+    for i, bn in enumerate(("UpperArm.L", "LowerArm.L")):
+        d[bn]["rot"] = list(_TORL_ARM["L"][i])
+    return d
+
+
 a_idle = write_action("CP_Idle", IDLE_N, f_idle)
 a_aside = write_action("CP_MoveAside", ASIDE_N, make_once)
 a_aidle = write_action("CP_AsideIdle", ASIDEIDLE_N, f_asideidle)
+_case_pose_reset()
 a_tor = write_action("CP_CarrierTornado", TOR_N, f_tornado)
+_case_pose_reset()
+a_torl = write_action("CP_CarrierTornado_Loop", TORL_N, f_tornado_loop)
 
 rep["actions"] = []
-for a in (a_idle, a_aside, a_aidle, a_tor):
+for a in (a_idle, a_aside, a_aidle, a_tor, a_torl):
     nf = sum(len(cb.fcurves) for layer in a.layers for strip in layer.strips
              for cb in strip.channelbags)
     if nf == 0:

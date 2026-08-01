@@ -28,7 +28,7 @@ IMPORTER_ARTIFACTS = {"Icosphere"}
 
 
 EXPECT_ACTS = {"CP_Idle": 61, "CP_MoveAside": 46, "CP_AsideIdle": 61,
-               "CP_CarrierTornado": 76}
+               "CP_CarrierTornado": 76, "CP_CarrierTornado_Loop": 14}
 EXPECT_BONES = 18
 EXPECT_MATS = {"MC_White", "CP_Pillow", "CP_Case", "AJ_Dark"}
 

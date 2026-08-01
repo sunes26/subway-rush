@@ -129,14 +129,15 @@ if flipped:
 
 # ---------------------------------------------------------- 애니메이션 검증
 ACTS = {"CP_Idle": (61, True), "CP_MoveAside": (46, False),
-        "CP_AsideIdle": (61, True), "CP_CarrierTornado": (76, False)}
+        "CP_AsideIdle": (61, True), "CP_CarrierTornado": (76, False),
+        "CP_CarrierTornado_Loop": (14, True)}
 # 토네이도는 캐리어를 축으로 몸이 도는 동작이라 Hips 가 궤도 이동한다.
 # Root 는 어느 액션에서도 수평 이동이 없어야 하고(=루트 모션 없음), Hips 는
 # 이 액션에서만 허용하되 시작·종료가 0 으로 닫혀야 제자리 애니메이션이다.
 # 토네이도는 캐릭터가 축이라 제자리 자전만 한다 — Hips 수평 이동도 0 이어야 한다.
 HIPS_ORBIT_OK = {}
 # 회전 중 발이 미끄러지는 건 설계다 — MC 대비 판정에서 제외한다.
-SLIDE_EXEMPT = {"CP_CarrierTornado"}
+SLIDE_EXEMPT = {"CP_CarrierTornado", "CP_CarrierTornado_Loop"}
 acts_in_file = sorted(a.name for a in bpy.data.actions)
 R["actions_in_file"] = acts_in_file
 if set(acts_in_file) != set(ACTS):
