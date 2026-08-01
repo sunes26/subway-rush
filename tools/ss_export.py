@@ -38,7 +38,7 @@ if max(abs(v - 1.0) for v in rig.scale) > 1e-6:
     raise RuntimeError("rig scale != 1")
 if not any(m.type == 'ARMATURE' for m in mesh.modifiers):
     raise RuntimeError("Armature modifier missing on SS_Character")
-for _o, _bn in ((prop, "Prop.R"), (baton, "Prop.R"), (stow, "Hips"), (bstow, "Hips")):
+for _o, _bn in ((prop, "Prop.R"), (baton, "Prop.L"), (stow, "Hips"), (bstow, "Hips")):
     if _o.parent_bone != _bn:
         raise RuntimeError("%s not parented to %s" % (_o.name, _bn))
 

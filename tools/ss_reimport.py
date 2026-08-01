@@ -32,7 +32,7 @@ EXPECT_ACTS = {"SS_Idle": 61, "SS_Walk": 31, "SS_Radio": 61, "SS_Guide": 40,
                "SS_RadioAlert": 46, "SS_TaserHolster": 23, "SS_Chase": 19,
                "SS_TaserFire": 25, "SS_BatonDraw": 23, "SS_BatonReady": 46,
                "SS_BatonSwing": 25, "SS_BatonHolster": 23, "SS_BatonChase": 19}
-EXPECT_BONES = 18
+EXPECT_BONES = 19
 EXPECT_MATS = {"MC_White", "SS_Uniform", "SS_Trim", "AJ_Dark", "SS_Arc", "SS_Cartridge"}
 
 
@@ -121,8 +121,8 @@ def inspect(tag):
     bt = next((m for m in meshes if m.name == "PR_Baton" or m.name.startswith("PR_Baton.")), None)
     if bt is None:
         fail("%s: baton prop missing" % tag)
-    elif bt.parent_bone != "Prop.R":
-        fail("%s: baton lost Prop.R bone parent (got %r)" % (tag, bt.parent_bone))
+    elif bt.parent_bone != "Prop.L":
+        fail("%s: baton lost Prop.L bone parent (got %r)" % (tag, bt.parent_bone))
     ph = next((m for m in meshes if m.name.startswith("PR_Taser")), None)
     if ph is None:
         fail("%s: taser prop missing" % tag)

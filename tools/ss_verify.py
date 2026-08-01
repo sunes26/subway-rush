@@ -50,7 +50,7 @@ for o in (rig, mesh):
     if max(abs(v) for v in o.rotation_euler) > 1e-6:
         fail("%s rotation not zero" % o.name)
 
-for _o, _bn in ((prop, "Prop.R"), (baton, "Prop.R"), (stow, "Hips"),
+for _o, _bn in ((prop, "Prop.R"), (baton, "Prop.L"), (stow, "Hips"),
                 (bstow, "Hips")):
     if _o.parent is not rig or _o.parent_type != 'BONE' or _o.parent_bone != _bn:
         fail("%s not bone-parented to %s" % (_o.name, _bn))
@@ -75,8 +75,9 @@ if [t for _, t in mods] != ['ARMATURE']:
 bones = [b.name for b in rig.data.bones]
 R["bones"] = {"n": len(bones), "names": bones,
               "deform": [b.name for b in rig.data.bones if b.use_deform]}
-if len(bones) != 18:
-    fail("bone count %d != 18" % len(bones))
+# 삼단봉을 왼손이 들어야 해서 Prop.L 이 하나 늘었다(MC 17 + Prop.R + Prop.L).
+if len(bones) != 19:
+    fail("bone count %d != 19" % len(bones))
 me = mesh.data
 gnames = [g.name for g in mesh.vertex_groups]
 if set(gnames) - set(bones):

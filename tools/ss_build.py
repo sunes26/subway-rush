@@ -938,8 +938,25 @@ _pr.tail = _par.tail + Vector((0.0, 0.0, -0.060))
 _pr.parent = _par
 _pr.use_connect = False
 _pr.use_deform = False
+# 삼단봉은 왼손이 든다. 링이 왼쪽 허리에 있고, 오른손으로 건너가면
+# 어깨→링 거리가 팔 도달의 107% 라 물리적으로 닿지 않는다(실측:
+# 억지로 목표를 링에 두면 팔이 몸통을 0.9mm 까지 파고들고 봉이 102정점 관통).
+_parl = eb.get("LowerArm.L")
+if _parl is None:
+    raise RuntimeError("LowerArm.L missing")
+if "Prop.L" in eb:
+    raise RuntimeError("Prop.L already exists")
+_pl = eb.new("Prop.L")
+_pl.head = _parl.tail.copy()
+_pl.tail = _parl.tail + Vector((0.0, 0.0, -0.060))
+_pl.parent = _parl
+_pl.use_connect = False
+_pl.use_deform = False
 bpy.ops.object.mode_set(mode='OBJECT')
-rig.pose.bones["Prop.R"].rotation_mode = 'XYZ'
+for _pbn in ("Prop.R", "Prop.L"):
+    rig.pose.bones[_pbn].rotation_mode = 'XYZ'
+if len(rig.data.bones) != 19:
+    raise RuntimeError("bone count %d != 19" % len(rig.data.bones))
 rep["rig"] = {"bones": len(rig.data.bones),
               "names": [b.name for b in rig.data.bones]}
 
@@ -1431,11 +1448,20 @@ BATON_MOUNT = 15.0
 baton.rotation_euler = (D(BATON_MOUNT), 0.0, 0.0)
 set_active(baton)
 bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
-baton.location = TASER_CEN
+# 봉은 왼손이 든다 — 왼 주먹 덩어리를 따로 실측해 그 중심에 놓는다.
+_handL = [mesh.matrix_world @ _me.data.vertices[v.index].co for v in mesh.data.vertices
+          if sum(g.weight for g in v.groups if g.group == gi["LowerArm.L"]) > 0.6]
+_blobL = [p for p in _handL if (p - tip("LowerArm.L")).length < 0.040]
+if len(_blobL) < 20:
+    raise RuntimeError("left hand blob too small: %d" % len(_blobL))
+HAND_L_C = sum(_blobL, Vector()) / len(_blobL)
+BATON_CEN = HAND_L_C + Vector((SIDE_SIGN["L"] * 0.008, -0.008, 0.006))
+rep["baton_hand"] = {"center": [round(v, 4) for v in HAND_L_C]}
+baton.location = BATON_CEN
 set_active(baton)
 bpy.ops.object.transform_apply(location=True, rotation=False, scale=False)
 bpy.ops.object.shade_smooth()
-bone_attach(baton, "Prop.R")
+bone_attach(baton, "Prop.L")
 # 프리뷰 렌더·검사 기본값은 테이저다. 봉은 숨겨 두고 엔진이 골라 쓴다.
 baton.hide_render = True
 rep["baton"] = {"verts": len(baton.data.vertices),
@@ -1533,11 +1559,11 @@ if max(p.z for p in _sv) - _pouch_top < 0.008:
 # ---- 삼단봉의 벨트 링 사본 ----
 # 총과 반대쪽(왼쪽) 허리에 고리로 매단다. 봉은 파우치에 넣지 않고 링에 꽂는다.
 RING_R, RING_MINOR = 0.017, 0.0042
-# 왼쪽 허리에 걸면 오른손이 못 닿는다(어깨→링 0.314 > 도달 0.293).
-# 총과 같은 오른쪽에, 파우치 뒤로 물려 단다.
-RING_X = SIDE_SIGN["R"] * (POUCH_X * SIDE_SIGN["R"] - 0.002)
-RING_Y = POUCH_Y + POUCH_D * 0.5 + 0.016
-RING_Z = HEM_Z - 0.004
+# 총 파우치와 반대쪽(왼쪽) 허리. 오른손이 링에 '정확히' 닿지는 못하지만
+# (어깨→링 0.314 > 도달 0.293), 29mm 까지 접근하므로 교차 뽑기로 읽힌다.
+RING_X = SIDE_SIGN["L"] * (POUCH_X * SIDE_SIGN["R"] - 0.004)
+RING_Y = -0.004
+RING_Z = HEM_Z - 0.006
 bpy.ops.mesh.primitive_torus_add(major_segments=16, minor_segments=6,
                                  major_radius=RING_R, minor_radius=RING_MINOR,
                                  location=(RING_X, RING_Y, RING_Z))
@@ -1662,8 +1688,9 @@ for v in mesh.data.vertices:
 rep["max_influence_pre_limit"] = _maxinf
 # ============================================================ 12. 액션
 UPPER_BASE["Prop.R"] = (0, 0, 0)
+UPPER_BASE["Prop.L"] = (0, 0, 0)
 UPPER_BONES = ["Spine", "Chest", "Head", "Shoulder.L", "UpperArm.L", "LowerArm.L",
-               "Shoulder.R", "UpperArm.R", "LowerArm.R", "Prop.R"]
+               "Shoulder.R", "UpperArm.R", "LowerArm.R", "Prop.R", "Prop.L"]
 KEYED = LOWER + UPPER_BONES
 
 
@@ -1884,24 +1911,45 @@ rep["arm_poses"]["pouch_R"] = {"hand_err_m": round(_e, 4)}
 if _e > 0.055:
     AIM_FAIL.append("pouch_R hand %.4f m" % _e)
 
+# 삼단봉 뽑기 시작점 — 왼쪽 허리 링 쪽으로 몸을 가로질러 뻗는다.
+#
+# 오른손은 왼쪽 허리 링에 '닿을 수 없다'. 어깨→링 거리가 팔 도달의 107% 다.
+# 억지로 목표를 링에 두면 팔이 몸통을 파고들고(0.9mm, MC 기준선 3.4mm)
+# 봉이 몸통을 102정점 관통한다 — 검사기가 잡았다.
+# 그래서 '배 앞을 가로지르는 안전한 지점'까지만 뻗는다. 손이 링에 닿지는
+# 않지만 몸을 가로질러 뽑는 동작으로는 읽힌다.
+neutral_upper()
+_ring_w = Vector((RING_X, RING_Y, RING_Z))
+# 같은 쪽 손이라 링에 그대로 닿는다 (도달 84%).
+_bat_grab = _ring_w + Vector((SIDE_SIGN["L"] * 0.022, -0.010, 0.010))
+P["bat_grab_L"], _e, _a = solve_arm2(
+    "L", _bat_grab, sh_l + Vector((0.078, 0.004, -0.126)),
+    elbow_w=0.006, start=P["base_L"])
+rep["arm_poses"]["bat_grab_L"] = {
+    "hand_err_m": round(_e, 4),
+    "hand_to_ring_m": round((_ring_w - _bat_grab).length, 4),
+    "ring_reach_pct": round((_ring_w - sh_l).length / ARM_REACH * 100, 1)}
+if _e > 0.055:
+    AIM_FAIL.append("bat_grab_L hand %.4f m" % _e)
+
 # 삼단봉 — 봉은 아래팔에 거의 나란하므로 '아래팔이 어디를 향하는가'가 곧
 # 봉이 어디를 향하는가다. 준비 자세는 아래팔이 앞위 45도를 향해야 봉이 선다.
 neutral_upper()
-P["bat_ready_R"], _e, _a = solve_arm2(
-    "R", sh_r + Vector((-0.090, -0.100, 0.008)), sh_r + Vector((-0.090, -0.020, -0.114)),
-    elbow_w=0.006, start=P["base_R"])
-rep["arm_poses"]["bat_ready_R"] = {"hand_err_m": round(_e, 4)}
+P["bat_ready_L"], _e, _a = solve_arm2(
+    "L", sh_l + Vector((0.090, -0.100, 0.008)), sh_l + Vector((0.090, -0.020, -0.114)),
+    elbow_w=0.006, start=P["base_L"])
+rep["arm_poses"]["bat_ready_L"] = {"hand_err_m": round(_e, 4)}
 if _e > 0.055:
-    AIM_FAIL.append("bat_ready_R hand %.4f m" % _e)
+    AIM_FAIL.append("bat_ready_L hand %.4f m" % _e)
 
 # 삼단봉 — 앞아래로 내리치는 끝 자세
 neutral_upper()
-P["bat_strike_R"], _e, _a = solve_arm2(
-    "R", sh_r + Vector((-0.084, -0.188, -0.186)), sh_r + Vector((-0.084, -0.074, -0.094)),
-    elbow_w=0.006, start=P["bat_ready_R"])
-rep["arm_poses"]["bat_strike_R"] = {"hand_err_m": round(_e, 4)}
+P["bat_strike_L"], _e, _a = solve_arm2(
+    "L", sh_l + Vector((0.084, -0.188, -0.186)), sh_l + Vector((0.084, -0.074, -0.094)),
+    elbow_w=0.006, start=P["bat_ready_L"])
+rep["arm_poses"]["bat_strike_L"] = {"hand_err_m": round(_e, 4)}
 if _e > 0.055:
-    AIM_FAIL.append("bat_strike_R hand %.4f m" % _e)
+    AIM_FAIL.append("bat_strike_L hand %.4f m" % _e)
 
 # 겨눔 직전 오버슛 — 목표보다 조금 더 올라갔다 내려앉아야 '멈춘' 느낌이 난다
 neutral_upper()
@@ -1958,25 +2006,27 @@ if AIM_FAIL:
     raise RuntimeError("arm poses failed: " + " | ".join(AIM_FAIL))
 
 
-def _abduct_sign():
-    """UpperArm.L 의 어느 부호가 팔을 몸에서 멀어지게 하는지 실측한다.
+def _abduct_sign(side):
+    """UpperArm 의 어느 부호가 팔을 몸에서 멀어지게 하는지 실측한다.
     로컬 축은 본 방향에 따라 뒤집히므로 눈대중하면 반대로 벌린다."""
     neutral_upper()
-    pb = rig.pose.bones["UpperArm.L"]
-    base = list(P["base_L"])
+    pb = rig.pose.bones["UpperArm." + side]
+    base = list(P["base_" + side])
     out = {}
     for sgn in (+1.0, -1.0):
         pb.rotation_euler = Euler([D(base[0]), D(base[1]), D(base[2] + sgn * 8.0)], 'XYZ')
-        rig.pose.bones["LowerArm.L"].rotation_euler = Euler(
+        rig.pose.bones["LowerArm." + side].rotation_euler = Euler(
             [D(base[3]), D(base[4]), D(base[5])], 'XYZ')
         dg.update()
-        out[sgn] = (tip("LowerArm.L") - Vector((0.0, 0.0, tip("LowerArm.L").z))).length
+        _t = tip("LowerArm." + side)
+        out[sgn] = math.hypot(_t.x, _t.y)
     neutral_upper()
     return 8.0 if out[+1.0] > out[-1.0] else -8.0
 
 
-ABDUCT_L = _abduct_sign()
-rep["abduct_L_deg"] = ABDUCT_L
+ABDUCT_L = _abduct_sign("L")
+ABDUCT_R = _abduct_sign("R")
+rep["abduct_deg"] = {"L": ABDUCT_L, "R": ABDUCT_R}
 
 
 def arm_curve(keys, f):
@@ -2186,16 +2236,16 @@ add("SS_BatonDraw", BDRAW_N,
     clip(IDLE_LOWER, IDLE_F[0], IDLE_N,
          rot_off={"Chest": {0: [(1, 0), (7, 1), (16, 5), (23, 3)]},
                   "Head": {0: [(1, 0), (23, -2)]}},
-         arms={"R": [(1, "base_R"), (7, "pouch_R"), (14, "draw_mid_R"),
-                     (23, "bat_ready_R")]}), False)
+         arms={"L": [(1, "base_L"), (8, "bat_grab_L"), (15, "bat_grab_L"),
+                     (23, "bat_ready_L")]}), False)
 
 BREADY_N = 46
 add("SS_BatonReady", BREADY_N,
     clip(IDLE_LOWER, IDLE_F[0], IDLE_N, cycle_to=BREADY_N,
          rot_off={"Chest": {0: [(1, 3), (23, 4.2), (46, 3)]},
                   "Head": {0: [(1, -2), (23, -1), (46, -2)]}},
-         arms={"R": [(1, "bat_ready_R")]},
-         arm_off={"R": {0: [(1, 0.0), (12, 1.6), (23, 0.0), (35, -1.6), (46, 0.0)]}}),
+         arms={"L": [(1, "bat_ready_L")]},
+         arm_off={"L": {0: [(1, 0.0), (12, 1.6), (23, 0.0), (35, -1.6), (46, 0.0)]}}),
     True)
 
 BSWING_N = 25
@@ -2204,32 +2254,34 @@ add("SS_BatonSwing", BSWING_N,
          # 내리치는 순간 상체가 앞으로 실렸다가 되돌아온다
          rot_off={"Chest": {0: [(1, 3), (5, -2), (11, 11), (18, 6), (25, 3)]},
                   "Head": {0: [(1, -2), (11, 4), (25, -2)]}},
-         arms={"R": [(1, "bat_ready_R"), (5, "bat_ready_R"),
-                     (11, "bat_strike_R"), (18, "bat_strike_R"),
-                     (25, "bat_ready_R")]}), False)
+         arms={"L": [(1, "bat_ready_L"), (5, "bat_ready_L"),
+                     (11, "bat_strike_L"), (18, "bat_strike_L"),
+                     (25, "bat_ready_L")]}), False)
 
 BHOLSTER_N = 23
 add("SS_BatonHolster", BHOLSTER_N,
     clip(IDLE_LOWER, IDLE_F[0], IDLE_N,
          rot_off={"Chest": {0: [(1, 3), (12, 2), (23, 0)]},
                   "Head": {0: [(1, -2), (23, 0)]}},
-         arms={"R": [(1, "bat_ready_R"), (11, "draw_mid_R"), (18, "pouch_R"),
-                     (23, "base_R")]}), False)
+         arms={"L": [(1, "bat_ready_L"), (11, "bat_grab_L"), (17, "bat_grab_L"),
+                     (23, "base_L")]}), False)
 
 BCHASE_N = RUN_N
 
 
 def f_baton_chase(f):
-    d = clip(RUN_LOWER, RUN_F[0], RUN_N, arms={"R": [(1, "bat_ready_R")]})(f)
+    d = clip(RUN_LOWER, RUN_F[0], RUN_N, arms={"L": [(1, "bat_ready_L")]})(f)
     t = (f - 1) / float(RUN_N - 1)
     tau = 2 * math.pi * t
     sw = math.sin(tau)
     swf = sw if sw > 0 else sw * 0.45
-    d["UpperArm.L"]["rot"][0] += swf * 34.0
-    d["LowerArm.L"]["rot"][0] += swf * 12.0 - 22.0
-    d["UpperArm.L"]["rot"][2] += ABDUCT_L
-    # 봉을 든 팔은 위아래로 크게 흔들지 않는다 — 들어 올린 채 달린다
-    d["UpperArm.R"]["rot"][0] += -swf * 4.0
+    # 봉은 왼손이 들었으므로 오른팔이 크게 흔들고 왼팔은 들어 올린 채 유지한다
+    d["UpperArm.R"]["rot"][0] += swf * 34.0
+    d["LowerArm.R"]["rot"][0] += swf * 12.0 - 22.0
+    d["UpperArm.R"]["rot"][2] += ABDUCT_R
+    # 봉을 든 왼팔도 살짝 벌린다 — 상체를 숙인 채 붙이면 봉이 가슴을 스친다
+    d["UpperArm.L"]["rot"][0] += -swf * 4.0
+    d["UpperArm.L"]["rot"][2] += ABDUCT_L * 0.8
     d["Chest"]["rot"] = [base_upper("Chest")[0] + 10.5, sw * 4.0, 0.0]
     d["Spine"]["rot"] = [base_upper("Spine")[0] + 5.0, sw * 2.0, 0.0]
     d["Head"]["rot"] = [base_upper("Head")[0] - 7.0, -sw * 2.0, 0.0]
