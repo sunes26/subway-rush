@@ -61,8 +61,8 @@ BAND = b64_jpeg(band, 88)
 
 # ------------------------------------------------------------ 스프라이트 시트
 meta = json.load(open(need(os.path.join(RD, "sheets.json"))))
-if len(meta) != 11:
-    raise RuntimeError("expected 11 clips in sheets.json, got %d" % len(meta))
+if len(meta) != 15:
+    raise RuntimeError("expected 15 clips in sheets.json, got %d" % len(meta))
 cards = []
 for m in meta:
     act = m["action"]

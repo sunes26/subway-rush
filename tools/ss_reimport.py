@@ -30,7 +30,8 @@ IMPORTER_ARTIFACTS = {"Icosphere"}
 EXPECT_ACTS = {"SS_Idle": 61, "SS_Walk": 31, "SS_Radio": 61, "SS_Guide": 40,
                "SS_TaserDraw": 23, "SS_TaserAim": 46, "SS_TaserWarn": 31,
                "SS_RadioAlert": 46, "SS_TaserHolster": 23, "SS_Chase": 19,
-               "SS_TaserFire": 25}
+               "SS_TaserFire": 25, "SS_BatonDraw": 23, "SS_BatonReady": 46,
+               "SS_BatonSwing": 25, "SS_BatonHolster": 23}
 EXPECT_BONES = 18
 EXPECT_MATS = {"MC_White", "SS_Uniform", "SS_Trim", "AJ_Dark", "SS_Arc", "SS_Cartridge"}
 

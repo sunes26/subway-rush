@@ -43,16 +43,24 @@ if _stow is None or _bstow is None:
 
 # 총을 손에 드는 클립은 Taser 계열과 추격·보고뿐이다.
 # 나머지에서는 벨트 파우치에 꽂혀 있어야 한다.
-HAND_CLIPS = {"SS_TaserDraw", "SS_TaserAim", "SS_TaserWarn", "SS_TaserFire",
+# 손에 드는 클립. 뽑기·집어넣기는 중간에 바뀌지만 프리뷰는 '든' 쪽으로 본다.
+TASER_HAND = {"SS_TaserDraw", "SS_TaserAim", "SS_TaserWarn", "SS_TaserFire",
               "SS_TaserHolster", "SS_Chase", "SS_RadioAlert"}
+BATON_HAND = {"SS_BatonDraw", "SS_BatonReady", "SS_BatonSwing", "SS_BatonHolster"}
+LOOPS = {"SS_Idle", "SS_Walk", "SS_TaserAim", "SS_Chase", "SS_BatonReady"}
 
 
 def set_props(action_name):
-    in_hand = action_name in HAND_CLIPS
-    _taser.hide_render = BATON or not in_hand
-    _baton.hide_render = BATON is False or not in_hand
-    _stow.hide_render = in_hand or BATON
-    _bstow.hide_render = in_hand or (not BATON)
+    """클립 이름으로 어느 프롭을 보일지 정한다.
+
+    Baton* 클립은 봉 버전 전용이라 SS_BATON 과 무관하게 봉을 든다.
+    """
+    baton_clip = action_name in BATON_HAND
+    taser_clip = action_name in TASER_HAND
+    _taser.hide_render = not taser_clip or BATON
+    _baton.hide_render = not baton_clip and not (BATON and taser_clip)
+    _stow.hide_render = taser_clip or BATON or baton_clip
+    _bstow.hide_render = not (baton_clip is False and BATON) or taser_clip
 
 
 set_props("SS_Idle")
@@ -136,7 +144,7 @@ if MODE in ("views", "all"):
     cam_normal()
 
 # 액션 목록을 손으로 적으면 또 어긋난다 — 씬에 실제로 있는 것에서 채운다.
-LOOPS = {"SS_Idle", "SS_Walk", "SS_TaserAim", "SS_Chase"}
+# LOOPS 는 위 set_props 옆에서 한 번만 정의한다.
 SHEETS = [(a.name, int(round(a.frame_range[1] - a.frame_range[0])) + 1)
           for a in sorted(bpy.data.actions, key=lambda x: x.name)]
 NS = 15          # AJ 규격: 액션당 15 샘플

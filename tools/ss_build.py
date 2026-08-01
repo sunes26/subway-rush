@@ -1522,9 +1522,11 @@ if max(p.z for p in _sv) - _pouch_top < 0.008:
 # ---- 삼단봉의 벨트 링 사본 ----
 # 총과 반대쪽(왼쪽) 허리에 고리로 매단다. 봉은 파우치에 넣지 않고 링에 꽂는다.
 RING_R, RING_MINOR = 0.017, 0.0042
-RING_X = SIDE_SIGN["L"] * (POUCH_X * SIDE_SIGN["R"] - 0.004)
-RING_Y = -0.004
-RING_Z = HEM_Z - 0.006
+# 왼쪽 허리에 걸면 오른손이 못 닿는다(어깨→링 0.314 > 도달 0.293).
+# 총과 같은 오른쪽에, 파우치 뒤로 물려 단다.
+RING_X = SIDE_SIGN["R"] * (POUCH_X * SIDE_SIGN["R"] - 0.002)
+RING_Y = POUCH_Y + POUCH_D * 0.5 + 0.016
+RING_Z = HEM_Z - 0.004
 bpy.ops.mesh.primitive_torus_add(major_segments=16, minor_segments=6,
                                  major_radius=RING_R, minor_radius=RING_MINOR,
                                  location=(RING_X, RING_Y, RING_Z))
@@ -1861,6 +1863,34 @@ rep["arm_poses"]["warn_R"] = {"hand_err_m": round(_e, 4), "aim_err_deg": round(_
 if _e > 0.055 or _a > 12.0:
     AIM_FAIL.append("warn_R hand %.4f m barrel %.1f deg" % (_e, _a))
 
+# 파우치에 손을 대는 자세 — '꺼내는' 동작의 시작점.
+# 손이 파우치 바깥면 옆에 오게 한다. 더 안으로 넣으면 팔이 몸통을 파고든다.
+neutral_upper()
+P["pouch_R"], _e, _a = solve_arm2(
+    "R", sh_r + Vector((-0.060, -0.014, -0.248)), sh_r + Vector((-0.080, 0.004, -0.126)),
+    elbow_w=0.006, start=P["base_R"])
+rep["arm_poses"]["pouch_R"] = {"hand_err_m": round(_e, 4)}
+if _e > 0.055:
+    AIM_FAIL.append("pouch_R hand %.4f m" % _e)
+
+# 삼단봉 — 어깨 옆에 세워 든 준비 자세
+neutral_upper()
+P["bat_ready_R"], _e, _a = solve_arm2(
+    "R", sh_r + Vector((-0.106, -0.046, -0.072)), sh_r + Vector((-0.112, -0.010, -0.094)),
+    elbow_w=0.006, start=P["base_R"])
+rep["arm_poses"]["bat_ready_R"] = {"hand_err_m": round(_e, 4)}
+if _e > 0.055:
+    AIM_FAIL.append("bat_ready_R hand %.4f m" % _e)
+
+# 삼단봉 — 앞아래로 내리치는 끝 자세
+neutral_upper()
+P["bat_strike_R"], _e, _a = solve_arm2(
+    "R", sh_r + Vector((-0.068, -0.196, -0.132)), sh_r + Vector((-0.082, -0.086, -0.020)),
+    elbow_w=0.006, start=P["base_R"])
+rep["arm_poses"]["bat_strike_R"] = {"hand_err_m": round(_e, 4)}
+if _e > 0.055:
+    AIM_FAIL.append("bat_strike_R hand %.4f m" % _e)
+
 # 겨눔 직전 오버슛 — 목표보다 조금 더 올라갔다 내려앉아야 '멈춘' 느낌이 난다
 neutral_upper()
 P["aim_over_R"], _e, _a = solve_arm2(
@@ -2057,8 +2087,8 @@ add("SS_TaserDraw", DRAW_N,
                   "Head": {0: [(1, 0), (17, -3), (23, -2)]}},
          # 파우치에서 뽑아 → 바깥으로 크게 돌려 올려 → 겨눔에서 살짝 오버슛 후 안착.
          # 중간 키 없이 두 점만 이으면 '스르륵 올라가는' 밋밋한 동작이 된다.
-         arms={"R": [(1, "base_R"), (8, "draw_mid_R"), (17, "aim_over_R"),
-                     (23, "aim_R")]}), False)
+         arms={"R": [(1, "base_R"), (7, "pouch_R"), (13, "draw_mid_R"),
+                     (19, "aim_over_R"), (23, "aim_R")]}), False)
 
 AIM_N = 46
 add("SS_TaserAim", AIM_N,
@@ -2097,7 +2127,8 @@ add("SS_TaserHolster", HOLSTER_N,
     clip(IDLE_LOWER, IDLE_F[0], IDLE_N,
          rot_off={"Chest": {0: [(1, 6), (13, 3), (23, 0)]},
                   "Head": {0: [(1, -2), (23, 0)]}},
-         arms={"R": [(1, "aim_R"), (13, "draw_mid_R"), (23, "base_R")]}), False)
+         arms={"R": [(1, "aim_R"), (12, "draw_mid_R"), (18, "pouch_R"),
+                     (23, "base_R")]}), False)
 
 
 # ---------------------------------------------------------------- Level 2
@@ -2136,11 +2167,48 @@ add("SS_TaserFire", FIRE_N,
                         3: [(1, 0.0), (3, -10.0), (8, 3.0), (25, 0.0)]}}),
     False)
 
+# ---------------------------------------------------- 삼단봉 버전 전용 클립
+# 프롭만 바꿔서는 '봉을 뽑아 내리친다'가 나오지 않는다. 총과 궤적이 다르다.
+BDRAW_N = 23
+add("SS_BatonDraw", BDRAW_N,
+    clip(IDLE_LOWER, IDLE_F[0], IDLE_N,
+         rot_off={"Chest": {0: [(1, 0), (7, 1), (16, 5), (23, 3)]},
+                  "Head": {0: [(1, 0), (23, -2)]}},
+         arms={"R": [(1, "base_R"), (7, "pouch_R"), (14, "draw_mid_R"),
+                     (23, "bat_ready_R")]}), False)
+
+BREADY_N = 46
+add("SS_BatonReady", BREADY_N,
+    clip(IDLE_LOWER, IDLE_F[0], IDLE_N, cycle_to=BREADY_N,
+         rot_off={"Chest": {0: [(1, 3), (23, 4.2), (46, 3)]},
+                  "Head": {0: [(1, -2), (23, -1), (46, -2)]}},
+         arms={"R": [(1, "bat_ready_R")]},
+         arm_off={"R": {0: [(1, 0.0), (12, 1.6), (23, 0.0), (35, -1.6), (46, 0.0)]}}),
+    True)
+
+BSWING_N = 25
+add("SS_BatonSwing", BSWING_N,
+    clip(IDLE_LOWER, IDLE_F[0], IDLE_N,
+         # 내리치는 순간 상체가 앞으로 실렸다가 되돌아온다
+         rot_off={"Chest": {0: [(1, 3), (5, -2), (11, 11), (18, 6), (25, 3)]},
+                  "Head": {0: [(1, -2), (11, 4), (25, -2)]}},
+         arms={"R": [(1, "bat_ready_R"), (5, "bat_ready_R"),
+                     (11, "bat_strike_R"), (18, "bat_strike_R"),
+                     (25, "bat_ready_R")]}), False)
+
+BHOLSTER_N = 23
+add("SS_BatonHolster", BHOLSTER_N,
+    clip(IDLE_LOWER, IDLE_F[0], IDLE_N,
+         rot_off={"Chest": {0: [(1, 3), (12, 2), (23, 0)]},
+                  "Head": {0: [(1, -2), (23, 0)]}},
+         arms={"R": [(1, "bat_ready_R"), (11, "draw_mid_R"), (18, "pouch_R"),
+                     (23, "base_R")]}), False)
+
 rep["clips"] = [{"name": n, "frames": nf, "loop": lp,
                  "dur_s": round((nf - 1) / 30.0, 3)} for n, nf, lp in CLIPS]
 rep["actions"] = {a.name: [round(x, 1) for x in a.frame_range] for a in bpy.data.actions}
-if len(CLIPS) != 11:
-    raise RuntimeError("expected 11 clips, made %d" % len(CLIPS))
+if len(CLIPS) != 15:
+    raise RuntimeError("expected 15 clips, made %d" % len(CLIPS))
 # ============================================================ 13. 저장
 for pb in rig.pose.bones:
     pb.location = (0.0, 0.0, 0.0)

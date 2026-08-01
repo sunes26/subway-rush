@@ -58,7 +58,8 @@ if maxinf > 4:
 # ------------------------------------------------------------- NLA 트랙 구성
 SS_ACTIONS = ["SS_Idle", "SS_Walk", "SS_Radio", "SS_Guide",
               "SS_TaserDraw", "SS_TaserAim", "SS_TaserWarn", "SS_RadioAlert",
-              "SS_TaserHolster", "SS_Chase", "SS_TaserFire"]
+              "SS_TaserHolster", "SS_Chase", "SS_TaserFire",
+              "SS_BatonDraw", "SS_BatonReady", "SS_BatonSwing", "SS_BatonHolster"]
 present = sorted(a.name for a in bpy.data.actions)
 if set(present) != set(SS_ACTIONS):
     raise RuntimeError("unexpected actions in file: %s" % present)
