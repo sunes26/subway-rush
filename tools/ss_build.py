@@ -1415,9 +1415,20 @@ _b_open = len([e for e in _bmb.edges if len(e.link_faces) != 2])
 _bmb.free()
 if _b_open:
     raise RuntimeError("baton has %d open/non-manifold edges" % _b_open)
-# 봉의 중심이 주먹 중심에 오도록 놓고, 테이저와 같은 각도로 숙인다.
-# 봉은 축이 +Z 이므로, 40도 숙이면 끝이 앞아래를 향한다.
-baton.rotation_euler = (D(MOUNT_TILT), 0.0, 0.0)
+# 봉을 '가운데'를 쥐면 막대기를 한복판에서 잡은 꼴이 된다. 손잡이 쪽 끝이
+# 주먹에 오도록 축 방향으로 밀어, 몸통이 아래로 뻗게 한다.
+BAT_GRIP_OFF = 0.048
+_bmg = bmesh.new()
+_bmg.from_mesh(baton.data)
+for v in _bmg.verts:
+    v.co.z -= BAT_GRIP_OFF
+_bmg.to_mesh(baton.data)
+_bmg.free()
+baton.data.update()
+# 마운트 각도는 총과 다르다. 총은 총구를 숙여야 하지만 봉은 아래로 늘어뜨리는
+# 게 자연스럽고, 그래야 팔을 들었을 때 봉이 위로 선다.
+BATON_MOUNT = 15.0
+baton.rotation_euler = (D(BATON_MOUNT), 0.0, 0.0)
 set_active(baton)
 bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
 baton.location = TASER_CEN
@@ -1564,7 +1575,7 @@ bstow.data.name = "PR_BatonStowed"
 # 봉이 통째로 날아간다. 반드시 자기 중심을 축으로 메시에 직접 건다.
 _bsv = [bstow.matrix_world @ v.co for v in bstow.data.vertices]
 _bsc = sum(_bsv, Vector()) / len(_bsv)
-_Rb = Matrix.Rotation(D(-MOUNT_TILT + 6.0), 4, 'X')
+_Rb = Matrix.Rotation(D(-BATON_MOUNT + 4.0), 4, 'X')
 _target = Vector((RING_X, RING_Y, RING_Z)) + Vector((0.0, 0.0, -0.022))
 _bmbs = bmesh.new()
 _bmbs.from_mesh(bstow.data)
@@ -1873,10 +1884,11 @@ rep["arm_poses"]["pouch_R"] = {"hand_err_m": round(_e, 4)}
 if _e > 0.055:
     AIM_FAIL.append("pouch_R hand %.4f m" % _e)
 
-# 삼단봉 — 어깨 옆에 세워 든 준비 자세
+# 삼단봉 — 봉은 아래팔에 거의 나란하므로 '아래팔이 어디를 향하는가'가 곧
+# 봉이 어디를 향하는가다. 준비 자세는 아래팔이 앞위 45도를 향해야 봉이 선다.
 neutral_upper()
 P["bat_ready_R"], _e, _a = solve_arm2(
-    "R", sh_r + Vector((-0.106, -0.046, -0.072)), sh_r + Vector((-0.112, -0.010, -0.094)),
+    "R", sh_r + Vector((-0.090, -0.100, 0.008)), sh_r + Vector((-0.090, -0.020, -0.114)),
     elbow_w=0.006, start=P["base_R"])
 rep["arm_poses"]["bat_ready_R"] = {"hand_err_m": round(_e, 4)}
 if _e > 0.055:
@@ -1885,8 +1897,8 @@ if _e > 0.055:
 # 삼단봉 — 앞아래로 내리치는 끝 자세
 neutral_upper()
 P["bat_strike_R"], _e, _a = solve_arm2(
-    "R", sh_r + Vector((-0.068, -0.196, -0.132)), sh_r + Vector((-0.082, -0.086, -0.020)),
-    elbow_w=0.006, start=P["base_R"])
+    "R", sh_r + Vector((-0.084, -0.188, -0.186)), sh_r + Vector((-0.084, -0.074, -0.094)),
+    elbow_w=0.006, start=P["bat_ready_R"])
 rep["arm_poses"]["bat_strike_R"] = {"hand_err_m": round(_e, 4)}
 if _e > 0.055:
     AIM_FAIL.append("bat_strike_R hand %.4f m" % _e)
@@ -2204,11 +2216,33 @@ add("SS_BatonHolster", BHOLSTER_N,
          arms={"R": [(1, "bat_ready_R"), (11, "draw_mid_R"), (18, "pouch_R"),
                      (23, "base_R")]}), False)
 
+BCHASE_N = RUN_N
+
+
+def f_baton_chase(f):
+    d = clip(RUN_LOWER, RUN_F[0], RUN_N, arms={"R": [(1, "bat_ready_R")]})(f)
+    t = (f - 1) / float(RUN_N - 1)
+    tau = 2 * math.pi * t
+    sw = math.sin(tau)
+    swf = sw if sw > 0 else sw * 0.45
+    d["UpperArm.L"]["rot"][0] += swf * 34.0
+    d["LowerArm.L"]["rot"][0] += swf * 12.0 - 22.0
+    d["UpperArm.L"]["rot"][2] += ABDUCT_L
+    # 봉을 든 팔은 위아래로 크게 흔들지 않는다 — 들어 올린 채 달린다
+    d["UpperArm.R"]["rot"][0] += -swf * 4.0
+    d["Chest"]["rot"] = [base_upper("Chest")[0] + 10.5, sw * 4.0, 0.0]
+    d["Spine"]["rot"] = [base_upper("Spine")[0] + 5.0, sw * 2.0, 0.0]
+    d["Head"]["rot"] = [base_upper("Head")[0] - 7.0, -sw * 2.0, 0.0]
+    return d
+
+
+add("SS_BatonChase", BCHASE_N, f_baton_chase, True)
+
 rep["clips"] = [{"name": n, "frames": nf, "loop": lp,
                  "dur_s": round((nf - 1) / 30.0, 3)} for n, nf, lp in CLIPS]
 rep["actions"] = {a.name: [round(x, 1) for x in a.frame_range] for a in bpy.data.actions}
-if len(CLIPS) != 15:
-    raise RuntimeError("expected 15 clips, made %d" % len(CLIPS))
+if len(CLIPS) != 16:
+    raise RuntimeError("expected 16 clips, made %d" % len(CLIPS))
 # ============================================================ 13. 저장
 for pb in rig.pose.bones:
     pb.location = (0.0, 0.0, 0.0)

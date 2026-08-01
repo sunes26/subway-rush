@@ -46,8 +46,9 @@ if _stow is None or _bstow is None:
 # 손에 드는 클립. 뽑기·집어넣기는 중간에 바뀌지만 프리뷰는 '든' 쪽으로 본다.
 TASER_HAND = {"SS_TaserDraw", "SS_TaserAim", "SS_TaserWarn", "SS_TaserFire",
               "SS_TaserHolster", "SS_Chase", "SS_RadioAlert"}
-BATON_HAND = {"SS_BatonDraw", "SS_BatonReady", "SS_BatonSwing", "SS_BatonHolster"}
-LOOPS = {"SS_Idle", "SS_Walk", "SS_TaserAim", "SS_Chase", "SS_BatonReady"}
+BATON_HAND = {"SS_BatonDraw", "SS_BatonReady", "SS_BatonSwing", "SS_BatonHolster",
+              "SS_BatonChase"}
+LOOPS = {"SS_Idle", "SS_Walk", "SS_TaserAim", "SS_Chase", "SS_BatonReady", "SS_BatonChase"}
 
 
 def set_props(action_name):

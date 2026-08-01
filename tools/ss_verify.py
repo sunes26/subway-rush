@@ -135,7 +135,7 @@ ACTS = {"SS_Idle": (61, True), "SS_Walk": (31, True), "SS_Radio": (61, False),
         "SS_TaserWarn": (31, False), "SS_RadioAlert": (46, False),
         "SS_TaserHolster": (23, False), "SS_Chase": (19, True), "SS_TaserFire": (25, False),
         "SS_BatonDraw": (23, False), "SS_BatonReady": (46, True),
-        "SS_BatonSwing": (25, False), "SS_BatonHolster": (23, False)}
+        "SS_BatonSwing": (25, False), "SS_BatonHolster": (23, False), "SS_BatonChase": (19, True)}
 
 # MC 원본 실측 (tools 주석 참조 — SS 검사기와 동일한 방식으로 잰 값)
 MC_SLIDE = {"Idle": {"L": 0.0, "R": 0.0},
@@ -147,12 +147,13 @@ SLIDE_BASE = {"SS_Idle": "Idle", "SS_Walk": "Walk", "SS_Radio": "Idle",
               "SS_TaserWarn": "Idle", "SS_RadioAlert": "Idle",
               "SS_TaserHolster": "Idle", "SS_Chase": "Run", "SS_TaserFire": "Idle",
               "SS_BatonDraw": "Idle", "SS_BatonReady": "Idle",
-              "SS_BatonSwing": "Idle", "SS_BatonHolster": "Idle"}
+              "SS_BatonSwing": "Idle", "SS_BatonHolster": "Idle",
+              "SS_BatonChase": "Run"}
 # 총을 겨누는 클립에서만 총구가 몸을 향해도 된다 (겨눈 방향이 정면이라
 # 몸통 구와 각이 좁아질 수 있다). 나머지는 자기 몸을 겨누면 안 된다.
 MUZZLE_EXEMPT = {"SS_TaserAim", "SS_TaserFire", "SS_TaserWarn", "SS_TaserDraw",
                  "SS_RadioAlert", "SS_Chase",
-                 "SS_BatonDraw", "SS_BatonReady", "SS_BatonSwing", "SS_BatonHolster"}
+                 "SS_BatonDraw", "SS_BatonReady", "SS_BatonSwing", "SS_BatonHolster", "SS_BatonChase"}
 
 acts_in_file = sorted(a.name for a in bpy.data.actions)
 R["actions_in_file"] = acts_in_file
