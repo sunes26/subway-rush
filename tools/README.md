@@ -2,6 +2,7 @@
 
 ACT-05(좀비폰족)를 만들면서 정리한 스크립트다. **기존 캐릭터에서 파생하는 신규 캐릭터**는
 이 순서를 그대로 돌리면 된다. 파일명의 `zp_` 접두사만 새 캐릭터 코드로 바꿔 복제해 쓴다.
+현재 파생본은 `zp_`(ACT-05) · `cp_`(ACT-06) · `ss_`(ACT-08) 세 벌이다.
 
 전부 `blender -b ... --python` 으로 도는 배치 스크립트다. GUI 세션을 건드리지 않으므로
 원본 `.blend` 가 훼손될 일이 없다.
@@ -32,6 +33,16 @@ $B -b --factory-startup --python tools/zp_reimport.py -- \
 $B -b assets/zp_character.blend --python tools/zp_render.py -- render/_zp all
 ```
 
+렌더를 다시 돌릴 때는 **출력 폴더를 먼저 비운다.** 남은 파일 때문에 '완료'를 잘못
+판정해 옛날 이미지로 페이지를 만든 적이 있다. `ss_page.py` 는 렌더가 `.blend` 보다
+오래됐으면 스스로 거부한다.
+
+```bash
+# 6. 페이지 반영 — 4면도 + 스프라이트 시트를 base64 로 index.html 에 심는다.
+#    카드 수·프레임 수·길이는 render/_ss/sheets.json 에서 읽는다. 손으로 적지 않는다.
+python3 tools/ss_page.py
+```
+
 `ZP_FLAT=1` 을 붙여 5번을 한 번 더 돌리면 머티리얼을 무채색으로 치환해 렌더한다.
 **색 없이 실루엣만으로 구별되는가**를 보는 용도다.
 
@@ -47,6 +58,14 @@ $B -b assets/zp_character.blend --python tools/zp_render.py -- render/_zp all
 
 후드처럼 목을 감싸는 셸은 설계상 본체와 상시 겹치므로, 정지 포즈 대비 **증가분**만 관통으로
 본다.
+
+**팔↔몸통 간격은 맨몸 정점끼리만 잰다.** MC 기준선 3.4mm 가 맨몸 수치이고, 의상 셸은 소매와
+몸판이 이어진 하나의 지오메트리라 겨드랑이 이음매의 인접 정점끼리 2mm 로 잡혀 가짜 실패가
+난다. `ss_verify.py` 는 `MC_White` 슬롯으로 맨몸을 걸러 낸다.
+
+**MC 기준선은 손으로 적지 말고 재라.** `Idle` 0 / `Walk` L 0.0312 R 0.0294 / `Run` 0 은
+`mc_character.blend` 에서 검사기와 동일한 방식으로 측정한 값이다. 클립이 어느 MC 하체를
+리샘플했는지에 따라 다른 기준선을 써야 한다.
 
 ## bl.py — 실행 중인 Blender 직결
 
