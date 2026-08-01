@@ -129,7 +129,14 @@ if flipped:
 
 # ---------------------------------------------------------- 애니메이션 검증
 ACTS = {"CP_Idle": (61, True), "CP_MoveAside": (46, False),
-        "CP_AsideIdle": (61, True)}
+        "CP_AsideIdle": (61, True), "CP_CarrierTornado": (76, False)}
+# 토네이도는 캐리어를 축으로 몸이 도는 동작이라 Hips 가 궤도 이동한다.
+# Root 는 어느 액션에서도 수평 이동이 없어야 하고(=루트 모션 없음), Hips 는
+# 이 액션에서만 허용하되 시작·종료가 0 으로 닫혀야 제자리 애니메이션이다.
+# 상한 = 캐리어까지 거리(0.224) + 궤도 반지름(0.198) ≈ 0.42
+HIPS_ORBIT_OK = {"CP_CarrierTornado": 0.45}
+# 회전 중 발이 미끄러지는 건 설계다 — MC 대비 판정에서 제외한다.
+SLIDE_EXEMPT = {"CP_CarrierTornado"}
 acts_in_file = sorted(a.name for a in bpy.data.actions)
 R["actions_in_file"] = acts_in_file
 if set(acts_in_file) != set(ACTS):
@@ -243,6 +250,8 @@ for name, (nf, loop) in ACTS.items():
     slide = {"L": 0.0, "R": 0.0}
     minz = 9e9
     max_root_h = 0.0
+    max_hips_h = 0.0
+    hips_start = hips_end = 0.0
     prop_gap_max = 0.0
     face_gap_min = 9e9
     arm_pen = 0
@@ -253,9 +262,15 @@ for name, (nf, loop) in ACTS.items():
         wv = world_verts(me_ev, mesh)
         pv = world_verts(ph_ev, prop)
         # root motion (수평)
-        for bn in ("Root", "Hips"):
-            pb = rig.pose.bones[bn]
-            max_root_h = max(max_root_h, abs(pb.location[0]), abs(pb.location[2]))
+        pbr = rig.pose.bones["Root"]
+        max_root_h = max(max_root_h, abs(pbr.location[0]), abs(pbr.location[2]))
+        pbh = rig.pose.bones["Hips"]
+        hips_h = max(abs(pbh.location[0]), abs(pbh.location[2]))
+        max_hips_h = max(max_hips_h, hips_h)
+        if f == 1:
+            hips_start = hips_h
+        if f == nf:
+            hips_end = hips_h
         # 지면 접촉
         zmin = min(p.z for p in wv)
         minz = min(minz, zmin)
@@ -317,6 +332,8 @@ for name, (nf, loop) in ACTS.items():
              "min_z": round(minz, 5),
              "foot_slide_max_m": {k: round(v, 5) for k, v in slide.items()},
              "root_horizontal_max": round(max_root_h, 6),
+             "hips_horizontal_max": round(max_hips_h, 5),
+             "hips_start_end": [round(hips_start, 6), round(hips_end, 6)],
              "prop_to_nearest_hand_max_m": round(prop_gap_max, 4),
              "prop_to_face_min_m": round(face_gap_min, 4),
              "prop_verts_inside_body": pen["prop"],
@@ -327,6 +344,11 @@ for name, (nf, loop) in ACTS.items():
     R["anim"][name] = entry
     if max_root_h > 1e-4:
         fail("%s has horizontal root motion %.5f" % (name, max_root_h))
+    _hlim = HIPS_ORBIT_OK.get(name, 1e-4)
+    if max_hips_h > _hlim:
+        fail("%s hips horizontal %.5f > %.5f" % (name, max_hips_h, _hlim))
+    if max(hips_start, hips_end) > 1e-4:
+        fail("%s hips not closed at ends (%.5f / %.5f)" % (name, hips_start, hips_end))
     if minz < -0.002:
         fail("%s foot goes below ground: %.4f" % (name, minz))
     if minz > 0.055:
@@ -348,14 +370,14 @@ for name, (nf, loop) in ACTS.items():
              % (name, pen["pillow_frame"], pen["pillow"], HOOD_BASE[0]))
     # 발 미끄러짐은 MC 원본 대비로 판정한다. ZP_Walk/ZP_Idle 의 하체는 MC 액션을
     # 그대로 리샘플한 것이라 같은 값이 나와야 정상이고, 커지면 회귀다.
-    base = MC_FOOT_SLIDE.get(name)
+    base = None if name in SLIDE_EXEMPT else MC_FOOT_SLIDE.get(name)
     if base is not None:
         for s in ("L", "R"):
             if slide[s] > base[s] + 0.0005:
                 fail("%s foot slide %s regressed: %.4f > MC %.4f"
                      % (name, s, slide[s], base[s]))
         entry["mc_baseline"] = base
-    elif max(slide.values()) > 0.030:
+    elif name not in SLIDE_EXEMPT and max(slide.values()) > 0.030:
         warn("%s foot slide %.4f m/frame" % (name, max(slide.values())))
 
 sc.frame_set(1)

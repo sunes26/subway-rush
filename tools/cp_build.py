@@ -17,6 +17,7 @@ ACT-06 고유 판단
 import bpy, sys, os, json, math, bmesh
 from mathutils import Vector, Matrix, Euler
 from mathutils.kdtree import KDTree
+from mathutils.bvhtree import BVHTree
 
 D = math.radians
 OUT = sys.argv[sys.argv.index("--") + 1] if "--" in sys.argv else None
@@ -218,10 +219,12 @@ rep["head"] = {"center": [round(v, 4) for v in head_c],
                "neck_z": round(neck_z, 4), "neck_radius": round(neck_r, 4)}
 
 PIL_MINOR = 0.026
-PIL_Z = neck_z - 0.004
+# 목 밴드 정중앙에 두면 튜브 아랫면이 어깨 플레어(z=0.710 에서 반지름 0.107)
+# 안으로 12mm 파묻힌다. 튜브 밑면이 어깨보다 위에 오도록 올린다.
+PIL_Z = neck_z + 0.012
 # 안쪽 구멍을 목보다 10mm 크게 — 고개를 돌릴 때 목이 튜브를 파고들지 않게.
 PIL_MAJOR = neck_r + PIL_MINOR + 0.010
-bpy.ops.mesh.primitive_torus_add(major_segments=20, minor_segments=8,
+bpy.ops.mesh.primitive_torus_add(major_segments=24, minor_segments=10,
                                  major_radius=PIL_MAJOR, minor_radius=PIL_MINOR,
                                  location=(0.0, 0.006, PIL_Z))
 pil = bpy.context.active_object
@@ -233,7 +236,7 @@ bm.from_mesh(pil.data)
 cen = Vector((0.0, 0.006, PIL_Z))
 kill = [v for v in bm.verts
         if (v.co - cen).y < 0.0
-        and abs(math.degrees(math.atan2(v.co.x - cen.x, -(v.co.y - cen.y)))) < 42.0]
+        and abs(math.degrees(math.atan2(v.co.x - cen.x, -(v.co.y - cen.y)))) < 30.0]
 if not kill:
     raise RuntimeError("pillow front opening cut removed no vertices")
 bmesh.ops.delete(bm, geom=kill, context='VERTS')
@@ -299,7 +302,7 @@ def elbow(bone):
     return rig.matrix_world @ rig.pose.bones[bone].head
 
 
-def solve_arm(side, hand_target, elbow_target):
+def solve_arm(side, hand_target, elbow_target, elbow_w=0.30):
     ua, la = "UpperArm." + side, "LowerArm." + side
     par = [0.0] * 6
 
@@ -308,7 +311,7 @@ def solve_arm(side, hand_target, elbow_target):
         rig.pose.bones[la].rotation_euler = Euler([D(p[3]), D(p[4]), D(p[5])], 'XYZ')
         dg.update()
         c = (tip(la) - hand_target).length ** 2
-        c += 0.30 * (elbow(la) - elbow_target).length ** 2
+        c += elbow_w * (elbow(la) - elbow_target).length ** 2
         c += 1e-6 * sum(x * x for x in p)
         return c
 
@@ -346,8 +349,9 @@ sh_r = rig.matrix_world @ rig.pose.bones["UpperArm.R"].head
 sh_l = rig.matrix_world @ rig.pose.bones["UpperArm.L"].head
 HAND_R = sh_r + Vector((-0.135, 0.030, -0.235))
 ELB_R = sh_r + Vector((-0.058, 0.006, -0.126))
-HAND_L = sh_l + Vector((0.026, 0.014, -0.262))       # 왼팔은 자연스럽게 내린다
-ELB_L = sh_l + Vector((0.048, 0.004, -0.130))
+# MC 원본의 팔↔몸통 간격이 3.4mm 다. 이보다 좁으면 회귀다.
+HAND_L = sh_l + Vector((0.047, 0.016, -0.256))
+ELB_L = sh_l + Vector((0.064, 0.004, -0.128))
 pr_r, err_r = solve_arm("R", HAND_R, ELB_R)
 pr_l, err_l = solve_arm("L", HAND_L, ELB_L)
 for side, pr in (("R", pr_r), ("L", pr_l)):
@@ -370,6 +374,10 @@ if err_r > 0.035:
 hand_r = tip("LowerArm.R")
 CASE_X = round(hand_r.x, 4)
 CASE_Y = round(hand_r.y - 0.028, 4)      # 손잡이는 케이스 뒤쪽에 선다
+# 손 뭉치는 뼈 끝이 곧 최하단이다(아래로 0.2mm 뿐). 그래서 봉 축을 뼈 끝에 두면
+# 위쪽 절반이 손에 묻히고 아래쪽 절반이 드러나 '위에서 쥔' 모양이 된다.
+# 여기서 더 내리면 봉이 손에서 완전히 떨어진다 (내려 봤다가 15mm 벌어짐).
+GRIP_R = 0.0115
 HANDLE_TOP = round(hand_r.z, 4)
 rep["carrier_anchor"] = {"hand": [round(v, 4) for v in hand_r],
                          "case_x": CASE_X, "case_y": CASE_Y,
@@ -397,10 +405,12 @@ rep["rig"] = {"bones": len(rig.data.bones),
 dg.update()
 
 # ----------------------------------------------------------- 7. 캐리어 프롭
-CASE_W, CASE_D, CASE_H = 0.170, 0.110, 0.260      # 폭 · 깊이 · 높이
+CASE_W, CASE_D, CASE_H = 0.155, 0.108, 0.235      # 폭 · 깊이 · 높이
+WHEEL_R = 0.025                                    # 바퀴 반지름
+CASE_BOTTOM = SOLE_Z + 0.030                       # 케이스 밑면 — 바퀴가 떠받친다
 # HANDLE_TOP 은 8-b 에서 손 위치로 역산해 둔 값을 그대로 쓴다.
 # 여기서 다시 상수로 박으면 손이 손잡이에 안 닿는다.
-case_top = SOLE_Z + CASE_H
+case_top = CASE_BOTTOM + CASE_H
 if HANDLE_TOP <= case_top + 0.05:
     raise RuntimeError("handle too short: top %.4f vs case top %.4f" % (HANDLE_TOP, case_top))
 
@@ -417,7 +427,7 @@ bev.segments = 2
 bev.limit_method = 'ANGLE'
 bpy.ops.object.modifier_apply(modifier=bev.name)
 bpy.ops.object.shade_smooth()
-case.location = (CASE_X, CASE_Y, SOLE_Z + CASE_H / 2.0)
+case.location = (CASE_X, CASE_Y, CASE_BOTTOM + CASE_H / 2.0)
 set_active(case)
 bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 case.data.materials.clear()
@@ -429,10 +439,10 @@ parts = []
 for sx in (-1, 1):
     for sy in (-1, 1):
         bpy.ops.mesh.primitive_cylinder_add(
-            vertices=10, radius=0.017, depth=0.014,
-            location=(CASE_X + sx * (CASE_W * 0.34),
-                      CASE_Y + sy * (CASE_D * 0.30),
-                      SOLE_Z + 0.014))
+            vertices=12, radius=WHEEL_R, depth=0.018,
+            location=(CASE_X + sx * (CASE_W * 0.32),
+                      CASE_Y + sy * (CASE_D * 0.28),
+                      SOLE_Z + WHEEL_R))          # 바퀴 밑면이 정확히 바닥에 닿는다
         w = bpy.context.active_object
         w.rotation_euler = (0.0, math.radians(90), 0.0)
         set_active(w)
@@ -455,7 +465,7 @@ for sx in (-1, 1):
     r.data.materials.append(AJ_DARK)
     parts.append(r)
 bpy.ops.mesh.primitive_cylinder_add(
-    vertices=8, radius=0.0095, depth=0.094,
+    vertices=10, radius=GRIP_R, depth=0.100,
     location=(CASE_X, CASE_Y + 0.028, HANDLE_TOP))
 grip = bpy.context.active_object
 grip.rotation_euler = (0.0, math.radians(90), 0.0)
@@ -525,6 +535,69 @@ _clear = min(min((a - s).length for s in _shell) for a in _arm)
 if _clear < 0.012:
     raise RuntimeError("arm intersects the case shell: %.4f m" % _clear)
 rep["arm_case_clearance_m"] = round(_clear, 5)
+
+# --- 접지: 바퀴 밑면이 발바닥과 같은 바닥에 닿아야 한다 ---
+_cz = [p.z for p in _cw]
+if abs(min(_cz) - SOLE_Z) > 0.0015:
+    raise RuntimeError("carrier not grounded: lowest z %.4f vs sole %.4f"
+                       % (min(_cz), SOLE_Z))
+_shell_z = [(case.matrix_world @ v.co).z for v in case.data.vertices
+            if abs((case.matrix_world @ v.co).x - CASE_X) < CASE_W * 0.28]
+rep["ground"] = {"carrier_min_z": round(min(_cz), 5), "sole_z": SOLE_Z,
+                 "case_bottom_z": round(CASE_BOTTOM, 4), "wheel_r": WHEEL_R}
+
+# --- 팔 ↔ 몸통: MC 원본 3.4mm 보다 좁아지면 회귀 ---
+_torso = [mesh.matrix_world @ _me.data.vertices[v.index].co for v in mesh.data.vertices
+          if sum(g.weight for g in v.groups
+                 if g.group in (gi["Spine"], gi["Chest"], gi["Hips"])) > 0.85]
+rep["arm_torso_gap_m"] = {}
+for _s in ("L", "R"):
+    _a = [mesh.matrix_world @ _me.data.vertices[v.index].co for v in mesh.data.vertices
+          if sum(g.weight for g in v.groups
+                 if g.group in (gi["UpperArm." + _s], gi["LowerArm." + _s])) > 0.6]
+    _dg2 = min(min((x - t).length for t in _torso) for x in _a)
+    rep["arm_torso_gap_m"][_s] = round(_dg2, 5)
+    if _dg2 < 0.0034:
+        raise RuntimeError("arm.%s digs into torso: %.4f (MC baseline 0.0034)" % (_s, _dg2))
+
+# --- 넥필로우가 머리·어깨에 묻히는 깊이 ---
+_pslot = [i for i, m in enumerate(mesh.data.materials) if m and m.name == "CP_Pillow"][0]
+_pverts = sorted({vi for p in mesh.data.polygons if p.material_index == _pslot
+                  for vi in p.vertices})
+_btris = []
+for _p in _me.data.polygons:
+    if _p.material_index == _pslot:
+        continue
+    _iv = list(_p.vertices)
+    for _k in range(1, len(_iv) - 1):
+        _btris.append((_iv[0], _iv[_k], _iv[_k + 1]))
+_bw = [mesh.matrix_world @ v.co for v in _me.data.vertices]
+_bbvh = BVHTree.FromPolygons([tuple(v) for v in _bw], _btris, all_triangles=True)
+
+
+def _in_body(pt):
+    o = Vector(pt)
+    d = Vector((1.0, 0.0, 0.0))
+    h = 0
+    for _ in range(64):
+        r = _bbvh.ray_cast(o, d)
+        if r[0] is None:
+            break
+        h += 1
+        o = r[0] + d * 1e-4
+    return h % 2 == 1
+
+
+_pdep = 0.0
+for _vi in _pverts:
+    _q = _bw[_vi]
+    if _in_body(_q):
+        _n = _bbvh.find_nearest(_q)
+        if _n[0] is not None:
+            _pdep = max(_pdep, (_q - _n[0]).length)
+rep["pillow_depth_m"] = round(_pdep, 5)
+if _pdep > 0.007:
+    raise RuntimeError("neck pillow buried in the body: %.4f m" % _pdep)
 
 # ------------------------------------------------------------- 9. 액션 생성
 UPPER_BASE["Prop.Case"] = (0, 0, 0)
@@ -723,12 +796,176 @@ def f_asideidle(f):
     return d
 
 
+# ------------------------------------------- CP_CarrierTornado (코믹 액션)
+# 캐리어를 축으로 몸이 도는 동작. 캐리어는 제자리에서 수직축 yaw 만 돌아
+# 바퀴가 계속 바닥에 붙어 있고, 몸은 Hips 를 궤도 이동시킨다.
+# Root 는 건드리지 않으므로 루트 모션이 없고, 720도(2바퀴)라 시작/종료가 일치한다.
+TOR_N = 76
+TOR_F0, TOR_F1 = 18, 64        # 회전 구간
+TOR_TURNS = 2.0                # 한 바퀴 이상 (=720도)
+# 궤도 반지름. 0.16 은 정지 회전 자세에서도 어깨→손잡이가 0.316 이라 팔 최대
+# 도달(0.293)을 넘는다. 상체를 46도 숙이면 어깨가 0.12 앞으로 나와 여유가 생긴다.
+# 안쪽 다리는 캐리어 축에서 R-0.066 만큼 떨어진다. 케이스 반폭 0.0775 +
+# 다리 반경 0.028 + 여유 0.010 = 0.1155 이상이어야 다리가 케이스를 안 지난다.
+TOR_R = 0.198
+TOR_PITCH = 52.0               # 더 숙일수록 어깨가 앞으로 나와 팔이 닿는다
+CASE_XY = Vector((CASE_X, CASE_Y, 0.0))
+HIPS_R3I = rig.data.bones["Hips"].matrix_local.to_3x3().inverted()
+
+
+def _tor_w(f):
+    """기본 자세(0) ↔ 회전 자세(1) 혼합비"""
+    if f <= TOR_F0:
+        return ease((f - 1) / float(TOR_F0 - 1))
+    if f >= TOR_F1:
+        return 1.0 - ease((f - TOR_F1) / float(TOR_N - TOR_F1))
+    return 1.0
+
+
+def _tor_theta(f):
+    """궤도각(도). 회전 구간에서만 0 → 720 으로 진행한다."""
+    if f <= TOR_F0:
+        return 0.0
+    if f >= TOR_F1:
+        return TOR_TURNS * 360.0
+    return TOR_TURNS * 360.0 * ease((f - TOR_F0) / float(TOR_F1 - TOR_F0))
+
+
+def _tor_state(f):
+    """진입/이탈에서 '위치'는 먼저, '회전'은 나중에 간다.
+
+    동시에 가면 몸이 캐리어를 향해 도는 순간 오른쪽 어깨가 바깥으로 스윙해
+    손잡이가 팔 도달(0.293) 밖으로 나간다. 먼저 다가붙고 나서 돌면 닿는다.
+    """
+    w = _tor_w(f)
+    th = _tor_theta(f)
+    w_pos = w ** 0.55                       # 앞서 간다
+    w_rot = w ** 2.0                        # 뒤따라 간다
+    yaw = th - 90.0 * w_rot
+    phi = th + 90.0 * w_rot
+    tgt = CASE_XY + Vector((math.cos(D(th)), math.sin(D(th)), 0.0)) * TOR_R
+    return w, th, yaw, phi, tgt * w_pos
+
+
+def _tor_lower(f):
+    """하체 = Idle 1프레임 + 궤도 이동/방향 + 무릎 굽힘"""
+    w, th, yaw, phi, pos = _tor_state(f)
+    d = {bn: {"loc": list(sn["loc"]),
+              "rot": [math.degrees(x) for x in sn["rot"]]}
+         for bn, sn in BASE_LOWER.items()}
+    d["Hips"]["loc"] = list(HIPS_R3I @ pos)
+    d["Hips"]["rot"][1] += yaw
+    for side in ("L", "R"):
+        d["UpperLeg." + side]["rot"][0] += -13.0 * w
+        d["LowerLeg." + side]["rot"][0] += 21.0 * w
+        d["Foot." + side]["rot"][0] += -8.0 * w
+    d["Prop.Case"] = {"rot": [0.0, phi, 0.0]}
+    return d
+
+
+def _tor_upper_offsets(f):
+    w, th, yaw, phi, pos = _tor_state(f)
+    return {"Spine": {0: [(1, TOR_PITCH * 0.40 * w)]},
+            "Chest": {0: [(1, TOR_PITCH * 0.60 * w)]},
+            "Head":  {0: [(1, 16.0 * w)]}}
+
+
+def _tor_bar(f):
+    """현재 프레임의 손잡이 봉 중심과 방향(월드)"""
+    w, th, yaw, phi, pos = _tor_state(f)
+    c = math.cos(D(phi)); sn = math.sin(D(phi))
+    off = Vector((-0.028 * sn, 0.028 * c, 0.0))
+    center = Vector((CASE_X, CASE_Y, HANDLE_TOP)) + off
+    right = Vector((math.cos(D(yaw)), math.sin(D(yaw)), 0.0))
+    return center, right
+
+
+TOR_KEYS = [1, 4, 7, 10, 13, 16, 18, 64, 66, 69, 72, 74, 76]
+_tor_arm = {}
+for _kf in TOR_KEYS:
+    _d = _tor_lower(_kf)
+    for _bn in UPPER_BONES:
+        _d.setdefault(_bn, {})["rot"] = base_upper(_bn)
+    for _bn, _axes in _tor_upper_offsets(_kf).items():
+        _r = list(_d[_bn]["rot"])
+        for _ax, _keys in _axes.items():
+            _r[_ax] += _keys[0][1]
+        _d[_bn]["rot"] = _r
+    _apply_frame(_d)
+    _cn, _rt = _tor_bar(_kf)
+    _w = _tor_w(_kf)
+    _shR = rig.matrix_world @ rig.pose.bones["UpperArm.R"].head
+    _shL = rig.matrix_world @ rig.pose.bones["UpperArm.L"].head
+    # 진입 구간에는 두 손을 봉 중앙에 모았다가 w=1 에서 좌우로 벌린다.
+    # 처음부터 벌려 두면 진입 중 봉의 먼 쪽 끝이 팔 도달 밖으로 나간다.
+    _sep = 0.038 * _w
+    _tR = _cn + _rt * _sep
+    # 손잡이가 팔 도달의 99% 지점까지 가므로 팔꿈치 페널티를 거의 끈다.
+    # 켜 두면 팔꿈치가 손을 끌어당겨 잔차가 50mm 씩 남는다.
+    _pr, _er = solve_arm("R", _tR, _shR + Vector((0.0, 0.0, -0.13)) - _rt * 0.05,
+                         elbow_w=0.05)
+    _entry = {"R": ([round(x, 3) for x in _pr[:3]], [round(x, 3) for x in _pr[3:]])}
+    # 왼손은 몸이 캐리어 앞까지 온 뒤에야 봉에 닿는다(w=1 구간). 진입·이탈은
+    # 오일러 보간으로 손이 봉까지 이동하는 것처럼 보이게 한다.
+    if _w >= 0.999:
+        _tL = _cn - _rt * _sep
+        _pl, _el = solve_arm("L", _tL, _shL + Vector((0.0, 0.0, -0.13)) + _rt * 0.05,
+                             elbow_w=0.05)
+        _entry["L"] = ([round(x, 3) for x in _pl[:3]], [round(x, 3) for x in _pl[3:]])
+    # 판정은 솔버 잔차가 아니라 '손 표면 ↔ 봉 표면' 최단거리로 한다.
+    dg.update()
+    _mev = mesh.evaluated_get(dg)
+    _cev = case.evaluated_get(dg)
+    _barw = [case.matrix_world @ v.co for v in _cev.data.vertices
+             if (case.matrix_world @ v.co).z > HANDLE_TOP - 0.020]
+    if len(_barw) < 8:
+        raise RuntimeError("tornado: grip bar verts not found at f%d" % _kf)
+    _sides = ["R", "L"] if "L" in _entry else ["R"]
+    for _sd in _sides:
+        _hw = [mesh.matrix_world @ _mev.data.vertices[v.index].co
+               for v in mesh.data.vertices
+               if sum(g.weight for g in v.groups if g.group == gi["LowerArm." + _sd]) > 0.6]
+        _gd = min(min((b - h).length for h in _hw) for b in _barw)
+        if _gd > 0.016:
+            raise RuntimeError("tornado: %s hand off the bar at f%d (%.4f m)"
+                               % (_sd, _kf, _gd))
+        _entry.setdefault("gap", {})[_sd] = round(_gd, 5)
+    _tor_arm[_kf] = _entry
+_TOR_L_KEYS = [k for k in TOR_KEYS if "L" in _tor_arm[k]]
+if len(_TOR_L_KEYS) < 2:
+    raise RuntimeError("tornado: left hand never reached the bar")
+_TOR_L_BASE = ([base_upper("UpperArm.L")[i] for i in range(3)],
+               [base_upper("LowerArm.L")[i] for i in range(3)])
+_TOR_L_FULL = [(1, _TOR_L_BASE)] + [(k, _tor_arm[k]["L"]) for k in _TOR_L_KEYS] \
+              + [(TOR_N, _TOR_L_BASE)]
+rep["tornado_arm"] = {str(k): v for k, v in _tor_arm.items()}
+
+
+def f_tornado(f):
+    d = _tor_lower(f)
+    for bn in UPPER_BONES:
+        d.setdefault(bn, {})["rot"] = base_upper(bn)
+    for bn, axes in _tor_upper_offsets(f).items():
+        r = list(d[bn]["rot"])
+        for ax, keys in axes.items():
+            r[ax] += keys[0][1]
+        d[bn]["rot"] = r
+    for i, bn in enumerate(("UpperArm.R", "LowerArm.R")):
+        d[bn]["rot"] = [curve(f, [(k, _tor_arm[k]["R"][i][ax]) for k in TOR_KEYS])
+                        for ax in range(3)]
+    for i, bn in enumerate(("UpperArm.L", "LowerArm.L")):
+        d[bn]["rot"] = [curve(f, [(k, v[i][ax]) for k, v in _TOR_L_FULL])
+                        for ax in range(3)]
+    return d
+
+
 a_idle = write_action("CP_Idle", IDLE_N, f_idle)
 a_aside = write_action("CP_MoveAside", ASIDE_N, make_once)
 a_aidle = write_action("CP_AsideIdle", ASIDEIDLE_N, f_asideidle)
+a_tor = write_action("CP_CarrierTornado", TOR_N, f_tornado)
 
 rep["actions"] = []
-for a in (a_idle, a_aside, a_aidle):
+for a in (a_idle, a_aside, a_aidle, a_tor):
     nf = sum(len(cb.fcurves) for layer in a.layers for strip in layer.strips
              for cb in strip.channelbags)
     if nf == 0:

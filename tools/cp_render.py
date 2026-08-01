@@ -106,7 +106,8 @@ if MODE in ("views", "all"):
     piv.rotation_euler = (0, 0, 0)
     cam_normal()
 
-SHEETS = [("CP_Idle", 61), ("CP_MoveAside", 46), ("CP_AsideIdle", 61)]
+SHEETS = [("CP_Idle", 61), ("CP_MoveAside", 46), ("CP_AsideIdle", 61),
+          ("CP_CarrierTornado", 76)]
 NS = 15          # AJ 규격: 액션당 15 샘플
 
 if MODE in ("sheets", "all"):

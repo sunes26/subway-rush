@@ -52,7 +52,7 @@ if maxinf > 4:
     raise RuntimeError("influence limit failed: %d" % maxinf)
 
 # ------------------------------------------------------------- NLA 트랙 구성
-CP_ACTIONS = ["CP_Idle", "CP_MoveAside", "CP_AsideIdle"]
+CP_ACTIONS = ["CP_Idle", "CP_MoveAside", "CP_AsideIdle", "CP_CarrierTornado"]
 present = sorted(a.name for a in bpy.data.actions)
 if set(present) != set(CP_ACTIONS):
     raise RuntimeError("unexpected actions in file: %s" % present)
