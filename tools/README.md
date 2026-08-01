@@ -33,6 +33,10 @@ $B -b --factory-startup --python tools/zp_reimport.py -- \
 $B -b assets/zp_character.blend --python tools/zp_render.py -- render/_zp all
 ```
 
+렌더를 다시 돌릴 때는 **출력 폴더를 먼저 비운다.** 남은 파일 때문에 '완료'를 잘못
+판정해 옛날 이미지로 페이지를 만든 적이 있다. `ss_page.py` 는 렌더가 `.blend` 보다
+오래됐으면 스스로 거부한다.
+
 ```bash
 # 6. 페이지 반영 — 4면도 + 스프라이트 시트를 base64 로 index.html 에 심는다.
 #    카드 수·프레임 수·길이는 render/_ss/sheets.json 에서 읽는다. 손으로 적지 않는다.

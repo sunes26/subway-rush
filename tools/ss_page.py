@@ -29,6 +29,28 @@ def need(path):
     return path
 
 
+def check_fresh():
+    """소스 .blend 보다 오래된 렌더로 페이지를 만들지 못하게 막는다.
+
+    렌더를 백그라운드로 돌려 놓고 '파일 개수'로 완료를 기다렸다가, 직전 실행이
+    남긴 파일 때문에 조건이 즉시 참이 되어 옛날 이미지로 페이지를 만든 적이 있다.
+    개수가 아니라 시각으로 판정한다.
+    """
+    blend = os.path.join(ROOT, "assets", "ss_character.blend")
+    if not os.path.exists(blend):
+        raise RuntimeError("missing %s" % blend)
+    bt = os.path.getmtime(blend)
+    stale = [f for f in os.listdir(RD)
+             if f.endswith(".png") and os.path.getmtime(os.path.join(RD, f)) < bt]
+    if stale:
+        raise RuntimeError("render output is older than the .blend (%d files, e.g. %s) "
+                           "— re-run tools/ss_render.py first"
+                           % (len(stale), sorted(stale)[0]))
+
+
+check_fresh()
+
+
 # ------------------------------------------------------------------ 4면도
 tiles = [Image.open(need(os.path.join(RD, "view_%s.png" % v))) for v in BAND_VIEWS]
 w, h = tiles[0].size
