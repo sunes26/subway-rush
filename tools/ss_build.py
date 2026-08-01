@@ -291,7 +291,10 @@ bpy.ops.object.shade_flat()
 # 챙 — 앞(-Y)으로만. 반원 판을 앞으로 기울인다.
 VISOR_R = head_r.x * 1.16
 VISOR_TILT = 17.0
+# 뚜껑을 NGON 으로 두면 반으로 자를 때 뚜껑 면이 통째로 사라져 속 빈 띠가
+# 남는다. TRIFAN 이면 부채꼴 삼각형이라 잘린 쪽만 없어지고 앞쪽 뚜껑은 남는다.
 bpy.ops.mesh.primitive_cylinder_add(vertices=20, radius=VISOR_R, depth=0.021,
+                                    end_fill_type='TRIFAN',
                                     location=(0.0, 0.0, 0.0))
 visor = bpy.context.active_object
 visor.name = "SS_CapVisor"
@@ -304,26 +307,29 @@ bmesh.ops.delete(bm, geom=_kill, context='VERTS')
 _loose = [v for v in bm.verts if not v.link_edges]
 if _loose:
     bmesh.ops.delete(bm, geom=_loose, context='VERTS')
-# 챙 폭의 기준은 '밴드 반지름'이 아니라 '그 높이에서의 머리 폭'이다.
-# 밴드(반지름 0.0895)를 기준으로 잡았더니, 챙이 밴드 아래로 1mm 만 내려온
-# 구간에서 머리(그 높이에서 0.074)보다 8mm 씩 넓어져 금색 밴드 밑에
-# 검은 띠가 좌우로 이어졌다 — 얼굴을 감는 끈처럼 보인 원인이다.
+# 챙은 원래 그 높이의 머리보다 넓다 — 그게 브림이다. 좁힐 이유가 없다.
+# 다만 모자 실루엣(밴드) 밖으로 나가면 위에서 볼 때 초승달로 튀므로
+# 밴드 반지름 안에 들어오게만 맞춘다.
 VISOR_BACK_Y = -head_r.y * 0.20
 VISOR_Z = CAP_BAND_Z + 0.002
-# 두께 때문에 챙의 윗면은 중심보다 11mm 높다. 그 높이의 머리 폭을 기준으로
-# 잡아야 윗모서리까지 머리 안으로 들어간다.
-_VZ_REF = VISOR_Z + 0.011
-_head_rx_at_visor = head_r.x * math.sqrt(
-    max(0.0, 1.0 - ((_VZ_REF - head_c.z) / head_r.z) ** 2))
-if _head_rx_at_visor < 0.03:
-    raise RuntimeError("visor height is off the head: %.4f" % _head_rx_at_visor)
-# 0.92 로는 챙이 머리 폭과 거의 같아져서, 머리 표면에서 챙이 빠져나오는
-# 경계선이 얼굴을 가로지르는 곡선이 된다 — 낮은 각도에서 '끈'으로 읽힌다.
-# 머리 폭의 2/3 로 줄이면 앞으로 뻗은 브림으로만 보인다.
-VISOR_SX = (_head_rx_at_visor * 0.66) / VISOR_R
+VISOR_SX = (CAP_R_BAND * 0.92) / VISOR_R
 for v in bm.verts:
     v.co.y *= 1.00
     v.co.x *= VISOR_SX
+# 원통을 반으로 자르면 위·아래 뚜껑(ngon)이 통째로 사라져 '속 빈 휘어진 띠'만
+# 남는다. 그 상태로는 두께가 없는 끈처럼 보인다 — 챙이 고리로 읽힌 진짜 원인이다.
+# 잘린 단면과 뚜껑을 다시 막아 닫힌 솔리드로 만든다.
+# 잘린 뒷면(평면)만 막으면 닫힌 솔리드가 된다.
+_bnd = [e for e in bm.edges if len(e.link_faces) == 1]
+if not _bnd:
+    raise RuntimeError("visor half-cut left no open boundary — cut did nothing?")
+bmesh.ops.holes_fill(bm, edges=_bnd, sides=0)
+_bnd2 = [e for e in bm.edges if len(e.link_faces) == 1]
+if _bnd2:
+    bmesh.ops.contextual_create(bm, geom=_bnd2)
+_bnd3 = [e for e in bm.edges if len(e.link_faces) == 1]
+if _bnd3:
+    raise RuntimeError("visor is still an open shell: %d boundary edges" % len(_bnd3))
 bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
 bm.to_mesh(visor.data)
 bm.free()
@@ -355,22 +361,14 @@ bpy.ops.object.shade_smooth()
 badge.data.materials.clear()
 badge.data.materials.append(trim_mat)
 
-# 챙의 어느 정점도 그 높이의 머리보다 옆으로 튀면 안 된다.
-_bad = []
-for v in visor.data.vertices:
-    w = visor.matrix_world @ v.co
-    t = (w.z - head_c.z) / head_r.z
-    if abs(t) >= 1.0:
-        continue
-    if abs(w.x) > head_r.x * math.sqrt(1.0 - t * t) + 0.0005:
-        _bad.append((round(w.x, 4), round(w.z, 4)))
-if _bad:
-    raise RuntimeError("visor is wider than the head at its own height (%d verts, e.g. %s) "
-                       "— it reads as a strap around the face" % (len(_bad), _bad[0]))
-rep["visor"] = {"max_x": round(max(abs((visor.matrix_world @ v.co).x)
-                                   for v in visor.data.vertices), 4),
-                "head_rx_at_visor": round(_head_rx_at_visor, 4),
-                "x_scale": round(VISOR_SX, 3), "tilt_deg": VISOR_TILT, "z": round(VISOR_Z, 4)}
+_vx = max(abs((visor.matrix_world @ v.co).x) for v in visor.data.vertices)
+if _vx > CAP_R_BAND:
+    raise RuntimeError("visor sticks out past the cap band: %.4f > %.4f" % (_vx, CAP_R_BAND))
+_open = len([e for e in visor.data.edges if len(
+    [p for p in visor.data.polygons if e.key[0] in p.vertices and e.key[1] in p.vertices]) < 2])
+rep["visor"] = {"max_x": round(_vx, 4), "band_r": round(CAP_R_BAND, 4),
+                "x_scale": round(VISOR_SX, 3), "tilt_deg": VISOR_TILT,
+                "z": round(VISOR_Z, 4), "faces": len(visor.data.polygons)}
 
 set_active(crown)
 for _o in (band, visor, badge):
@@ -382,6 +380,20 @@ cap.name = "SS_Cap"
 cap.data.name = "SS_Cap"
 if len({m.name for m in cap.data.materials}) != 3:  # 제복·골드·다크
     raise RuntimeError("cap lost a material slot: %s" % [m.name for m in cap.data.materials])
+# 잘라 만든 소품은 열린 경계가 남기 쉽다. ACT-06 넥필로우(에지 20개)에 이어
+# 이 챙에서도 같은 실수를 했다 — 반원통에서 뒷면을 지우니 ngon 뚜껑까지
+# 사라져 속 빈 띠가 됐고, 렌더에서 '머리를 감는 고리'로 보였다.
+# 모자는 통째로 닫힌 솔리드여야 한다.
+_bmc = bmesh.new()
+_bmc.from_mesh(cap.data)
+_open = [e for e in _bmc.edges if len(e.link_faces) != 2]
+_n_open = len(_open)
+_bmc.free()
+rep["cap_open_edges"] = _n_open
+if _n_open:
+    raise RuntimeError("cap has %d open/non-manifold edges — a cut part was left hollow"
+                       % _n_open)
+
 _vg = cap.vertex_groups.new(name="Head")
 _vg.add(range(len(cap.data.vertices)), 1.0, 'REPLACE')
 rep["cap"] = {"verts": len(cap.data.vertices),
@@ -1269,6 +1281,13 @@ rep["taser"] = {"verts": len(taser.data.vertices),
 # 파츠가 자기 중심이 아닌 월드 원점을 축으로 돌아 날아가는 사고를 잡는다.
 # 치수 범위로 재면 어느 파츠가 얼마나 갔는지 알 수 없다 — 손잡이 중심에서
 # 가장 먼 정점까지의 거리가 설계상 최대(카트리지 앞 위 모서리)를 넘는지 본다.
+_bmt = bmesh.new()
+_bmt.from_mesh(taser.data)
+_t_open = len([e for e in _bmt.edges if len(e.link_faces) != 2])
+_bmt.free()
+rep["taser_open_edges"] = _t_open
+if _t_open:
+    raise RuntimeError("taser has %d open/non-manifold edges" % _t_open)
 _far = max((taser.matrix_world @ v.co - TASER_CEN).length for v in taser.data.vertices)
 rep["taser_max_radius_m"] = round(_far, 4)
 if _far > 0.120:
