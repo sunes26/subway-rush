@@ -229,6 +229,20 @@ def shade(o, smooth):
     return o
 
 
+def slab(name, cen, dim, mat):
+    """축 정렬 상자. 원점을 지정한 자리에 남긴다 — 문은 경첩이 원점이라야
+    Z 회전만으로 열린다."""
+    hx, hy, hz = dim[0] / 2.0, dim[1] / 2.0, dim[2] / 2.0
+    cx, cy, cz = cen
+    v = [(cx - hx, cy - hy, cz - hz), (cx + hx, cy - hy, cz - hz),
+         (cx + hx, cy + hy, cz - hz), (cx - hx, cy + hy, cz - hz),
+         (cx - hx, cy - hy, cz + hz), (cx + hx, cy - hy, cz + hz),
+         (cx + hx, cy + hy, cz + hz), (cx - hx, cy + hy, cz + hz)]
+    f = [(0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4),
+         (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)]
+    return _mesh(name, v, f, mat)
+
+
 def finish(name, parts):
     """부품을 합치고 평면 셰이딩. 원점은 건드리지 않는다."""
     bpy.ops.object.select_all(action='DESELECT')
@@ -694,6 +708,87 @@ for _m in _hyo.data.materials:
 shade(_hyo, False)
 ITEMS["ITM01_Backscratcher"] = _hyo
 
+# ======================================= 물품보관소 (독립형 모듈 · 가구)
+# 배치 존과 상호작용은 아직 정해지지 않았다. 어느 구역에도 놓을 수 있는
+# **모듈 한 칸**으로 만든다 — 가로로 이어 붙이면 보관소 벽이 된다.
+# 매니페스트에 항목이 없으므로 OBJ 번호를 지어내지 않는다. 이름은 FURN_.
+#
+# **문은 본체와 분리한다.** 문마다 원점을 경첩 자리(왼쪽 모서리)에 두므로
+# rotation_euler.z 만 돌리면 열린다. 원점을 가운데 두면 문이 벽을 파고든다.
+#
+# 크기는 캐릭터 기준이다. 전신 0.888 에 대해 높이 1.02 — 사람보다 조금 큰
+# 실제 코인로커 비율(1.8m 대 1.5m)이다.
+LK_W, LK_D, LK_H = 0.44, 0.26, 1.02
+LK_PANEL = 0.09              # 오른쪽 조작반 폭
+LK_T = 0.012                 # 판 두께
+LK_ROWS = (0.30, 0.24, 0.24, 0.20)      # 아래부터 — 큰 칸이 아래
+LK_COLS = 2
+_cw = (LK_W - LK_PANEL - LK_T) / LK_COLS
+
+M_LK_BODY = new_mat("FURN_LockerBody", "B8C0C6", 0.46)     # 도장 강판
+M_LK_DOOR = new_mat("FURN_LockerDoor", "9FAAB2", 0.44)     # 문짝 — 한 톤 어둡게
+M_LK_TRIM = new_mat("FURN_LockerTrim", "4A525C", 0.40)     # 손잡이·자물쇠·조작반
+M_LK_LAMP = new_mat("FURN_LockerLamp", "E67A45", 0.40)     # 사용중 표시 (세트 포인트색)
+
+_x0 = -LK_W / 2.0
+_parts = []
+# 몸통 — 뒤판·양옆·천장·바닥
+_parts.append(slab("lk_back", (0, LK_D / 2 - LK_T / 2, LK_H / 2),
+                   (LK_W, LK_T, LK_H), M_LK_BODY))
+for _sx in (-1, 1):
+    _parts.append(slab("lk_side%d" % _sx, (_sx * (LK_W / 2 - LK_T / 2), 0, LK_H / 2),
+                       (LK_T, LK_D, LK_H), M_LK_BODY))
+for _z, _n in ((LK_T / 2, "lk_floor"), (LK_H - LK_T / 2, "lk_top")):
+    _parts.append(slab(_n, (0, 0, _z), (LK_W, LK_D, LK_T), M_LK_BODY))
+# 세로 칸막이
+for _c in range(1, LK_COLS + 1):
+    _parts.append(slab("lk_div%d" % _c, (_x0 + _cw * _c, 0, LK_H / 2),
+                       (LK_T, LK_D, LK_H), M_LK_BODY))
+# 가로 선반
+_z = LK_T
+for _h in LK_ROWS[:-1]:
+    _z += _h
+    _parts.append(slab("lk_shelf%.0f" % (_z * 1000),
+                       (_x0 + (LK_W - LK_PANEL - LK_T) / 2, 0, _z),
+                       (LK_W - LK_PANEL - LK_T, LK_D, LK_T), M_LK_BODY))
+# 조작반 — 이게 있어야 '보관소'로 읽힌다. 없으면 그냥 사물함이다.
+_pcx = LK_W / 2 - LK_PANEL / 2 - LK_T
+# 앞면을 막는다. 없으면 그 칸만 앞이 뚫려 캐비닛 속이 들여다보인다.
+_parts.append(slab("lk_panel_face", (_pcx, -LK_D / 2 + LK_T / 2, LK_H / 2),
+                   (LK_PANEL, LK_T, LK_H - LK_T * 2), M_LK_BODY))
+# 조작반은 앞판보다 **앞으로** 나와야 한다. 뒤에 두면 통째로 묻힌다(실측).
+_parts.append(slab("lk_panel", (_pcx, -LK_D / 2 - LK_T * 0.25, LK_H * 0.62),
+                   (LK_PANEL * 0.86, LK_T * 0.9, 0.22), M_LK_TRIM))
+_parts.append(slab("lk_screen", (_pcx, -LK_D / 2 - LK_T * 0.72, LK_H * 0.685),
+                   (LK_PANEL * 0.62, LK_T * 0.45, 0.072), M_LK_LAMP))
+# 동전 투입구 — 작지만 '코인로커'라는 신호다.
+_parts.append(slab("lk_coin", (_pcx, -LK_D / 2 - LK_T * 0.72, LK_H * 0.575),
+                   (LK_PANEL * 0.30, LK_T * 0.45, 0.012), M_LK_BODY))
+BODY = finish("FURN_Locker__Body", _parts)
+shade(BODY, False)
+ITEMS["FURN_Locker__Body"] = BODY
+
+# 문 — 칸마다 하나. 원점은 왼쪽 경첩.
+_di = 0
+_z = LK_T
+for _row, _h in enumerate(LK_ROWS):
+    for _c in range(LK_COLS):
+        _lx = _x0 + LK_T / 2 + _cw * _c                  # 칸 왼쪽(경첩) x
+        _dw, _dh = _cw - LK_T, _h - LK_T
+        _hinge = (_lx, -LK_D / 2 + LK_T * 0.6, _z + _h / 2.0)
+        _p = [slab("door_face", (_dw / 2, 0, 0), (_dw, LK_T, _dh), M_LK_DOOR),
+              # 손잡이 — 경첩 반대쪽. 문이 어느 쪽으로 열리는지 이걸로 읽는다.
+              slab("door_grip", (_dw * 0.82, -LK_T * 0.9, 0),
+                   (_dw * 0.16, LK_T * 0.9, _dh * 0.16), M_LK_TRIM),
+              slab("door_lock", (_dw * 0.82, -LK_T * 0.8, -_dh * 0.26),
+                   (_dw * 0.10, LK_T * 0.7, _dh * 0.10), M_LK_TRIM)]
+        _door = finish("FURN_Locker__Door%02d" % _di, _p)
+        _door.location = _hinge
+        shade(_door, False)
+        ITEMS["FURN_Locker__Door%02d" % _di] = _door
+        _di += 1
+    _z += _h
+
 # --------------------------------------------------------------------- 검산
 def _family(mat):
     """색 계열 이름. 채도가 낮으면 전부 'neutral', 아니면 30도 색상 버킷."""
@@ -730,7 +825,9 @@ for name, o in ITEMS.items():
         raise RuntimeError("%s uses %d colour families %s (3~4개까지)"
                            % (name, len(fams), sorted(fams)))
     rep[name]["colour_families"] = sorted(fams)
-    if max(abs(v) for v in o.location) > 1e-6:
+    # 원점 규약은 손에 드는 소품에만 해당한다. 가구의 문은 경첩이 원점이라야
+    # Z 회전만으로 열린다.
+    if name.startswith("ITM") and max(abs(v) for v in o.location) > 1e-6:
         raise RuntimeError("%s origin is not at 0: %s" % (name, list(o.location)))
     # polygon.area 는 편집 모드 조작 뒤 갱신되지 않은 값을 돌려준다 —
     # 멀쩡한 면을 0 으로 보고했다(실측 4개). 좌표로 직접 잰다 (뉴얼 법).

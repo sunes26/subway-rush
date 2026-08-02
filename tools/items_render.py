@@ -53,23 +53,31 @@ cam.data.sensor_fit = 'VERTICAL'
 cam.data.sensor_height = 24.0
 cam.data.lens = LENS
 
-ITEMS = sorted((o for o in bpy.data.objects if o.type == 'MESH'), key=lambda o: o.name)
-if not ITEMS:
+MESHES = sorted((o for o in bpy.data.objects if o.type == 'MESH'), key=lambda o: o.name)
+if not MESHES:
     raise RuntimeError("no meshes in %s" % bpy.data.filepath)
-for o in ITEMS:
+# 여러 부품으로 된 물건은 한 덩어리로 찍는다. 이름의 '__' 앞이 묶음 이름이다
+# (물품보관소는 본체 1 + 문 8 이라 따로 찍으면 문짝 사진만 여덟 장 나온다).
+GROUPS = {}
+for _o in MESHES:
+    GROUPS.setdefault(_o.name.split("__")[0], []).append(_o)
+for o in MESHES:
     o.hide_render = True
 
 VH = math.atan(12.0 / LENS)                      # 세로 반화각
 HH = math.atan(12.0 * RX / RY / LENS)            # 가로 반화각
 meta = {}
 
-for obj in ITEMS:
-    for o in ITEMS:
-        o.hide_render = (o is not obj)
-    dx, dy, dz = obj.dimensions
-    lo = min((obj.matrix_world @ v.co).z for v in obj.data.vertices)
-    hi = max((obj.matrix_world @ v.co).z for v in obj.data.vertices)
+for gname in sorted(GROUPS):
+    group = GROUPS[gname]
+    for o in MESHES:
+        o.hide_render = (o not in group)
+    wv = [o.matrix_world @ v.co for o in group for v in o.data.vertices]
+    lo, hi = min(p.z for p in wv), max(p.z for p in wv)
     cz = (lo + hi) / 2.0
+    dx = max(p.x for p in wv) - min(p.x for p in wv)
+    dy = max(p.y for p in wv) - min(p.y for p in wv)
+    dz = hi - lo
     span_w = math.sqrt(dx * dx + dy * dy)
     dist = max(span_w / FILL * 0.5 / math.tan(HH), dz / FILL * 0.5 / math.tan(VH))
     for tag, yaw in VIEWS:
@@ -78,13 +86,14 @@ for obj in ITEMS:
         cam.rotation_euler = (math.radians(81), 0.0, a)
         sc.render.resolution_x, sc.render.resolution_y = RX, RY
         sc.render.resolution_percentage = 100
-        sc.render.filepath = os.path.join(OUT, "%s_%s.png" % (obj.name, tag))
+        sc.render.filepath = os.path.join(OUT, "%s_%s.png" % (gname, tag))
         bpy.ops.render.render(write_still=True)
-    meta[obj.name] = {
-        "tris": sum(len(p.vertices) - 2 for p in obj.data.polygons),
-        "verts": len(obj.data.vertices),
-        "dim_m": [round(v, 4) for v in obj.dimensions],
-        "materials": [m.name for m in obj.data.materials if m],
+    meta[gname] = {
+        "tris": sum(sum(len(p.vertices) - 2 for p in o.data.polygons) for o in group),
+        "verts": sum(len(o.data.vertices) for o in group),
+        "dim_m": [round(dx, 4), round(dy, 4), round(dz, 4)],
+        "parts": len(group),
+        "materials": sorted({m.name for o in group for m in o.data.materials if m}),
     }
 
 with open(os.path.join(OUT, "items.json"), "w") as fh:
