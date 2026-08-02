@@ -143,6 +143,9 @@ def tube(name, pts, radius, seg, mat):
     P = [Vector(p) for p in pts]
     if len(P) < 2:
         raise RuntimeError("tube needs >= 2 points")
+    R = list(radius) if hasattr(radius, "__len__") else [radius] * len(P)
+    if len(R) != len(P):
+        raise RuntimeError("radius list must match point count")
     tangents = []
     for i in range(len(P)):
         d = P[min(i + 1, len(P) - 1)] - P[max(i - 1, 0)]
@@ -161,7 +164,7 @@ def tube(name, pts, radius, seg, mat):
         v = d.cross(u).normalized()
         for k in range(seg):
             a = 2.0 * math.pi * k / seg
-            verts.append(tuple(p + (u * math.cos(a) + v * math.sin(a)) * radius))
+            verts.append(tuple(p + (u * math.cos(a) + v * math.sin(a)) * R[i]))
     for i in range(len(P) - 1):
         for k in range(seg):
             a, b = i * seg + k, i * seg + (k + 1) % seg
@@ -203,6 +206,12 @@ def lobed(name, rings, seg, mats, lobe=0.0, wobble=(), mat_pattern=None):
     return _mesh(name, verts, faces, mats, idx)
 
 
+def shade(o, smooth):
+    for poly in o.data.polygons:
+        poly.use_smooth = smooth
+    return o
+
+
 def finish(name, parts):
     """부품을 합치고 평면 셰이딩. 원점은 건드리지 않는다."""
     bpy.ops.object.select_all(action='DESELECT')
@@ -223,7 +232,8 @@ def finish(name, parts):
     bpy.ops.mesh.dissolve_degenerate(threshold=1e-5)
     bpy.ops.mesh.delete_loose(use_verts=True, use_edges=True, use_faces=False)
     bpy.ops.object.mode_set(mode='OBJECT')
-    bpy.ops.object.shade_flat()
+    # 부품별 셰이딩을 보존한다. 전체 shade_flat 을 걸면 흰 마스크에서
+    # 면마다 명도가 튀어 로우폴리 각짐이 과하게 드러난다.
     o.location = (0.0, 0.0, 0.0)
     return o
 
@@ -247,18 +257,18 @@ sc.unit_settings.system = 'METRIC'
 M_CARD = new_mat("ITM_CardBody", "17617A", 0.46)        # 딥 틸 (주색)
 M_CARD2 = new_mat("ITM_CardSky", "79BDD0", 0.44)        # 소프트 스카이 (보조)
 M_CARD3 = new_mat("ITM_CardNavy", "183846", 0.48)       # 딥 네이비 (마감)
-M_POINT = new_mat("ITM_PointYellow", "E5B84A", 0.40)    # 웜 옐로 (세트 공용 포인트)
+M_POINT = new_mat("ITM_PointYellow", "C89B4C", 0.46)    # 머스터드 (세트 공용 포인트) — 채도를 낮춰 시선 분산
 
 M_CLOTH = new_mat("ITM_MaskCloth", "E8ECEC", 0.96)      # 쿨 화이트 — 무광 부직포
-M_CLOTH_IN = new_mat("ITM_MaskInner", "C7D0D1", 0.96)   # 안쪽 면 소프트 그레이
+M_CLOTH_IN = new_mat("ITM_MaskInner", "DCE0E0", 0.96)   # 안쪽 면 — 기본색보다 5%만 어둡게
 M_LOOP = new_mat("ITM_MaskLoop", "F0F1EE", 0.94)        # 오프화이트 끈
 
 M_CANOPY = new_mat("ITM_UmbCanopy", "344B78", 0.74)     # 미드 네이비 (천 기본)
-M_FOLD = new_mat("ITM_UmbFold", "263A61", 0.74)         # 딥 블루 (접힘 음영)
+M_FOLD = new_mat("ITM_UmbFold", "2E4470", 0.74)         # 딥 블루 (접힘 음영) — 검게 파이지 않게
 M_FOLD2 = new_mat("ITM_UmbFoldLit", "455F8D", 0.74)     # 슬레이트 블루 (밝은 접힘)
 M_STRAP = new_mat("ITM_UmbStrap", "202D47", 0.60)       # 다크 네이비 스트랩
-M_GRIP = new_mat("ITM_UmbGrip", "20252E", 0.54)         # 블루블랙 손잡이
-M_METAL = new_mat("ITM_UmbMetal", "59616A", 0.42, metallic=0.55)   # 건메탈
+M_GRIP = new_mat("ITM_UmbGrip", "262B36", 0.56)         # 블루블랙 손잡이
+M_METAL = new_mat("ITM_UmbMetal", "6A737D", 0.40, metallic=0.55)   # 건메탈 — 손잡이와 구분되게 밝게
 
 ITEMS = {}
 
@@ -267,7 +277,7 @@ ITEMS = {}
 # 가로선 둘을 없애고, 대신 NFC 파동(원호 3겹)을 넣었다. 태그하는 물건이라는
 # 신호가 이것 하나로 충분하다.
 # 원점은 카드 중심 — 개찰구에 찍을 때 손이 카드 가운데를 쥔다.
-CW, CH, CT = 0.084, 0.053, 0.0032
+CW, CH, CT = 0.084, 0.053, 0.0026
 CR = 0.0042                       # 네 귀 라운딩 (실물 3.18mm 와 같은 비율)
 # 그래픽은 표면과 같은 높이로 읽혀야 한다. 0 으로 두면 Z-파이팅이 지글거리므로
 # 84mm 카드에서 0.05mm 만 띄운다 — 눈으로는 평평하다.
@@ -275,51 +285,75 @@ FLAT = 0.00005
 _fy = -CT / 2.0 - FLAT
 
 _body = plate("card_body", CW, CH, CR, CT, M_CARD, seg=3)
-bevel(_body, BEVEL_S * 0.5, 1)
+bevel(_body, BEVEL_S * 0.30, 1)   # 옆면 어두운 테두리를 얇게
 _parts = [_body]
 
 # 하단 보조 그래픽 영역 — 카드를 양분하던 무거운 띠를 낮췄다 (28% → 15%).
 # 옆면에 진한 선이 생기지 않도록 외곽선보다 안쪽으로 물린다.
-_parts.append(plate("card_band", CW * 0.90, CH * 0.15, 0.0022, FLAT * 2, M_CARD2,
+# 하단 바를 15% → 12% 로 더 낮췄다. 두꺼우면 카드가 위아래로 갈린다.
+_parts.append(plate("card_band", CW * 0.88, CH * 0.12, 0.0018, FLAT * 2, M_CARD2,
                     seg=2, y=_fy, cz=-CH * 0.335))
 
 # NFC 파동 — 왼쪽에서 오른쪽으로 퍼지는 원호 3겹. 바깥으로 갈수록 얇아진다.
-for _i, (_r, _t, _m) in enumerate(((0.0072, 0.0016, M_CARD2),
-                                   (0.0118, 0.0014, M_CARD2),
-                                   (0.0164, 0.0012, M_POINT))):
-    _parts.append(arc_band("card_wave%d" % _i, _r, _r + _t, -52.0, 52.0, 5,
-                           FLAT * 2, _m, y=_fy, cx=-CW * 0.28, cz=CH * 0.06))
+# 세 호의 굵기와 간격을 똑같이 맞춘다 — 들쭉날쭉하면 정렬이 안 된 것으로 읽힌다.
+# 위치도 왼쪽 치우침을 줄이고 하단 바 위 여백 가운데에 놓는다.
+_WT, _WG = 0.0013, 0.0040
+for _i in range(3):
+    _r = 0.0060 + _WG * _i
+    _m = M_POINT if _i == 2 else M_CARD2
+    _parts.append(arc_band("card_wave%d" % _i, _r, _r + _WT, -52.0, 52.0, 5,
+                           FLAT * 2, _m, y=_fy, cx=-CW * 0.10, cz=CH * 0.09))
 
 # 뒷면 마감 띠 — 실루엣에는 안 잡히지만 앞뒤가 구분된다. 순수 검정 대신 네이비.
 _parts.append(plate("card_stripe", CW * 0.90, CH * 0.14, 0.0007, FLAT * 2, M_CARD3,
                     seg=1, y=CT / 2.0 + FLAT, cz=CH * 0.27))
 
+for _p in _parts:
+    shade(_p, False)
 ITEMS["ITM04_Card"] = finish("ITM04_Card", _parts)
 
 # ============================================== ITM-06 마스크 (P1)
-# 일회용 부직포 마스크. 아래가 뾰족하게 좁아지던 사다리꼴과 세게 말려
-# 어두워지던 턱선을 걷어냈다 — 밝고 균일한 부직포로 읽혀야 한다.
-#   ① 코가 앞으로 나오고 좌우가 뒤로 감긴다 (가로 곡률)
-#   ② 위·아래가 얼굴 쪽으로 완만히 말린다 (세로 곡률)
-#   ③ 가로 주름 3개. 색을 칠하지 않고 얕은 접힘의 명암으로만 낸다.
-MW, MH = 0.090, 0.062
-NOSE, TUCK, CHIN, PLEAT = 0.020, 0.0100, 1.0, 0.0016
-NCOL, NROW = 7, 13
+# 실루엣을 다시 잡았다. 직사각 격자를 휘기만 해서는 '휘어진 천 조각'이지
+# 마스크가 아니다. 얼굴에 걸리는 구조가 실루엣에 있어야 한다 —
+#   ① 외곽선이 사각형이 아니다. 위는 콧등 폭으로 좁고, 가운데가 가장 넓고,
+#      아래는 턱을 감싸며 다시 좁아진다.
+#   ② 윗변 가운데에 얕은 코 굴곡(노즈 브리지)이 있다.
+#   ③ 아랫변은 가운데가 가장 낮게 내려와 턱을 받친다.
+#   ④ 가로 주름은 큰 것 3개뿐. 색을 칠하지 않고 얕은 접힘으로만 낸다.
+# 패널만 **부드러운 셰이딩**을 쓴다. 흰 마스크에서 로우폴리 각짐이 가장 크게
+# 드러나는데, 면마다 명도가 튀면 부직포가 아니라 종이 접기로 보인다.
+MW, MH = 0.096, 0.055    # 가로:세로 1.75 — 세로가 길면 그릇으로 보인다
+NOSE = 0.019          # 좌우가 뒤로 감기는 깊이
+NOSE_B = 0.0055       # 콧등 굴곡
+TUCK = 0.0085         # 위·아래가 얼굴 쪽으로 말리는 양
+PLEAT = 0.0032        # 주름 진폭. 부드러운 셰이딩에서는 얕으면 아예 사라진다
+NCOL, NROW = 7, 11
 _vs, _fs = [], []
 for ri in range(NROW):
-    zt = ri / (NROW - 1.0) - 0.5                      # -0.5(아래) ~ +0.5(위)
-    curl = TUCK * (abs(zt) / 0.5) ** 2 * (CHIN if zt < 0 else 1.0)
-    # 3주기 삼각파를 행 수가 적을 때 쓰면 행마다 방향이 뒤집혀 체크무늬로
-    # 보인다(실측). 행을 늘려 한 주기를 4행 이상으로 샘플링한다.
-    t = 3.0 * (zt + 0.5)
+    v = ri / (NROW - 1.0)                              # 0=위, 1=아래
+    # 폭: 위(콧등) 0.90 → 가운데 1.00 → 아래(턱) 0.76
+    # 위 0.94 → 가운데 1.00 → 아래 0.86. 더 좁히면 사각형이 아니라 원이 된다.
+    if v < 0.45:
+        wsc = 1.0 - 0.06 * ((v - 0.45) / 0.45) ** 2
+    else:
+        wsc = 1.0 - 0.14 * ((v - 0.45) / 0.55) ** 2
+    # 주름 3개. 행이 적을 때 주기가 짧으면 격자로 보이므로 얕게만 준다.
+    t = 3.0 * v
     pleat = PLEAT * (2.0 * abs(t - round(t)) - 0.5)
     for ci in range(NCOL):
-        xt = ci / (NCOL - 1.0) - 0.5
-        wrap = -NOSE * (1.0 - (xt / 0.5) ** 2)        # 가운데가 앞(-Y)
-        # 아래로 아주 완만하게만 좁아진다. 세게 좁히면 아래가 뾰족해지고
-        # solidify 테두리가 삼각 돌출로 튀어나온다 (실측).
-        narrow = 1.0 - 0.10 * max(0.0, -zt)
-        _vs.append((xt * MW * narrow, wrap + curl + pleat, zt * MH))
+        u = ci / (NCOL - 1.0) - 0.5
+        ur = (u / 0.5) ** 2
+        z_top = MH * (0.50 - 0.02 * ur)                # 윗변은 거의 곧다
+        z_bot = MH * (-0.50 + 0.09 * ur)               # 아랫변은 가운데가 가장 낮다
+        z = z_top + (z_bot - z_top) * v
+        wrap = -NOSE * (1.0 - ur)                      # 가운데가 앞(-Y)
+        nose = -NOSE_B * (1.0 - ur) * math.exp(-((v - 0.05) / 0.12) ** 2)
+        curl = 0.0
+        if v < 0.14:
+            curl += TUCK * ((0.14 - v) / 0.14) ** 2
+        if v > 0.78:
+            curl += TUCK * 1.25 * ((v - 0.78) / 0.22) ** 2
+        _vs.append((u * MW * wsc, wrap + nose + curl + pleat, z))
 for ri in range(NROW - 1):
     for ci in range(NCOL - 1):
         i = ri * NCOL + ci
@@ -327,21 +361,28 @@ for ri in range(NROW - 1):
 _panel = _mesh("mask_panel", _vs, _fs, [M_CLOTH, M_CLOTH_IN])
 set_active(_panel)
 _sol = _panel.modifiers.new("Solidify", 'SOLIDIFY')
-_sol.thickness = 0.0015                               # 부직포 한 장 두께
+_sol.thickness = 0.0010                               # 얇은 부직포 한 장
 _sol.offset = 0.0
-_sol.material_offset = 1                              # 안쪽 면만 소프트 그레이
+_sol.material_offset = 1                              # 안쪽 면만 5% 어둡게
 _sol.material_offset_rim = 1
 _apply(_panel, _sol)
+shade(_panel, True)
 _parts = [_panel]
 
-# 귀걸이 — 얇고 둥근 탄성 끈. 각진 와이어로 보이면 안 되므로 점을 촘촘히
-# 놓고 단면은 6각으로 올린다.
+# 귀걸이 — 얇고 둥근 탄성 끈. 끝을 가늘게 해서 패널에 자연스럽게 묻힌다.
 for sx in (1, -1):
-    x0 = MW * 0.43 * sx
-    arc = [(x0 + 0.005 * sx * math.sin(math.pi * i / 7.0),
-            0.004 + 0.038 * math.sin(math.pi * i / 7.0),
-            math.cos(math.pi * i / 7.0) * MH * 0.31) for i in range(8)]
-    _parts.append(tube("mask_loop%s" % ("L" if sx > 0 else "R"), arc, 0.0011, 6, M_LOOP))
+    x0 = MW * 0.415 * sx
+    npt = 10
+    arc, rad = [], []
+    for i in range(npt):
+        a_ = math.pi * i / (npt - 1.0)
+        arc.append((x0 + 0.004 * sx * math.sin(a_),
+                    0.003 + 0.034 * math.sin(a_),
+                    math.cos(a_) * MH * 0.33))
+        edge = min(i, npt - 1 - i) / 2.0
+        rad.append(0.0009 * (0.55 + 0.45 * min(1.0, edge)))
+    _parts.append(shade(tube("mask_loop%s" % ("L" if sx > 0 else "R"),
+                             arc, rad, 7, M_LOOP), True))
 ITEMS["ITM06_Mask"] = finish("ITM06_Mask", _parts)
 
 # ============================================== ITM-09 우산 (P1)
@@ -352,37 +393,41 @@ ITEMS["ITM06_Mask"] = finish("ITM06_Mask", _parts)
 # 검은 면을 섞으면 천이 아니라 그림자 뭉치가 된다.
 # **원점을 손잡이 쥐는 자리에 둔다** — 여기가 (0,0,0) 이어야 손에 붙였을 때
 # 우산이 손에서 자라난다.
-HOOK = [(0.0, 0.0, 0.030), (0.0, 0.0, -0.014)]
-_HR, _HC = 0.026, -0.030
-for _i in range(1, 7):
-    _a = math.pi * _i / 6.0
-    HOOK.append((0.0, _HR * (1.0 - math.cos(_a)), _HC - _HR * math.sin(_a) * 0.62))
+# 손잡이 — 곡선을 부드럽게, 끝으로 갈수록 가늘게. 끝이 두꺼우면
+# 플라스틱이 아니라 블록으로 보인다.
+HOOK = [(0.0, 0.0, 0.032), (0.0, 0.0, -0.012)]
+_HR, _HC = 0.025, -0.028
+for _i in range(1, 8):
+    _a = math.pi * _i / 7.0
+    HOOK.append((0.0, _HR * (1.0 - math.cos(_a)), _HC - _HR * math.sin(_a) * 0.60))
+HOOK_R = [0.0088, 0.0088] + [0.0088 - 0.0026 * (i / 6.0) ** 1.4 for i in range(7)]
 
-CAN_LO, CAN_HI = 0.048, 0.256
-# 8열. 0=기본 · 1=어두운 접힘 · 2=밝은 접힘 을 섞어 겹겹이 접힌 느낌을 낸다.
+CAN_LO, CAN_HI = 0.046, 0.268          # 최대 폭을 줄이고 세로로 길게
 CAN_MATS = [M_CANOPY, M_FOLD, M_FOLD2]
-CAN_PATTERN = [0, 1, 2, 0, 1, 0, 2, 1]
-CAN_WOBBLE = (1.00, 0.88, 1.06, 0.93, 1.03, 0.86, 1.08, 0.91)
+# 열마다 다른 재질·반경. 규칙적인 반복은 좌우 대칭으로 읽히므로 어긋나게 둔다.
+CAN_PATTERN = [0, 1, 2, 0, 2, 1, 0, 1]
+CAN_WOBBLE = (1.00, 0.90, 1.05, 0.95, 1.02, 0.87, 1.06, 0.93)
 
 _parts = [
-    tube("umb_hook", HOOK, 0.0090, 6, M_GRIP),
-    lobed("umb_shaft", [(0.026, 0.0050), (CAN_LO + 0.004, 0.0050)], 6, M_METAL),
-    # 위가 가장 풍성하고 밴드 쪽이 잘록하다.
+    tube("umb_hook", HOOK, HOOK_R, 7, M_GRIP),
+    lobed("umb_shaft", [(0.028, 0.0050), (CAN_LO + 0.006, 0.0050)], 6, M_METAL),
+    # 아래쪽이 갑자기 좁아지면 위아래가 별개 부품으로 보인다 — 완만하게 잇는다.
     lobed("umb_canopy",
-          [(CAN_LO, 0.0160), (CAN_LO + 0.030, 0.0208), (CAN_LO + 0.075, 0.0192),
-           (CAN_HI - 0.048, 0.0232), (CAN_HI - 0.014, 0.0210), (CAN_HI, 0.0166)],
-          8, CAN_MATS, lobe=0.11, wobble=CAN_WOBBLE, mat_pattern=CAN_PATTERN),
-    # 스트랩 — 검은 링이 아니라 천을 감는 얇은 띠. 천보다 아주 조금만 굵다.
-    lobed("umb_strap", [(CAN_LO + 0.070, 0.0212), (CAN_LO + 0.079, 0.0212)],
+          [(CAN_LO, 0.0152), (CAN_LO + 0.022, 0.0182), (CAN_LO + 0.058, 0.0196),
+           (CAN_LO + 0.104, 0.0204), (CAN_HI - 0.062, 0.0198), (CAN_HI - 0.024, 0.0182),
+           (CAN_HI, 0.0150)],
+          8, CAN_MATS, lobe=0.10, wobble=CAN_WOBBLE, mat_pattern=CAN_PATTERN),
+    # 스트랩 — 얇은 링이 아니라 천을 감는 띠. 넓히고 채도를 낮췄다.
+    lobed("umb_strap", [(CAN_LO + 0.062, 0.0206), (CAN_LO + 0.086, 0.0206)],
           8, M_STRAP, wobble=CAN_WOBBLE),
-    lobed("umb_strap_pt", [(CAN_LO + 0.0725, 0.0216), (CAN_LO + 0.0765, 0.0216)],
+    lobed("umb_strap_pt", [(CAN_LO + 0.0665, 0.0210), (CAN_LO + 0.0815, 0.0210)],
           8, M_POINT, wobble=CAN_WOBBLE),
-    # 끝 팁 — 묻히지 않게 또렷한 형태로.
-    lobed("umb_ferrule", [(CAN_HI - 0.002, 0.0082), (CAN_HI + 0.010, 0.0068),
-                          (CAN_HI + 0.020, 0.0030)], 6, M_METAL),
+    lobed("umb_ferrule", [(CAN_HI - 0.002, 0.0076), (CAN_HI + 0.010, 0.0062),
+                          (CAN_HI + 0.019, 0.0028)], 6, M_METAL),
 ]
 for _p in _parts:
     bevel(_p, BEVEL_S, 1)
+    shade(_p, False)
 ITEMS["ITM09_Umbrella"] = finish("ITM09_Umbrella", _parts)
 
 # --------------------------------------------------------------------- 검산
