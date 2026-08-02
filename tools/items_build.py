@@ -733,7 +733,11 @@ _cw = (LK_W - LK_PANEL - LK_T) / LK_COLS
 M_LK_BODY = new_mat("FURN_LockerBody", "B8C0C6", 0.46)     # 도장 강판
 M_LK_DOOR = new_mat("FURN_LockerDoor", "9FAAB2", 0.44)     # 문짝 — 한 톤 어둡게
 M_LK_TRIM = new_mat("FURN_LockerTrim", "4A525C", 0.40)     # 손잡이·자물쇠·조작반
-M_LK_LAMP = new_mat("FURN_LockerLamp", "E67A45", 0.40)     # 사용중 표시 (세트 포인트색)
+# 사용 상태 램프. 엔진이 이 **재질만 바꿔** 빈칸/사용중을 표시한다.
+# 램프를 별도 오브젝트로 빼지 않는 이유는 문이 열릴 때 같이 돌아야 해서다.
+# 문 메시 안에 있되 재질이 달라 glTF 에서 별도 프리미티브로 나간다.
+M_LK_FREE = new_mat("FURN_LockerLampFree", "4FC172", 0.36)   # 빈칸
+M_LK_USED = new_mat("FURN_LockerLampUsed", "E05A4E", 0.36)   # 사용중
 
 _x0 = -LK_W / 2.0
 _parts = []
@@ -764,8 +768,10 @@ _parts.append(slab("lk_panel_face", (_pcx, -LK_D / 2 + LK_T / 2, LK_H / 2),
 # 조작반은 앞판보다 **앞으로** 나와야 한다. 뒤에 두면 통째로 묻힌다(실측).
 _parts.append(slab("lk_panel", (_pcx, -LK_D / 2 - LK_T * 0.25, LK_H * 0.62),
                    (LK_PANEL * 0.86, LK_T * 0.9, 0.22), M_LK_TRIM))
+# 조작반 화면은 빈칸 램프와 같은 초록을 쓴다. 여기에 색을 하나 더 들이면
+# 한 물건이 쓰는 색 계열이 5개가 되어 세트 규칙을 넘는다.
 _parts.append(slab("lk_screen", (_pcx, -LK_D / 2 - LK_T * 0.72, LK_H * 0.685),
-                   (LK_PANEL * 0.62, LK_T * 0.45, 0.072), M_LK_LAMP))
+                   (LK_PANEL * 0.62, LK_T * 0.45, 0.072), M_LK_FREE))
 # 동전 투입구 — 작지만 '코인로커'라는 신호다.
 _parts.append(slab("lk_coin", (_pcx, -LK_D / 2 - LK_T * 0.72, LK_H * 0.575),
                    (LK_PANEL * 0.30, LK_T * 0.45, 0.012), M_LK_BODY))
@@ -774,6 +780,10 @@ shade(BODY, False)
 ITEMS["FURN_Locker__Body"] = BODY
 
 # 문 — 칸마다 하나. 원점은 왼쪽 경첩.
+# 기본 상태. 배경 소품이라 반쯤 차 있어야 자연스럽다 — 전부 초록이면
+# 아무도 안 쓰는 보관소로 보이고, 전부 빨강이면 고장난 것처럼 보인다.
+LK_USED = {0, 1, 4, 6, 7, 10, 12, 13, 16, 19, 20, 23}
+
 _di = 0
 _z = LK_T
 for _row, _h in enumerate(LK_ROWS):
@@ -786,7 +796,10 @@ for _row, _h in enumerate(LK_ROWS):
               slab("door_grip", (_dw * 0.82, -LK_T * 0.9, 0),
                    (_dw * 0.16, LK_T * 0.9, _dh * 0.16), M_LK_TRIM),
               slab("door_lock", (_dw * 0.82, -LK_T * 0.8, -_dh * 0.26),
-                   (_dw * 0.10, LK_T * 0.7, _dh * 0.10), M_LK_TRIM)]
+                   (_dw * 0.10, LK_T * 0.7, _dh * 0.10), M_LK_TRIM),
+              slab("door_lamp", (_dw * 0.82, -LK_T * 0.85, _dh * 0.27),
+                   (_dw * 0.13, LK_T * 0.6, _dh * 0.11),
+                   M_LK_USED if _di in LK_USED else M_LK_FREE)]
         _door = finish("FURN_Locker__Door%02d" % _di, _p)
         _door.location = _hinge
         shade(_door, False)
