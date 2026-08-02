@@ -265,8 +265,8 @@ sc.unit_settings.system = 'METRIC'
 # 세 소품이 공유하는 팔레트. 순수 검정(#000)·순수 흰색(#fff)은 쓰지 않는다.
 # 팔레트 — 캐주얼 모바일 게임 기준. 회색기를 빼고 중간 명도를 올린다.
 # 어둡게 만들 때 회색을 섞지 않고 **같은 색의 더 깊은 버전**을 쓴다.
-# 카드=옐로 · 우산=에메랄드 그린으로 주색을 갈라 작게 보여도 구별되게 한다.
-# 세트를 묶는 고리는 옐로다 — 카드 본체가 옐로이고 우산 스트랩이 옐로다.
+# 카드=옐로 · 우산=딥 네이비로 주색을 갈라 작게 보여도 구별되게 한다.
+# 세트를 묶는 고리는 따뜻한 포인트다 — 카드 NFC 가 코랄, 우산 스트랩이 오렌지.
 M_CARD = new_mat("ITM_CardBody", "F6C84A", 0.38)        # 선샤인 옐로 (주색)
 # 옆면을 본체보다 **밝게** 잡는다. 같은 색을 주면 조명이 깎아 어두운 테두리가
 # 생겨 카드가 두꺼워 보인다 (실측: 이전 판에서 옆면만 검게 읽혔다).
@@ -286,23 +286,19 @@ M_PLEAT = new_mat("ITM_MaskPleat", "D9E5EC", 0.96)      # 주름 음영 (펼친 
 M_FOLDSH = new_mat("ITM_MaskFoldSh", "DCE6EC", 0.96)    # 접힘 음영 (접힌 마스크)
 
 # 우산 — 같은 블루 계열 안에서 명도만 8~15% 차이. 검게 뭉치는 면을 만들지 않는다.
-M_CANOPY = new_mat("ITM_UmbCanopy", "3FAF78", 0.64)     # 에메랄드 그린 (주색)
-M_FOLD2 = new_mat("ITM_UmbLit", "63C991", 0.64)         # 프레시 그린 (빛 받는 패널)
-M_FOLD = new_mat("ITM_UmbDark", "287956", 0.64)         # 딥 그린 (그늘 패널)
-M_DEEP = new_mat("ITM_UmbDeep", "1E5C42", 0.64)         # 더 깊은 그린 — 검정 대신 같은 계열로
-M_STRAP = new_mat("ITM_UmbStrapBase", "287956", 0.60)   # 스트랩 바탕
-M_STRAP_PT = new_mat("ITM_StrapYellow", "FFD15A", 0.44) # 웜 옐로 (무광 밴드)
-M_GRIP = new_mat("ITM_UmbGrip", "293C35", 0.52)         # 딥 그린 차콜 손잡이
-M_METAL = new_mat("ITM_UmbMetal", "778594", 0.36, metallic=0.40)   # 쿨 건메탈
-
-# 펼친 우산 전용 팔레트. 접힌 우산(그린)과 다르다 — 지시가 펼친 상태만
-# 대상이었다. 같은 제품으로 맞추려면 접힌 쪽도 네이비로 바꿔야 한다.
-M_OPEN = new_mat("ITM_UmbOpenBase", "2F4E8F", 0.64)     # 딥 네이비 (패널 기본색)
-M_OPEN_LIT = new_mat("ITM_UmbOpenLit", "4A6BB3", 0.64)  # 빛 받는 면
-M_OPEN_MID = new_mat("ITM_UmbOpenMid", "3B5DA3", 0.64)  # 중간 면
-M_OPEN_DEEP = new_mat("ITM_UmbOpenDeep", "243A6B", 0.64)  # 가장 어두운 면 — 검정 아님
-M_OPEN_GRIP = new_mat("ITM_UmbOpenGrip", "2C313A", 0.52)  # 차콜 손잡이
-M_OPEN_METAL = new_mat("ITM_UmbOpenMetal", "727C88", 0.36, metallic=0.40)  # 건메탈
+# 우산 팔레트 — **접힌 상태와 펼친 상태가 이 한 벌을 공유한다.**
+# 상태별로 색을 따로 두면 같은 우산이 접히면 초록, 펼치면 네이비가 된다
+# (실제로 그렇게 갈렸다). 재질을 하나로 합쳐 어긋날 수 없게 만든다.
+# 네 단계 전부 같은 네이비 계열이고, 가장 어두운 면도 검정이 아니다.
+M_UMB = new_mat("ITM_UmbBase", "2F4E8F", 0.64)          # 딥 네이비 (패널 기본색)
+M_UMB_LIT = new_mat("ITM_UmbLit", "4A6BB3", 0.64)       # 빛 받는 면
+M_UMB_MID = new_mat("ITM_UmbMid", "3B5DA3", 0.64)       # 중간 면
+M_UMB_DEEP = new_mat("ITM_UmbDeep", "243A6B", 0.64)     # 가장 어두운 면 — 검정 아님
+# 스트랩 포인트는 네이비의 채도·명도에 맞춘 오렌지다. 밝기만 올린 형광
+# 오렌지는 네이비 위에서 혼자 튀고, 채도를 낮추면 탁한 갈색이 된다.
+M_UMB_STRAP_PT = new_mat("ITM_UmbStrap", "E67A45", 0.44)   # 오렌지 (무광 밴드)
+M_UMB_GRIP = new_mat("ITM_UmbGrip", "2C313A", 0.52)     # 차콜 손잡이
+M_UMB_METAL = new_mat("ITM_UmbMetal", "727C88", 0.36, metallic=0.40)  # 건메탈
 
 ITEMS = {}
 
@@ -440,13 +436,15 @@ CAN_LO, CAN_HI = 0.046, 0.268          # 최대 폭을 줄이고 세로로 길�
 # 패널 색은 **조명 방향을 따르는 명도 흐름**이다. 무작위로 교차시키면
 # 서커스 우산처럼 보인다. 키 라이트가 +38도에서 오므로 그쪽 열이 밝고
 # 반대쪽이 그늘진다. 같은 블루 계열 안에서 명도만 갈린다.
-CAN_MATS = [M_CANOPY, M_FOLD2, M_FOLD, M_DEEP]
-CAN_PATTERN = [0, 1, 1, 0, 2, 3, 2, 0]
+# 인덱스 밝기 순서: 3(가장 어두움) < 0(기본) < 2(중간) < 1(밝음).
+# 키 라이트가 +38도이므로 k=1(45도)이 가장 밝고 k=4~5(180~225도)가 그늘이다.
+CAN_MATS = [M_UMB, M_UMB_LIT, M_UMB_MID, M_UMB_DEEP]
+CAN_PATTERN = [2, 1, 2, 0, 3, 3, 0, 2]
 CAN_WOBBLE = (1.00, 0.90, 1.05, 0.95, 1.02, 0.87, 1.06, 0.93)
 
 _parts = [
-    tube("umb_hook", HOOK, HOOK_R, 7, M_GRIP),
-    lobed("umb_shaft", [(0.028, 0.0050), (CAN_LO + 0.006, 0.0050)], 6, M_METAL),
+    tube("umb_hook", HOOK, HOOK_R, 7, M_UMB_GRIP),
+    lobed("umb_shaft", [(0.028, 0.0050), (CAN_LO + 0.006, 0.0050)], 6, M_UMB_METAL),
     # 아래쪽이 갑자기 좁아지면 위아래가 별개 부품으로 보인다 — 완만하게 잇는다.
     lobed("umb_canopy",
           [(CAN_LO, 0.0152), (CAN_LO + 0.022, 0.0182), (CAN_LO + 0.058, 0.0196),
@@ -455,11 +453,11 @@ _parts = [
           8, CAN_MATS, lobe=0.10, wobble=CAN_WOBBLE, mat_pattern=CAN_PATTERN),
     # 스트랩 — 얇은 링이 아니라 천을 감는 띠. 넓히고 채도를 낮췄다.
     lobed("umb_strap", [(CAN_LO + 0.062, 0.0206), (CAN_LO + 0.086, 0.0206)],
-          8, M_STRAP, wobble=CAN_WOBBLE),
+          8, M_UMB_DEEP, wobble=CAN_WOBBLE),
     lobed("umb_strap_pt", [(CAN_LO + 0.0665, 0.0210), (CAN_LO + 0.0815, 0.0210)],
-          8, M_STRAP_PT, wobble=CAN_WOBBLE),
+          8, M_UMB_STRAP_PT, wobble=CAN_WOBBLE),
     lobed("umb_ferrule", [(CAN_HI - 0.002, 0.0076), (CAN_HI + 0.010, 0.0062),
-                          (CAN_HI + 0.019, 0.0028)], 6, M_METAL),
+                          (CAN_HI + 0.019, 0.0028)], 6, M_UMB_METAL),
 ]
 for _p in _parts:
     bevel(_p, BEVEL_S, 1)
@@ -569,7 +567,7 @@ for ri in range(len(O_RINGS) - 1):
         _fs.append((b0 + k, b0 + kn, b1 + kn, b1 + k))
         _idx.append(_lit(k))
 _canopy = _mesh("umbo_canopy", _vs, _fs,
-                [M_OPEN, M_OPEN_LIT, M_OPEN_MID, M_OPEN_DEEP], _idx)
+                [M_UMB, M_UMB_LIT, M_UMB_MID, M_UMB_DEEP], _idx)
 set_active(_canopy)
 _sol = _canopy.modifiers.new("Solidify", 'SOLIDIFY')
 _sol.thickness = 0.0026
@@ -588,10 +586,10 @@ for _i in range(1, 10):
 O_HOOK_R = [0.0100, 0.0100] + [0.0100 - 0.0028 * (i / 8.0) ** 1.4 for i in range(9)]
 
 _parts = [
-    tube("umbo_hook", O_HOOK, O_HOOK_R, 8, M_OPEN_GRIP),
+    tube("umbo_hook", O_HOOK, O_HOOK_R, 8, M_UMB_GRIP),
     # 축은 12% 굵게. 캐노피 중심(0,0)과 정확히 정렬된다.
-    lobed("umbo_shaft", [(0.030, 0.0057), (O_SHAFT_TOP, 0.0053)], 8, M_OPEN_METAL),
-    lobed("umbo_tip", [(O_SHAFT_TOP, 0.0072), (O_SHAFT_TOP + 0.018, 0.0028)], 8, M_OPEN_METAL),
+    lobed("umbo_shaft", [(0.030, 0.0057), (O_SHAFT_TOP, 0.0053)], 8, M_UMB_METAL),
+    lobed("umbo_tip", [(O_SHAFT_TOP, 0.0072), (O_SHAFT_TOP + 0.018, 0.0028)], 8, M_UMB_METAL),
     _canopy,
 ]
 for k in range(NRIB):
@@ -600,7 +598,7 @@ for k in range(NRIB):
     for r, z, dz in [(0.028, O_APEX - 0.030, 0.0)] + O_RINGS:
         pts.append((r * math.cos(a_), r * math.sin(a_), z + dz - 0.0036))
         rad.append(0.0024 if r < 0.11 else 0.0017)
-    _parts.append(tube("umbo_rib%d" % k, pts, rad, 4, M_OPEN_METAL))
+    _parts.append(tube("umbo_rib%d" % k, pts, rad, 4, M_UMB_METAL))
 for _p in _parts:
     if _p is not _canopy:
         bevel(_p, BEVEL_S, 1)
