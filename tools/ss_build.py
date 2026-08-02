@@ -23,6 +23,16 @@ from mathutils import Vector, Matrix, Euler
 from mathutils.kdtree import KDTree
 from mathutils.bvhtree import BVHTree
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lib.blend import (need_obj, need_action, need_mat, set_active,   # noqa: E402
+                       principled, hex_lin, new_mat)
+from lib.rigging import (sample_action, act_span, bone_attach,        # noqa: E402
+                         arm_solver, abduct_sign, rotate_mesh_about)
+from lib.meshops import (bisect, boundary_loops, dup_offset, box,     # noqa: E402
+                         close_holes, push_out_of_body, open_edge_count)
+from lib.anim import (ease, curve, lower_at, lower_cycle,             # noqa: E402
+                      new_action, write_action)
+
 D = math.radians
 OUT = sys.argv[sys.argv.index("--") + 1] if "--" in sys.argv else None
 if not OUT:
@@ -30,71 +40,6 @@ if not OUT:
 REPORT = os.environ.get("SS_REPORT", "/tmp/ss_build_report.json")
 
 rep = {}
-
-
-def need_obj(name):
-    o = bpy.data.objects.get(name)
-    if o is None:
-        raise RuntimeError("Required object not found: %s" % name)
-    return o
-
-
-def need_action(name):
-    a = bpy.data.actions.get(name)
-    if a is None:
-        raise RuntimeError("Required action not found: %s (have %s)"
-                           % (name, sorted(x.name for x in bpy.data.actions)))
-    return a
-
-
-def need_mat(name):
-    m = bpy.data.materials.get(name)
-    if m is None:
-        raise RuntimeError("Required material not found: %s" % name)
-    return m
-
-
-def set_active(obj):
-    for o in bpy.context.view_layer.objects:
-        o.select_set(False)
-    obj.select_set(True)
-    bpy.context.view_layer.objects.active = obj
-
-
-def principled(mat):
-    if not mat.node_tree:
-        raise RuntimeError("material %s has no node tree" % mat.name)
-    n = next((x for x in mat.node_tree.nodes if x.type == 'BSDF_PRINCIPLED'), None)
-    if n is None:
-        raise RuntimeError("material %s has no Principled BSDF" % mat.name)
-    return n
-
-
-def srgb_to_lin(c):
-    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
-
-
-def hex_lin(h):
-    h = h.lstrip("#")
-    return tuple(srgb_to_lin(int(h[i:i + 2], 16) / 255.0) for i in (0, 2, 4))
-
-
-def new_mat(name, hexcol, rough, emit=0.0):
-    if name in bpy.data.materials:
-        raise RuntimeError("material already exists: %s" % name)
-    m = bpy.data.materials.new(name)
-    m.use_nodes = True
-    b = principled(m)
-    b.inputs["Base Color"].default_value = hex_lin(hexcol) + (1.0,)
-    b.inputs["Roughness"].default_value = rough
-    b.inputs["Metallic"].default_value = 0.0
-    if emit > 0.0:
-        # 발광은 GLB 로 나가지 않는다(ZP_ScreenGlow 와 동일). 프리뷰 렌더 전용이고
-        # 엔진에서는 베이스 컬러만 받아 이미시브를 따로 지정해야 한다.
-        b.inputs["Emission Color"].default_value = hex_lin(hexcol) + (1.0,)
-        b.inputs["Emission Strength"].default_value = emit
-    m.diffuse_color = hex_lin(hexcol) + (1.0,)
-    return m
 
 
 # ---------------------------------------------------------------- 0. 사전 검증
@@ -125,38 +70,12 @@ LOWER = ["Root", "Hips", "UpperLeg.L", "LowerLeg.L", "Foot.L",
          "UpperLeg.R", "LowerLeg.R", "Foot.R"]
 
 
-def sample_action(act, f_start, f_end, bones):
-    ad = MC_RIG.animation_data or MC_RIG.animation_data_create()
-    prev = ad.action
-    ad.action = act
-    dg = bpy.context.evaluated_depsgraph_get()
-    out = {}
-    for f in range(f_start, f_end + 1):
-        scene.frame_set(f)
-        dg.update()
-        snap = {}
-        for bn in bones:
-            pb = MC_RIG.pose.bones.get(bn)
-            if pb is None:
-                raise RuntimeError("pose bone missing: %s" % bn)
-            snap[bn] = {"loc": list(pb.location), "rot": list(pb.rotation_euler)}
-        out[f] = snap
-    ad.action = prev
-    scene.frame_set(1)
-    return out
-
-
-def act_span(a):
-    fr = a.frame_range
-    return int(round(fr[0])), int(round(fr[1]))
-
-
 IDLE_F = act_span(ACT_IDLE)
 WALK_F = act_span(ACT_WALK)
 RUN_F = act_span(ACT_RUN)
-IDLE_LOWER = sample_action(ACT_IDLE, IDLE_F[0], IDLE_F[1], LOWER)
-WALK_LOWER = sample_action(ACT_WALK, WALK_F[0], WALK_F[1], LOWER)
-RUN_LOWER = sample_action(ACT_RUN, RUN_F[0], RUN_F[1], LOWER)
+IDLE_LOWER = sample_action(MC_RIG, ACT_IDLE, IDLE_F[0], IDLE_F[1], LOWER)
+WALK_LOWER = sample_action(MC_RIG, ACT_WALK, WALK_F[0], WALK_F[1], LOWER)
+RUN_LOWER = sample_action(MC_RIG, ACT_RUN, RUN_F[0], RUN_F[1], LOWER)
 BASE_LOWER = {k: dict(v) for k, v in IDLE_LOWER[IDLE_F[0]].items()}
 for _nm, _s in (("Idle", IDLE_LOWER), ("Walk", WALK_LOWER), ("Run", RUN_LOWER)):
     for f, sn in _s.items():
@@ -469,21 +388,6 @@ bmesh.ops.delete(bm, geom=[bm.verts[i] for i in _kill], context='VERTS')
 bm.verts.ensure_lookup_table()
 
 
-def _bisect(bm_, co, no, verts_filter=None):
-    """평면으로 잘라 normal 반대쪽을 버린다."""
-    geom = list(bm_.verts) + list(bm_.edges) + list(bm_.faces)
-    if verts_filter is not None:
-        vs = {v for v in bm_.verts if verts_filter(v)}
-        geom = list(vs) + [e for e in bm_.edges if all(v in vs for v in e.verts)] \
-               + [f for f in bm_.faces if all(v in vs for v in f.verts)]
-        if not geom:
-            raise RuntimeError("bisect: empty geometry subset")
-    bmesh.ops.bisect_plane(bm_, geom=geom, dist=1e-6,
-                           plane_co=co, plane_no=no,
-                           clear_inner=True, clear_outer=False)
-    bm_.verts.ensure_lookup_table()
-
-
 # 순서 주의: 부풀린 '뒤에' 자른다. 자른 뒤 법선으로 밀면 밑단이 다시 울퉁불퉁해진다.
 bm.normal_update()
 for v in bm.verts:
@@ -536,40 +440,17 @@ if _squared < 40:
 rep["shoulder_square"] = {"verts": _squared, "top_z": round(SQ_TOP, 4),
                           "widen": SQ_WIDEN}
 
-_bisect(bm, Vector((0.0, 0.0, HEM_Z)), Vector((0.0, 0.0, 1.0)))
+bisect(bm, Vector((0.0, 0.0, HEM_Z)), Vector((0.0, 0.0, 1.0)))
 for _side in ("L", "R"):
     _h, _d, _ln = _arm_axis[_side]
     _cut = _h + _d * (_ln * CUFF)
-    _bisect(bm, _cut, -_d, lambda v, _h=_h, _d=_d, _ln=_ln: (v.co - _h).dot(_d) / _ln > 0.15)
-
-
-def _boundary_loops(bm_):
-    adj = {}
-    for e in bm_.edges:
-        if len(e.link_faces) == 1:
-            a, b = e.verts
-            adj.setdefault(a, set()).add(b)
-            adj.setdefault(b, set()).add(a)
-    seen, out = set(), []
-    for k in adj:
-        if k in seen:
-            continue
-        stack, comp = [k], set()
-        while stack:
-            n = stack.pop()
-            if n in comp:
-                continue
-            comp.add(n)
-            seen.add(n)
-            stack.extend(adj[n] - comp)
-        out.append(comp)
-    return out
+    bisect(bm, _cut, -_d, lambda v, _h=_h, _d=_d, _ln=_ln: (v.co - _h).dot(_d) / _ln > 0.15)
 
 
 # 밑단을 수평 링으로 정렬. 사전 컷이 HEM_Z 위에서 끝나면 bisect 가 자를 게 없어
 # 톱니가 남는다(ZP 에서 z 편차 55mm 실측). 잘라 낸 뒤 통째로 눕힌다.
 _torso_hem = None
-for comp in _boundary_loops(bm):
+for comp in boundary_loops(bm):
     zs = [v.co.z for v in comp]
     if max(zs) < HEM_Z + 0.10 and max(abs(v.co.x) for v in comp) < 0.14 and len(comp) > 24:
         if _torso_hem is None or len(comp) > len(_torso_hem):
@@ -644,31 +525,6 @@ bm.verts.ensure_lookup_table()
 _TRIM_SLOT = 1
 
 
-def _dup_offset(bm_, pred, dist):
-    src = [f for f in bm_.faces if pred(f)]
-    if len(src) < 4:
-        raise RuntimeError("dup_offset: too few faces (%d)" % len(src))
-    geom = list(src)
-    seen = set()
-    for f in src:
-        for e in f.edges:
-            if e.index not in seen:
-                seen.add(e.index)
-                geom.append(e)
-    seen_v = set()
-    for f in src:
-        for v in f.verts:
-            if v.index not in seen_v:
-                seen_v.add(v.index)
-                geom.append(v)
-    res = bmesh.ops.duplicate(bm_, geom=geom)
-    new_faces = [g for g in res["geom"] if isinstance(g, bmesh.types.BMFace)]
-    new_verts = {g for g in res["geom"] if isinstance(g, bmesh.types.BMVert)}
-    for v in new_verts:
-        v.co += v.normal * dist
-    return new_faces
-
-
 TAB_OFF = 0.0072
 _tabs = {}
 for _side in ("L", "R"):
@@ -684,7 +540,7 @@ for _side in ("L", "R"):
                 and 0.048 < c.x * _sg < 0.102
                 and abs(c.y) < 0.030)
 
-    _tabs[_side] = _dup_offset(bm, _pred, TAB_OFF)
+    _tabs[_side] = dup_offset(bm, _pred, TAB_OFF)
     for f in _tabs[_side]:
         f.material_index = _TRIM_SLOT
     # 열린 판이 떠 있지 않도록 경계를 재킷 표면 쪽으로 되밀어 닫는다
@@ -961,6 +817,9 @@ rep["rig"] = {"bones": len(rig.data.bones),
               "names": [b.name for b in rig.data.bones]}
 
 dg = bpy.context.evaluated_depsgraph_get()
+# 팔 솔버 — 다중 씨앗 · 조준 항 · 손 오차만 잔차로 돌려준다 (lib.rigging)
+solve_arm = arm_solver(rig, dg)
+tip, elbow = solve_arm.tip, solve_arm.elbow
 
 
 def apply_pose(vals):
@@ -970,48 +829,6 @@ def apply_pose(vals):
             raise RuntimeError("pose bone missing: %s" % bn)
         pb.rotation_euler = Euler([D(x) for x in rot], 'XYZ')
     dg.update()
-
-
-def tip(bone):
-    return rig.matrix_world @ rig.pose.bones[bone].tail
-
-
-def elbow(bone):
-    return rig.matrix_world @ rig.pose.bones[bone].head
-
-
-def solve_arm(side, hand_target, elbow_target, elbow_w=0.30):
-    ua, la = "UpperArm." + side, "LowerArm." + side
-    par = [0.0] * 6
-
-    def cost(p):
-        rig.pose.bones[ua].rotation_euler = Euler([D(p[0]), D(p[1]), D(p[2])], 'XYZ')
-        rig.pose.bones[la].rotation_euler = Euler([D(p[3]), D(p[4]), D(p[5])], 'XYZ')
-        dg.update()
-        c = (tip(la) - hand_target).length ** 2
-        c += elbow_w * (elbow(la) - elbow_target).length ** 2
-        c += 1e-6 * sum(x * x for x in p)
-        return c
-
-    step, best = 24.0, cost(par)
-    for _ in range(9):
-        improved = True
-        while improved:
-            improved = False
-            for i in range(6):
-                for s in (step, -step):
-                    trial = list(par)
-                    trial[i] += s
-                    if abs(trial[i]) > 150:
-                        continue
-                    c = cost(trial)
-                    if c < best - 1e-12:
-                        best, par, improved = c, trial, True
-        step *= 0.5
-    cost(par)
-    # 합산 비용의 제곱근을 '잔차'로 돌려주면 팔꿈치 항이 섞여 손이 목표에
-    # 닿았는데도 커 보인다. 손 오차만 따로 돌려준다.
-    return par, (tip(la) - hand_target).length
 
 
 # 곧게 선 자세. GP(굽은 등)·ZP(웅크림)·CP(무심)와 갈리는 지점이다.
@@ -1041,8 +858,12 @@ HAND_R = sh_r + Vector((-0.090, 0.012, -0.266))
 ELB_R = sh_r + Vector((-0.076, 0.004, -0.127))
 # 팔꿈치 가중치를 낮춘다. 도달 한계(88%) 근처에서는 팔꿈치 항이 손 목표와
 # 다퉈 손이 25mm 씩 밀린다 (ACT-06 토네이도에서 겪은 것과 같은 현상).
-pr_r, err_r = solve_arm("R", HAND_R, ELB_R, elbow_w=0.06)
-pr_l, err_l = solve_arm("L", HAND_L, ELB_L, elbow_w=0.06)
+# 기본 포즈는 씨앗 하나·담금 9회로 푼다. 라이브러리 기본값(다중 씨앗·10회)은
+# 더 나은 최소값을 찾지만 출고된 SS 와 0.1~0.3mm 어긋난다. 여기서는
+# 기존 자산 재현이 우선이다 — 새 캐릭터는 기본값을 쓰면 된다.
+_BASE = dict(elbow_w=0.06, seeds=[[0.0] * 6], passes=9)
+pr_r, err_r, _ = solve_arm("R", HAND_R, ELB_R, **_BASE)
+pr_l, err_l, _ = solve_arm("L", HAND_L, ELB_L, **_BASE)
 for side, pr in (("R", pr_r), ("L", pr_l)):
     UPPER_BASE["UpperArm." + side] = tuple(round(x, 2) for x in pr[:3])
     UPPER_BASE["LowerArm." + side] = tuple(round(x, 2) for x in pr[3:])
@@ -1118,31 +939,8 @@ TASER_CEN = HAND_C + Vector((SIDE_SIGN["R"] * 0.011, -0.009, 0.007))
 _parts = []
 
 
-def _box(name, cen, dim, mat, bevel=0.0022):
-    """로컬 좌표에 상자를 놓는다. 원점은 상자 중심에 남긴다 —
-    location 을 apply 하면 이후 회전이 월드 원점 기준이 된다."""
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=cen)
-    o = bpy.context.active_object
-    o.name = name
-    o.data.name = name
-    o.scale = dim
-    set_active(o)
-    bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
-    if max(abs(a - b) for a, b in zip(o.dimensions, dim)) > 1e-5:
-        raise RuntimeError("%s dimensions off: %s" % (name, [round(v, 4) for v in o.dimensions]))
-    if bevel > 0.0:
-        bv = o.modifiers.new("Round", 'BEVEL')
-        bv.width = bevel
-        bv.segments = 2
-        bv.limit_method = 'ANGLE'
-        bpy.ops.object.modifier_apply(modifier=bv.name)
-    o.data.materials.clear()
-    o.data.materials.append(mat)
-    return o
-
-
 # ---- 손잡이 (로컬 원점) ----
-grip = _box("PR_Taser", Vector((0.0, 0.0, 0.0)), (GRIP_W, GRIP_D, GRIP_H), AJ_DARK)
+grip = box("PR_Taser", Vector((0.0, 0.0, 0.0)), (GRIP_W, GRIP_D, GRIP_H), AJ_DARK)
 _bm = bmesh.new()
 _bm.from_mesh(grip.data)
 for v in _bm.verts:
@@ -1157,7 +955,7 @@ set_active(grip)
 bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
 
 # ---- 상단 본체 — 뒤로 흘러내리는 쐐기 ----
-body = _box("PR_TaserBody", BODY_C, (BODY_W, BODY_D, BODY_H), AJ_DARK)
+body = box("PR_TaserBody", BODY_C, (BODY_W, BODY_D, BODY_H), AJ_DARK)
 _bm = bmesh.new()
 _bm.from_mesh(body.data)
 for v in _bm.verts:
@@ -1173,7 +971,7 @@ body.data.update()
 _parts.append(body)
 
 # ---- 전면 카트리지 (노랑) ----
-cart = _box("PR_TaserCart", CART_C, (CART_W, CART_D, CART_H), cart_mat, bevel=0.0026)
+cart = box("PR_TaserCart", CART_C, (CART_W, CART_D, CART_H), cart_mat, bevel=0.0026)
 _bm = bmesh.new()
 _bm.from_mesh(cart.data)
 for v in _bm.verts:
@@ -1190,7 +988,7 @@ _parts.append(cart)
 
 # ---- 측면 노란 라벨 ×2 ----
 for _sx in (-1, 1):
-    _parts.append(_box("PR_TaserLabel", Vector((_sx * (BODY_W * 0.5 + 0.0012),
+    _parts.append(box("PR_TaserLabel", Vector((_sx * (BODY_W * 0.5 + 0.0012),
                                                 BODY_C.y - BODY_D * 0.24,
                                                 BODY_C.z + 0.004)),
                        LABEL_DIM, cart_mat, bevel=0.0012))
@@ -1336,19 +1134,7 @@ if _expose_lo < 0.004:
     raise RuntimeError("grip butt is swallowed by the fist: %.4f m" % _expose_lo)
 
 
-def bone_attach(obj, bone):
-    pb = rig.pose.bones[bone]
-    blen = rig.data.bones[bone].length
-    pm = rig.matrix_world @ pb.matrix @ Matrix.Translation((0.0, blen, 0.0))
-    w = obj.matrix_world.copy()
-    obj.parent = rig
-    obj.parent_type = 'BONE'
-    obj.parent_bone = bone
-    obj.matrix_parent_inverse = Matrix.Identity(4)
-    obj.matrix_basis = pm.inverted() @ w
-    bpy.context.view_layer.update()
-
-bone_attach(taser, "Prop.R")
+bone_attach(rig, taser, "Prop.R")
 rep["taser_attach"] = {"parent_bone": taser.parent_bone,
                        "mount_tilt_deg": MOUNT_TILT}
 
@@ -1461,7 +1247,7 @@ baton.location = BATON_CEN
 set_active(baton)
 bpy.ops.object.transform_apply(location=True, rotation=False, scale=False)
 bpy.ops.object.shade_smooth()
-bone_attach(baton, "Prop.L")
+bone_attach(rig, baton, "Prop.L")
 # 프리뷰 렌더·검사 기본값은 테이저다. 봉은 숨겨 두고 엔진이 골라 쓴다.
 baton.hide_render = True
 rep["baton"] = {"verts": len(baton.data.vertices),
@@ -1541,7 +1327,7 @@ _sc = sum(_sv, Vector()) / len(_sv)
 stow.location = stow.location + (POUCH_C - _sc) + Vector((0.0, 0.0, 0.022))
 set_active(stow)
 bpy.ops.object.transform_apply(location=True, rotation=False, scale=False)
-bone_attach(stow, "Hips")
+bone_attach(rig, stow, "Hips")
 # hide_render 만 쓴다. hide_viewport 는 오브젝트를 뎁스그래프에서 빼 버려서
 # 본 부모 변환이 갱신되지 않고, 검사기가 프레임 1 값에 얼어붙은 걸 본다.
 stow.hide_render = True          # 기본 프리뷰는 '든' 상태. 엔진이 골라 쓴다.
@@ -1611,7 +1397,7 @@ _bmbs.to_mesh(bstow.data)
 _bmbs.free()
 bstow.data.update()
 bpy.context.view_layer.update()
-bone_attach(bstow, "Hips")
+bone_attach(rig, bstow, "Hips")
 bstow.hide_render = True
 dg.update()
 _bsv = [bstow.matrix_world @ v.co for v in bstow.data.vertices]
@@ -1698,79 +1484,6 @@ def base_upper(bn):
     return list(UPPER_BASE.get(bn, (0, 0, 0)))
 
 
-def new_action(name):
-    if name in bpy.data.actions:
-        raise RuntimeError("action name collision: %s" % name)
-    a = bpy.data.actions.new(name)
-    a.use_fake_user = True
-    return a
-
-
-def write_action(name, nframes, framefunc):
-    act = new_action(name)
-    ad = rig.animation_data or rig.animation_data_create()
-    ad.action = act
-    for f in range(1, nframes + 1):
-        scene.frame_set(f)
-        data = framefunc(f)
-        for bn in KEYED:
-            pb = rig.pose.bones[bn]
-            d = data.get(bn, {})
-            pb.location = d.get("loc", (0.0, 0.0, 0.0))
-            pb.rotation_euler = Euler([D(x) for x in d.get("rot", (0, 0, 0))], 'XYZ')
-            pb.keyframe_insert("location", frame=f)
-            pb.keyframe_insert("rotation_euler", frame=f)
-    ad.action = None
-    scene.frame_set(1)
-    return act
-
-
-def ease(u):
-    return u * u * (3 - 2 * u)
-
-
-def curve(f, keys):
-    if f <= keys[0][0]:
-        return keys[0][1]
-    for i in range(len(keys) - 1):
-        f0, v0 = keys[i]
-        f1, v1 = keys[i + 1]
-        if f0 <= f <= f1:
-            u = ease((f - f0) / float(f1 - f0)) if f1 > f0 else 0.0
-            return v0 + (v1 - v0) * u
-    return keys[-1][1]
-
-
-def lower_at(sample, f0, n, f):
-    """샘플을 순환시켜 하체를 가져온다. ONCE 클립도 다리는 계속 숨 쉬어야 한다."""
-    k = ((f - 1) % n) + f0
-    return {bn: {"loc": list(sn["loc"]),
-                 "rot": [math.degrees(x) for x in sn["rot"]]}
-            for bn, sn in sample[k].items()}
-
-
-def lower_cycle(sample, f0, n_src, n_dst, f):
-    """소스 사이클을 목표 길이로 리샘플한다.
-
-    루프 클립의 길이가 소스와 다르면(예: 61프레임 Idle → 46프레임 Aim)
-    그냥 잘라 쓰면 마지막 프레임이 첫 프레임으로 안 닫힌다(실측 3.3mm).
-    소스는 f1 == f_n 인 닫힌 주기이므로 (n-1) 구간으로 선형 보간한다.
-    """
-    x = (f - 1) / float(n_dst - 1) * (n_src - 1)
-    i0 = int(math.floor(x))
-    t = x - i0
-    i1 = min(i0 + 1, n_src - 1)
-    i0 = min(i0, n_src - 1)
-    a, b = sample[f0 + i0], sample[f0 + i1]
-    out = {}
-    for bn in a:
-        out[bn] = {
-            "loc": [a[bn]["loc"][k] * (1 - t) + b[bn]["loc"][k] * t for k in range(3)],
-            "rot": [math.degrees(a[bn]["rot"][k] * (1 - t) + b[bn]["rot"][k] * t)
-                    for k in range(3)]}
-    return out
-
-
 IDLE_N = IDLE_F[1] - IDLE_F[0] + 1
 WALK_N = WALK_F[1] - WALK_F[0] + 1
 RUN_N = RUN_F[1] - RUN_F[0] + 1
@@ -1786,75 +1499,6 @@ def barrel_dir():
     dg.update()
     m = taser.evaluated_get(dg).matrix_world
     return (m.to_3x3() @ _TASER_LOCAL_AIM).normalized()
-
-
-def _solve_once(side, hand_target, elbow_target, aimv, elbow_w, aim_w, seed):
-    ua, la = "UpperArm." + side, "LowerArm." + side
-    par = list(seed)
-
-    def cost(p):
-        rig.pose.bones[ua].rotation_euler = Euler([D(p[0]), D(p[1]), D(p[2])], 'XYZ')
-        rig.pose.bones[la].rotation_euler = Euler([D(p[3]), D(p[4]), D(p[5])], 'XYZ')
-        dg.update()
-        c = (tip(la) - hand_target).length ** 2
-        c += elbow_w * (elbow(la) - elbow_target).length ** 2
-        if aimv is not None and aim_w > 0.0:
-            # (1-dot) 는 작은 각에서 2차로 죽어 손 위치 항에 눌린다. 각도(rad)를
-            # 그대로 써야 '몇 도 틀어졌나'가 '몇 mm 틀어졌나'와 같은 단위로 붙는다.
-            c += aim_w * barrel_dir().angle(aimv) ** 2
-        c += 1e-6 * sum(x * x for x in p)
-        return c
-
-    step, best = 24.0, cost(par)
-    for _ in range(10):
-        improved = True
-        while improved:
-            improved = False
-            for i in range(6):
-                for sgn in (step, -step):
-                    trial = list(par)
-                    trial[i] += sgn
-                    if abs(trial[i]) > 150:
-                        continue
-                    c = cost(trial)
-                    if c < best - 1e-12:
-                        best, par, improved = c, trial, True
-        step *= 0.5
-    cost(par)
-    return par, best, (tip(la) - hand_target).length, \
-        (math.degrees(barrel_dir().angle(aimv)) if aimv is not None else None)
-
-
-def solve_arm2(side, hand_target, elbow_target, aim=None,
-               elbow_w=0.006, aim_w=0.0, start=None):
-    """팔 6DOF 좌표하강. aim 을 주면 총열 방향까지 함께 맞춘다.
-
-    총열은 Prop.R 본이 아니라 아래팔의 회전으로 돌린다. Prop.R 은 본 꼬리가
-    손보다 60mm 아래라, 이 본을 돌리면 테이저가 손에서 떨어져 나간다.
-
-    좌표하강은 시작점에 따라 국소최소에 갇힌다(실측: 손 49mm 이탈). 씨앗을
-    여러 개 넣고 가장 좋은 결과를 고른다.
-    """
-    aimv = aim.normalized() if aim else None
-    seeds = [[0.0] * 6]
-    if start:
-        seeds.append(list(start))
-    seeds.append([-40.0, 0.0, 0.0, -30.0, 0.0, 0.0])
-    seeds.append([-70.0, 0.0, 0.0, 20.0, 0.0, 0.0])
-    seeds.append([-20.0, 0.0, -30.0, -50.0, 0.0, 0.0])
-    seeds.append([-60.0, 0.0, 0.0, -40.0, 0.0, 0.0])
-    seeds.append([-50.0, -20.0, 0.0, -60.0, 0.0, 0.0])
-    seeds.append([-80.0, 0.0, 20.0, -30.0, 0.0, 0.0])
-    seeds.append([-45.0, 15.0, -20.0, -45.0, 10.0, 0.0])
-    best = None
-    for sd in seeds:
-        par, c, e, a = _solve_once(side, hand_target, elbow_target, aimv,
-                                   elbow_w, aim_w, sd)
-        if best is None or c < best[1]:
-            best = (par, c, e, a)
-    par, _c, err, ang = best
-    _solve_once(side, hand_target, elbow_target, aimv, elbow_w, aim_w, par)
-    return [round(x, 3) for x in par], err, ang
 
 
 def neutral_upper():
@@ -1875,12 +1519,12 @@ neutral_upper()
 # 총열은 아래팔에 '수직'으로 고정돼 있다. 그래서 팔을 앞으로 곧게 뻗으면
 # 총구는 위나 아래를 본다. 총구가 앞을 보려면 아래팔이 세로여야 하므로,
 # 겨눔은 '팔꿈치를 앞·위로 내고 아래팔은 세워 둔' 자세로 잡는다.
-P["aim_R"], _e, _a = solve_arm2(
+P["aim_R"], _e, _a = solve_arm(
     # 팔꿈치가 내려가 있으면 총이 허리에 머물러 '로우 레디'로만 읽힌다.
     # 마운트가 40° 숙어 있으므로 총열이 수평이 되려면 아래팔이 수직에서 40° 다.
     # 그 조건을 유지한 채 손을 가슴 높이로 올리려면 팔꿈치가 어깨보다 위여야 한다.
     "R", sh_r + Vector((-0.075, -0.212, -0.092)), sh_r + Vector((-0.076, -0.118, 0.018)),
-    aim=Vector((0.0, -1.0, -0.06)), elbow_w=0.003, aim_w=0.040, start=P["base_R"])
+    aim_fn=barrel_dir, aim=Vector((0.0, -1.0, -0.06)), elbow_w=0.003, aim_w=0.040, start=P["base_R"])
 rep["arm_poses"]["aim_R"] = {"hand_err_m": round(_e, 4), "aim_err_deg": round(_a, 1)}
 # 손 목표는 예술적 추정치다. 좌표하강이 40mm 안쪽으로 들어오면 자세의 방향은
 # 유지되므로, 여기서는 '터무니없이 빗나갔는가'만 막고 최종 판정은 렌더로 한다
@@ -1892,11 +1536,11 @@ if _e > 0.055 or _a > 12.0:
 # 경고 — 총을 위로 들어 공중에서 스파크
 neutral_upper()
 # 총구가 위를 보려면 아래팔이 가로여야 한다 (수직 마운트의 역).
-P["warn_R"], _e, _a = solve_arm2(
+P["warn_R"], _e, _a = solve_arm(
     # 팔을 접어 올리면 도달률 44% 까지 내려가 솔버가 손을 못 맞춘다.
     # 위로 '뻗어' 올리는 자세로 바꾸면 63% 라 여유가 있고, 경고 동작으로도 더 크다.
     "R", sh_r + Vector((-0.110, -0.050, 0.140)), sh_r + Vector((-0.120, -0.040, -0.070)),
-    aim=Vector((0.0, -0.30, 1.0)), elbow_w=0.003, aim_w=0.040, start=P["aim_R"])
+    aim_fn=barrel_dir, aim=Vector((0.0, -0.30, 1.0)), elbow_w=0.003, aim_w=0.040, start=P["aim_R"])
 rep["arm_poses"]["warn_R"] = {"hand_err_m": round(_e, 4), "aim_err_deg": round(_a, 1)}
 if _e > 0.055 or _a > 12.0:
     AIM_FAIL.append("warn_R hand %.4f m barrel %.1f deg" % (_e, _a))
@@ -1904,7 +1548,7 @@ if _e > 0.055 or _a > 12.0:
 # 파우치에 손을 대는 자세 — '꺼내는' 동작의 시작점.
 # 손이 파우치 바깥면 옆에 오게 한다. 더 안으로 넣으면 팔이 몸통을 파고든다.
 neutral_upper()
-P["pouch_R"], _e, _a = solve_arm2(
+P["pouch_R"], _e, _a = solve_arm(
     "R", sh_r + Vector((-0.060, -0.014, -0.248)), sh_r + Vector((-0.080, 0.004, -0.126)),
     elbow_w=0.006, start=P["base_R"])
 rep["arm_poses"]["pouch_R"] = {"hand_err_m": round(_e, 4)}
@@ -1922,7 +1566,7 @@ neutral_upper()
 _ring_w = Vector((RING_X, RING_Y, RING_Z))
 # 같은 쪽 손이라 링에 그대로 닿는다 (도달 84%).
 _bat_grab = _ring_w + Vector((SIDE_SIGN["L"] * 0.022, -0.010, 0.010))
-P["bat_grab_L"], _e, _a = solve_arm2(
+P["bat_grab_L"], _e, _a = solve_arm(
     "L", _bat_grab, sh_l + Vector((0.078, 0.004, -0.126)),
     elbow_w=0.006, start=P["base_L"])
 rep["arm_poses"]["bat_grab_L"] = {
@@ -1935,7 +1579,7 @@ if _e > 0.055:
 # 삼단봉 — 봉은 아래팔에 거의 나란하므로 '아래팔이 어디를 향하는가'가 곧
 # 봉이 어디를 향하는가다. 준비 자세는 아래팔이 앞위 45도를 향해야 봉이 선다.
 neutral_upper()
-P["bat_ready_L"], _e, _a = solve_arm2(
+P["bat_ready_L"], _e, _a = solve_arm(
     "L", sh_l + Vector((0.090, -0.100, 0.008)), sh_l + Vector((0.090, -0.020, -0.114)),
     elbow_w=0.006, start=P["base_L"])
 rep["arm_poses"]["bat_ready_L"] = {"hand_err_m": round(_e, 4)}
@@ -1944,7 +1588,7 @@ if _e > 0.055:
 
 # 삼단봉 — 앞아래로 내리치는 끝 자세
 neutral_upper()
-P["bat_strike_L"], _e, _a = solve_arm2(
+P["bat_strike_L"], _e, _a = solve_arm(
     "L", sh_l + Vector((0.084, -0.188, -0.186)), sh_l + Vector((0.084, -0.074, -0.094)),
     elbow_w=0.006, start=P["bat_ready_L"])
 rep["arm_poses"]["bat_strike_L"] = {"hand_err_m": round(_e, 4)}
@@ -1953,9 +1597,9 @@ if _e > 0.055:
 
 # 겨눔 직전 오버슛 — 목표보다 조금 더 올라갔다 내려앉아야 '멈춘' 느낌이 난다
 neutral_upper()
-P["aim_over_R"], _e, _a = solve_arm2(
+P["aim_over_R"], _e, _a = solve_arm(
     "R", sh_r + Vector((-0.072, -0.206, -0.052)), sh_r + Vector((-0.074, -0.116, 0.038)),
-    aim=Vector((0.0, -1.0, 0.06)), elbow_w=0.003, aim_w=0.040, start=P["base_R"])
+    aim_fn=barrel_dir, aim=Vector((0.0, -1.0, 0.06)), elbow_w=0.003, aim_w=0.040, start=P["base_R"])
 rep["arm_poses"]["aim_over_R"] = {"hand_err_m": round(_e, 4), "aim_err_deg": round(_a, 1)}
 if _e > 0.055:
     AIM_FAIL.append("aim_over_R hand %.4f m" % _e)
@@ -1963,18 +1607,18 @@ if _e > 0.055:
 # 뽑는 경로 — 허리에서 가슴으로 곧장 올리면 총이 몸통을 관통한다
 # (실측: Draw f9 에서 14정점, Holster f12 에서 21정점). 바깥으로 돌려 올린다.
 neutral_upper()
-P["draw_mid_R"], _e, _a = solve_arm2(
+P["draw_mid_R"], _e, _a = solve_arm(
     "R", sh_r + Vector((-0.118, -0.118, -0.176)), sh_r + Vector((-0.098, -0.046, -0.086)),
-    aim=Vector((0.0, -1.0, -0.55)), elbow_w=0.003, aim_w=0.030, start=P["base_R"])
+    aim_fn=barrel_dir, aim=Vector((0.0, -1.0, -0.55)), elbow_w=0.003, aim_w=0.030, start=P["base_R"])
 rep["arm_poses"]["draw_mid_R"] = {"hand_err_m": round(_e, 4), "aim_err_deg": round(_a, 1)}
 if _e > 0.055:
     AIM_FAIL.append("draw_mid_R hand %.4f m" % _e)
 
 # 추격 — 총을 가슴 앞에 세워 든 채 달린다
 neutral_upper()
-P["chase_R"], _e, _a = solve_arm2(
+P["chase_R"], _e, _a = solve_arm(
     "R", sh_r + Vector((-0.058, -0.150, -0.118)), sh_r + Vector((-0.080, -0.070, -0.020)),
-    aim=Vector((0.0, -1.0, 0.10)), elbow_w=0.003, aim_w=0.030, start=P["aim_R"])
+    aim_fn=barrel_dir, aim=Vector((0.0, -1.0, 0.10)), elbow_w=0.003, aim_w=0.030, start=P["aim_R"])
 rep["arm_poses"]["chase_R"] = {"hand_err_m": round(_e, 4), "aim_err_deg": round(_a, 1)}
 if _e > 0.055:
     AIM_FAIL.append("chase_R hand %.4f m barrel %.1f deg" % (_e, _a))
@@ -1983,7 +1627,7 @@ if _e > 0.055:
 # 마이크에 정확히 닿히려 하지 않는다. 도달률 37% 아래로 내려가면 아래팔이
 # 위팔과 겹쳐 몸통을 파고든다.
 neutral_upper()
-P["radio_L"], _e, _a = solve_arm2(
+P["radio_L"], _e, _a = solve_arm(
     # 도달률 38% 까지 접으면 팔꿈치 주름에서 소매가 팔 속으로 삼켜진다
     # (RadioAlert f40, 20.1mm). 47% 로 풀어도 '어깨 마이크를 누르는' 자세로 읽힌다.
     "L", sh_l + Vector((0.010, -0.112, -0.082)), sh_l + Vector((0.106, -0.014, -0.090)),
@@ -1994,7 +1638,7 @@ if _e > 0.045:
 
 # 안내 — 왼손으로 가리킨다. 오른손은 총이라 안내에 쓰지 않는다.
 neutral_upper()
-P["guide_L"], _e, _a = solve_arm2(
+P["guide_L"], _e, _a = solve_arm(
     "L", sh_l + Vector((0.012, -0.196, -0.036)), sh_l + Vector((0.082, -0.052, -0.096)),
     elbow_w=0.008, start=P["base_L"])
 rep["arm_poses"]["guide_L"] = {"hand_err_m": round(_e, 4)}
@@ -2006,26 +1650,8 @@ if AIM_FAIL:
     raise RuntimeError("arm poses failed: " + " | ".join(AIM_FAIL))
 
 
-def _abduct_sign(side):
-    """UpperArm 의 어느 부호가 팔을 몸에서 멀어지게 하는지 실측한다.
-    로컬 축은 본 방향에 따라 뒤집히므로 눈대중하면 반대로 벌린다."""
-    neutral_upper()
-    pb = rig.pose.bones["UpperArm." + side]
-    base = list(P["base_" + side])
-    out = {}
-    for sgn in (+1.0, -1.0):
-        pb.rotation_euler = Euler([D(base[0]), D(base[1]), D(base[2] + sgn * 8.0)], 'XYZ')
-        rig.pose.bones["LowerArm." + side].rotation_euler = Euler(
-            [D(base[3]), D(base[4]), D(base[5])], 'XYZ')
-        dg.update()
-        _t = tip("LowerArm." + side)
-        out[sgn] = math.hypot(_t.x, _t.y)
-    neutral_upper()
-    return 8.0 if out[+1.0] > out[-1.0] else -8.0
-
-
-ABDUCT_L = _abduct_sign("L")
-ABDUCT_R = _abduct_sign("R")
+ABDUCT_L = abduct_sign(rig, dg, "L", P["base_L"], neutral_upper)
+ABDUCT_R = abduct_sign(rig, dg, "R", P["base_R"], neutral_upper)
 rep["abduct_deg"] = {"L": ABDUCT_L, "R": ABDUCT_R}
 
 
@@ -2074,7 +1700,7 @@ CLIPS = []
 
 
 def add(name, n, ff, loop):
-    write_action(name, n, ff)
+    write_action(rig, KEYED, name, n, ff)
     CLIPS.append((name, n, loop))
 
 
@@ -2304,6 +1930,14 @@ for bn, sn in BASE_LOWER.items():
     rig.pose.bones[bn].rotation_euler = Euler(sn["rot"], 'XYZ')
 apply_pose({k: v for k, v in UPPER_BASE.items() if k != "Hips"})
 
+# 요약에 찍을 항목. 저장 **전에** 확인한다 — 저장한 뒤에 KeyError 로 죽으면
+# 빌드는 끝났는데 종료 코드는 실패라서, 자동화가 성공을 실패로 읽는다.
+SUMMARY = ("mesh", "rig", "taser", "taser_grip", "pouch", "taser_stowed",
+           "baton_stowed", "arm_torso_gap_m", "height", "muzzle_safe_deg", "actions")
+_missing = [k for k in SUMMARY if k not in rep]
+if _missing:
+    raise RuntimeError("report is missing summary keys: %s" % _missing)
+
 OUT = os.path.abspath(OUT)
 if os.path.normpath(OUT) == os.path.normpath(bpy.data.filepath):
     raise RuntimeError("refusing to overwrite the source file: %s" % OUT)
@@ -2312,7 +1946,4 @@ rep["saved"] = OUT
 with open(REPORT, "w") as fh:
     json.dump(rep, fh, indent=1, ensure_ascii=False)
 print("SS_BUILD OK ->", OUT)
-print(json.dumps({k: rep[k] for k in
-                  ("mesh", "rig", "taser", "taser_grip", "holster_taser_gap_m",
-                   "arm_torso_gap_m", "height", "muzzle_safe_deg", "actions")},
-                 ensure_ascii=False, indent=1))
+print(json.dumps({k: rep[k] for k in SUMMARY}, ensure_ascii=False, indent=1))
