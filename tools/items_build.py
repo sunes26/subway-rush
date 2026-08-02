@@ -256,21 +256,24 @@ sc.render.fps = 30
 sc.unit_settings.system = 'METRIC'
 
 # 세 소품이 공유하는 팔레트. 순수 검정(#000)·순수 흰색(#fff)은 쓰지 않는다.
-M_CARD = new_mat("ITM_CardBody", "17809E", 0.42)        # 비비드 틸 (주색)
-M_CARD2 = new_mat("ITM_CardSky", "8FD6E8", 0.40)        # 브라이트 스카이 (보조)
-M_CARD3 = new_mat("ITM_CardNavy", "1D5468", 0.46)       # 딥 틸 (마감) — 검정에 가깝지 않게
-M_POINT = new_mat("ITM_PointYellow", "EDBE4F", 0.42)    # 웜 옐로 (세트 공용 포인트) — 맑게, 형광은 아니게
+M_CARD = new_mat("ITM_CardBody", "1F7A9A", 0.40)        # 비비드 틸 (주색)
+M_CARD2 = new_mat("ITM_CardSky", "7FD3E8", 0.38)        # 브라이트 스카이 (보조)
+M_CARD3 = new_mat("ITM_CardNavy", "155C74", 0.44)       # 딥 틸 (마감) — 검정에 가깝지 않게
+M_POINT = new_mat("ITM_PointYellow", "F2C14E", 0.40)    # 카드 NFC 포인트
+M_STRAP_PT = new_mat("ITM_StrapYellow", "E0B547", 0.44) # 우산 스트랩 포인트 (같은 계열)
+M_PLEAT = new_mat("ITM_MaskPleat", "D9E5EC", 0.96)      # 주름 음영 (펼친 마스크)
+M_FOLDSH = new_mat("ITM_MaskFoldSh", "DCE6EC", 0.96)    # 접힘 음영 (접힌 마스크)    # 웜 옐로 (세트 공용 포인트) — 맑게, 형광은 아니게
 
-M_CLOTH = new_mat("ITM_MaskCloth", "EDF3F5", 0.96)      # 블루화이트 — 무광 부직포. 회색기를 뺀다
-M_CLOTH_IN = new_mat("ITM_MaskInner", "D6E3E8", 0.96)   # 안쪽 면 — 회색이 아닌 연한 블루그레이
-M_LOOP = new_mat("ITM_MaskLoop", "F4F8F8", 0.94)        # 오프화이트 끈
+M_CLOTH = new_mat("ITM_MaskCloth", "EEF4F7", 0.96)      # 블루화이트 — 무광 부직포. 회색기를 뺀다
+M_CLOTH_IN = new_mat("ITM_MaskInner", "E3EDF2", 0.96)   # 안쪽 면 — 회색이 아닌 연한 블루그레이
+M_LOOP = new_mat("ITM_MaskLoop", "F7FAFB", 0.94)        # 오프화이트 끈
 
-M_CANOPY = new_mat("ITM_UmbCanopy", "3F5E96", 0.70)     # 미드 블루 (천 기본) — 한 톤 밝게
-M_FOLD = new_mat("ITM_UmbFold", "33497A", 0.70)         # 딥 네이비 (접힘 음영) — 검정이 아니게
-M_FOLD2 = new_mat("ITM_UmbFoldLit", "5273AD", 0.70)     # 밝은 접힘면
-M_STRAP = new_mat("ITM_UmbStrap", "2B3D66", 0.58)       # 딥 네이비 스트랩
-M_GRIP = new_mat("ITM_UmbGrip", "2F3644", 0.54)         # 차콜 블루 손잡이 — 순수 검정 회피
-M_METAL = new_mat("ITM_UmbMetal", "7E8892", 0.38, metallic=0.50)   # 건메탈 — 손잡이와 구분되게 밝게
+M_CANOPY = new_mat("ITM_UmbCanopy", "4A6FB3", 0.68)     # 미드 블루 (천 기본) — 한 톤 밝게
+M_FOLD = new_mat("ITM_UmbFold", "253D6A", 0.68)         # 딥 네이비 (접힘 음영) — 검정이 아니게
+M_FOLD2 = new_mat("ITM_UmbFoldLit", "35548D", 0.68)     # 밝은 접힘면
+M_STRAP = new_mat("ITM_UmbStrap", "253D6A", 0.58)       # 딥 네이비 스트랩
+M_GRIP = new_mat("ITM_UmbGrip", "2A313C", 0.54)         # 차콜 블루 손잡이 — 순수 검정 회피
+M_METAL = new_mat("ITM_UmbMetal", "707A86", 0.38, metallic=0.45)   # 건메탈 — 손잡이와 구분되게 밝게
 
 ITEMS = {}
 
@@ -423,7 +426,7 @@ _parts = [
     lobed("umb_strap", [(CAN_LO + 0.062, 0.0206), (CAN_LO + 0.086, 0.0206)],
           8, M_STRAP, wobble=CAN_WOBBLE),
     lobed("umb_strap_pt", [(CAN_LO + 0.0665, 0.0210), (CAN_LO + 0.0815, 0.0210)],
-          8, M_POINT, wobble=CAN_WOBBLE),
+          8, M_STRAP_PT, wobble=CAN_WOBBLE),
     lobed("umb_ferrule", [(CAN_HI - 0.002, 0.0076), (CAN_HI + 0.010, 0.0062),
                           (CAN_HI + 0.019, 0.0028)], 6, M_METAL),
 ]
@@ -431,6 +434,114 @@ for _p in _parts:
     bevel(_p, BEVEL_S, 1)
     shade(_p, False)
 ITEMS["ITM09_Umbrella"] = finish("ITM09_Umbrella", _parts)
+
+# ======================================= ITM-06B 접힌 마스크 (판매 상태)
+# 펼친 마스크와 **같은 제품**으로 보여야 한다 — 재질·색·주름 언어를 공유하고
+# 상태만 다르다. 착용 전이라 더 단정하고 평평하다.
+FW, FH = 0.096, 0.036
+FPLEAT = 0.0013       # 접힌 상태의 주름은 펼친 것보다 얕다
+FCOL, FROW = 5, 10
+_vs, _fs = [], []
+for ri in range(FROW):
+    v = ri / (FROW - 1.0)
+    t = 3.0 * v                                        # 가로 주름 3개 (같은 언어)
+    pleat = FPLEAT * (2.0 * abs(t - round(t)) - 0.5)
+    for ci in range(FCOL):
+        u = ci / (FCOL - 1.0) - 0.5
+        ur = (u / 0.5) ** 2
+        # 위·아래 끝만 아주 살짝 좁혀 모서리를 정돈한다
+        wsc = 1.0 - 0.05 * (2.0 * abs(v - 0.5)) ** 2
+        bow = -0.0016 * (1.0 - ur)                     # 아주 완만한 배부름
+        _vs.append((u * FW * wsc, bow + pleat, (0.5 - v) * FH))
+for ri in range(FROW - 1):
+    for ci in range(FCOL - 1):
+        i = ri * FCOL + ci
+        _fs.append((i, i + 1, i + FCOL + 1, i + FCOL))
+_fold = _mesh("maskf_panel", _vs, _fs, [M_CLOTH, M_FOLDSH])
+set_active(_fold)
+_sol = _fold.modifiers.new("Solidify", 'SOLIDIFY')
+_sol.thickness = 0.0042                                # 접혀서 겹친 두께
+_sol.offset = 0.0
+_sol.material_offset = 1
+_sol.material_offset_rim = 1
+_apply(_fold, _sol)
+shade(_fold, True)
+_parts = [_fold]
+# 끈은 뒤로 넘겨 납작하게 정리한다. 판매 상태에서 끈이 퍼져 있으면
+# 접힌 마스크의 외형이 흐트러진다.
+for sx in (1, -1):
+    x0 = FW * 0.46 * sx
+    npt = 8
+    arc, rad = [], []
+    for i in range(npt):
+        a_ = math.pi * i / (npt - 1.0)
+        arc.append((x0 + 0.010 * sx * math.sin(a_),
+                    0.0034 + 0.006 * math.sin(a_),
+                    math.cos(a_) * FH * 0.34))
+        edge = min(i, npt - 1 - i) / 2.0
+        rad.append(0.0008 * (0.6 + 0.4 * min(1.0, edge)))
+    _parts.append(shade(tube("maskf_loop%s" % ("L" if sx > 0 else "R"),
+                             arc, rad, 6, M_LOOP), True))
+ITEMS["ITM06_MaskFolded"] = finish("ITM06_MaskFolded", _parts)
+
+# ======================================= ITM-09B 펼친 우산
+# 접힌 우산과 **같은 제품**이다 — 손잡이·축·팁·색을 그대로 쓰고 캐노피만
+# 펼쳐진 상태다. 스트랩은 천을 감고 있지 않으므로 없다.
+# 8개 살 + 살 사이가 처지는 스캘럽 가장자리로 '펼쳐진 우산'이 읽힌다.
+O_APEX = 0.330
+O_SHAFT_TOP = 0.348
+NRIB = 8
+NSEG = NRIB * 2                       # 살 + 살 사이 (스캘럽)
+# (반지름, 높이) — 살 자리 / 골 자리
+O_RINGS = [(0.072, 0.3060, 0.0000), (0.158, 0.2520, 0.0040),
+           (0.235, 0.1880, 0.0220)]
+_vs = [(0.0, 0.0, O_APEX)]
+for r, z, dz in O_RINGS:
+    for k in range(NSEG):
+        a = 2.0 * math.pi * k / NSEG
+        rib = (k % 2 == 0)
+        rr = r if rib else r * 0.955
+        zz = z + (dz if rib else -dz)
+        _vs.append((rr * math.cos(a), rr * math.sin(a), zz))
+_fs, _idx = [], []
+for k in range(NSEG):                                  # 꼭대기 부채꼴
+    _fs.append((0, 1 + k, 1 + (k + 1) % NSEG))
+    _idx.append(0 if (k // 2) % 2 == 0 else 1)
+for ri in range(len(O_RINGS) - 1):
+    b0, b1 = 1 + ri * NSEG, 1 + (ri + 1) * NSEG
+    for k in range(NSEG):
+        kn = (k + 1) % NSEG
+        _fs.append((b0 + k, b0 + kn, b1 + kn, b1 + k))
+        _idx.append(0 if (k // 2) % 2 == 0 else 1)
+_canopy = _mesh("umbo_canopy", _vs, _fs, [M_CANOPY, M_FOLD2, M_FOLD], _idx)
+set_active(_canopy)
+_sol = _canopy.modifiers.new("Solidify", 'SOLIDIFY')
+_sol.thickness = 0.0026
+_sol.offset = 0.0
+_sol.material_offset = 2                               # 안쪽(아랫면)은 딥 네이비
+_sol.material_offset_rim = 2
+_apply(_canopy, _sol)
+shade(_canopy, False)
+
+_parts = [
+    tube("umbo_hook", HOOK, HOOK_R, 7, M_GRIP),
+    lobed("umbo_shaft", [(0.028, 0.0050), (O_SHAFT_TOP, 0.0046)], 6, M_METAL),
+    lobed("umbo_tip", [(O_SHAFT_TOP, 0.0060), (O_SHAFT_TOP + 0.016, 0.0026)], 6, M_METAL),
+    _canopy,
+]
+# 살 — 아랫면에 얇게. 펼쳐진 우산이라는 최소한의 내부 구조.
+for k in range(NRIB):
+    a = 2.0 * math.pi * k / NSEG * 2.0
+    pts, rad = [], []
+    for r, z, dz in [(0.030, 0.2960, 0.0)] + O_RINGS:
+        pts.append((r * math.cos(a), r * math.sin(a), z + dz - 0.0034))
+        rad.append(0.0022 if r < 0.1 else 0.0016)
+    _parts.append(tube("umbo_rib%d" % k, pts, rad, 4, M_METAL))
+for _p in _parts:
+    if _p is not _canopy:
+        bevel(_p, BEVEL_S, 1)
+        shade(_p, False)
+ITEMS["ITM09_UmbrellaOpen"] = finish("ITM09_UmbrellaOpen", _parts)
 
 # --------------------------------------------------------------------- 검산
 def _family(mat):
