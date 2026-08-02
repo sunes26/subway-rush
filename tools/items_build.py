@@ -65,7 +65,9 @@ def _apply(o, mod):
     bpy.ops.object.modifier_apply(modifier=mod.name)
 
 
-def bevel(o, width, segments=1):
+def bevel(o, width, segments=1, mat_index=-1):
+    """모서리 깎기. `mat_index` 를 주면 깎인 면만 다른 재질이 된다 —
+    앞면과 옆면 사이에 '빛 받는 모서리'를 끼워 어두운 테두리를 없애는 데 쓴다."""
     if width <= 0:
         return o
     m = o.modifiers.new("Bevel", 'BEVEL')
@@ -73,6 +75,7 @@ def bevel(o, width, segments=1):
     m.segments = segments
     m.limit_method = 'ANGLE'
     m.angle_limit = math.radians(35)
+    m.material = mat_index
     _apply(o, m)
     return o
 
@@ -267,17 +270,15 @@ sc.unit_settings.system = 'METRIC'
 # 어둡게 만들 때 회색을 섞지 않고 **같은 색의 더 깊은 버전**을 쓴다.
 # 카드=옐로 · 우산=딥 네이비로 주색을 갈라 작게 보여도 구별되게 한다.
 # 세트를 묶는 고리는 따뜻한 포인트다 — 카드 NFC 가 코랄, 우산 스트랩이 오렌지.
-M_CARD = new_mat("ITM_CardBody", "F6C84A", 0.38)        # 선샤인 옐로 (주색)
-# 옆면을 본체보다 **밝게** 잡는다. 같은 색을 주면 조명이 깎아 어두운 테두리가
-# 생겨 카드가 두꺼워 보인다 (실측: 이전 판에서 옆면만 검게 읽혔다).
-M_CARD_EDGE = new_mat("ITM_CardEdge", "FFE48A", 0.36)   # 크림 옐로 (옆면·밝은 면)
-# 하단 바에 크림(#FFE48A)을 쓰면 본체(#F6C84A)와 명도차가 12% 뿐이라
-# 그래픽이 통째로 사라진다(실측). 네 색은 그대로 두고 역할만 바꿔
-# 바에 오커를, NFC 안쪽 선에 크림을 준다.
-M_CARD2 = new_mat("ITM_CardBar", "C5922E", 0.38)        # 오커 (하단 바)
-M_CARD_NFC = new_mat("ITM_CardNfc", "FFE48A", 0.34)     # 크림 옐로 (NFC 안쪽 선)
-M_CARD3 = new_mat("ITM_CardBack", "C5922E", 0.40)       # 오커 뒷면 띠 — 검은 마그네틱처럼 안 보이게
-M_POINT = new_mat("ITM_PointCoral", "F26F5B", 0.36)     # 코랄 (NFC 포인트)
+M_CARD = new_mat("ITM_CardBody", "F2C94C", 0.38)        # 선샤인 옐로 (기본색)
+# 옆면은 지시대로 골든 옐로(어두운 쪽)다. 그러면 앞면과 옆면 사이가 뚝
+# 끊겨 카드가 두꺼워 보이므로, **베벨로 깎인 모서리에 라이트 옐로**를
+# 끼워 둘을 잇는다. 이 면이 실제로 빛을 받는 자리다.
+M_CARD_LIT = new_mat("ITM_CardLit", "FFD966", 0.36)     # 라이트 옐로 (모서리)
+M_CARD_EDGE = new_mat("ITM_CardEdge", "C99B2E", 0.40)   # 골든 옐로 (옆면·가장 어두운 부분)
+M_CARD2 = new_mat("ITM_CardCream", "FFF0B8", 0.34)      # 크림 아이보리 (하단 바·뒷면 띠)
+M_CARD_NFC = new_mat("ITM_CardNfc", "FFF4C7", 0.34)     # 밝은 아이보리 (NFC 안쪽 선)
+M_POINT = new_mat("ITM_PointCoral", "F2645A", 0.36)     # 코랄 레드 (NFC 바깥 선)
 
 M_CLOTH = new_mat("ITM_MaskCloth", "EEF4F7", 0.96)      # 블루화이트 — 무광 부직포
 M_CLOTH_IN = new_mat("ITM_MaskInner", "E3EDF2", 0.96)   # 안쪽 면
@@ -315,7 +316,8 @@ FLAT = 0.00005
 _fy = -CT / 2.0 - FLAT
 
 _body = plate("card_body", CW, CH, CR, CT, M_CARD, seg=3, edge_mat=M_CARD_EDGE)
-bevel(_body, BEVEL_S * 0.30, 1)   # 옆면 어두운 테두리를 얇게
+_body.data.materials.append(M_CARD_LIT)          # 슬롯 2 = 깎인 모서리
+bevel(_body, BEVEL_S * 0.9, 2, mat_index=2)
 _parts = [_body]
 
 # 하단 보조 그래픽 영역 — 카드를 양분하던 무거운 띠를 낮췄다 (28% → 15%).
@@ -334,9 +336,9 @@ for _i in range(3):
     _parts.append(arc_band("card_wave%d" % _i, _r, _r + _WT, -52.0, 52.0, 5,
                            FLAT * 2, _m, y=_fy, cx=-CW * 0.10, cz=CH * 0.09))
 
-# 뒷면 마감 띠 — 실루엣에는 안 잡히지만 앞뒤가 구분된다. 순수 검정 대신 네이비.
-_parts.append(plate("card_stripe", CW * 0.90, CH * 0.14, 0.0007, FLAT * 2, M_CARD3,
-                    seg=1, y=CT / 2.0 + FLAT, cz=CH * 0.27))
+# 뒷면 띠 — 갈색 마그네틱 스트라이프처럼 보이지 않게 크림으로, 그리고 얇게.
+_parts.append(plate("card_stripe", CW * 0.90, CH * 0.085, 0.0006, FLAT * 2, M_CARD2,
+                    seg=1, y=CT / 2.0 + FLAT, cz=CH * 0.30))
 
 for _p in _parts:
     shade(_p, False)
