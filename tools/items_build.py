@@ -295,6 +295,14 @@ M_STRAP_PT = new_mat("ITM_StrapYellow", "FFD15A", 0.44) # 웜 옐로 (무광 밴
 M_GRIP = new_mat("ITM_UmbGrip", "293C35", 0.52)         # 딥 그린 차콜 손잡이
 M_METAL = new_mat("ITM_UmbMetal", "778594", 0.36, metallic=0.40)   # 쿨 건메탈
 
+# 펼친 우산 전용 팔레트. 접힌 우산(그린)과 다르다 — 지시가 펼친 상태만
+# 대상이었다. 같은 제품으로 맞추려면 접힌 쪽도 코랄로 바꿔야 한다.
+M_OPEN = new_mat("ITM_UmbOpenBase", "F06B5F", 0.62)     # 코랄 (모든 패널 공통 기본색)
+M_OPEN_LIT = new_mat("ITM_UmbOpenLit", "FF8778", 0.62)  # 빛 받는 면
+M_OPEN_DEEP = new_mat("ITM_UmbOpenDeep", "C94D4F", 0.62)  # 딥 코랄 — 아랫면. 검정 아님
+M_OPEN_GRIP = new_mat("ITM_UmbOpenGrip", "44373B", 0.52)  # 웜 차콜 손잡이
+M_OPEN_METAL = new_mat("ITM_UmbOpenMetal", "99A3AD", 0.34, metallic=0.40)  # 밝은 건메탈
+
 ITEMS = {}
 
 # ============================================== ITM-04 교통카드 (P0)
@@ -510,58 +518,79 @@ ITEMS["ITM06_MaskFolded"] = finish("ITM06_MaskFolded", _parts)
 # 접힌 우산과 **같은 제품**이다 — 손잡이·축·팁·색을 그대로 쓰고 캐노피만
 # 펼쳐진 상태다. 스트랩은 천을 감고 있지 않으므로 없다.
 # 8개 살 + 살 사이가 처지는 스캘럽 가장자리로 '펼쳐진 우산'이 읽힌다.
-O_APEX = 0.330
-O_SHAFT_TOP = 0.348
+# 돔 형상. 이전 것은 낮고 옆으로 퍼져 천막처럼 보였다 —
+# 중앙을 35% 높이고 지름을 12% 줄여 측면에서 아치가 분명히 보이게 한다.
+O_R = 0.207                            # 반지름 (0.235 → −12%)
+O_H = 0.207                            # 돔 높이 (0.153 → +35%)
+O_EDGE_Z = 0.153
+O_APEX = O_EDGE_Z + O_H
+O_SHAFT_TOP = O_APEX + 0.018
 NRIB = 8
-NSEG = NRIB * 2                       # 살 + 살 사이 (스캘럽)
-# (반지름, 높이) — 살 자리 / 골 자리
-O_RINGS = [(0.072, 0.3060, 0.0000), (0.158, 0.2520, 0.0040),
-           (0.235, 0.1880, 0.0220)]
+NSEG = NRIB * 2
+# z = 가장자리 + H·(1 − t^1.8). 타원으로 잡으면 위가 납작해 버섯이 되고,
+# 원뿔로 잡으면 고깔이 된다. 이 지수라야 우산 아치가 나온다.
+# dz 는 살과 살 사이의 굴곡 — 이전 0.022 는 꽃잎처럼 크게 꺾였다.
+O_RINGS = []
+for _t, _dz in ((0.30, 0.0010), (0.58, 0.0024), (0.82, 0.0040), (1.00, 0.0060)):
+    O_RINGS.append((O_R * _t, O_EDGE_Z + O_H * (1.0 - _t ** 1.8), _dz))
+
 _vs = [(0.0, 0.0, O_APEX)]
 for r, z, dz in O_RINGS:
     for k in range(NSEG):
-        a = 2.0 * math.pi * k / NSEG
+        a_ = 2.0 * math.pi * k / NSEG
         rib = (k % 2 == 0)
-        rr = r if rib else r * 0.955
+        rr = r if rib else r * 0.988    # 골을 살짝만 당긴다 — 원형 실루엣 유지
         zz = z + (dz if rib else -dz)
-        _vs.append((rr * math.cos(a), rr * math.sin(a), zz))
-# 패널을 두 색으로 교차 배치하면 서커스 우산이 된다. **중심이 밝고
-# 가장자리로 갈수록 한 단계씩 깊어지는 흐름**만 준다 (링 단위).
+        _vs.append((rr * math.cos(a_), rr * math.sin(a_), zz))
+
+# 패널은 **전부 같은 기본색**이다. 링마다 어둡게 하거나 패널을 번갈아 칠하면
+# 서커스 우산이 된다. 조명 방향(키 라이트 +38도)에 가까운 열만 밝게 준다.
+def _lit(k):
+    d = abs(((k * 360.0 / NSEG) - 38.0 + 180.0) % 360.0 - 180.0)
+    return 1 if d < 62.0 else 0
+
 _fs, _idx = [], []
-for k in range(NSEG):                                  # 꼭대기 부채꼴 — 가장 밝다
+for k in range(NSEG):
     _fs.append((0, 1 + k, 1 + (k + 1) % NSEG))
-    _idx.append(1)
-RING_MAT = [0, 2]                                      # 중간 = 주색, 가장자리 = 딥
+    _idx.append(_lit(k))
 for ri in range(len(O_RINGS) - 1):
     b0, b1 = 1 + ri * NSEG, 1 + (ri + 1) * NSEG
     for k in range(NSEG):
         kn = (k + 1) % NSEG
         _fs.append((b0 + k, b0 + kn, b1 + kn, b1 + k))
-        _idx.append(RING_MAT[ri])
-_canopy = _mesh("umbo_canopy", _vs, _fs, [M_CANOPY, M_FOLD2, M_FOLD], _idx)
+        _idx.append(_lit(k))
+_canopy = _mesh("umbo_canopy", _vs, _fs, [M_OPEN, M_OPEN_LIT, M_OPEN_DEEP], _idx)
 set_active(_canopy)
 _sol = _canopy.modifiers.new("Solidify", 'SOLIDIFY')
 _sol.thickness = 0.0026
 _sol.offset = 0.0
-_sol.material_offset = 2                               # 아랫면은 윗면보다 한 단계 깊은 블루
+_sol.material_offset = 2                # 아랫면은 딥 코랄. 검정·회색을 쓰지 않는다
 _sol.material_offset_rim = 2
 _apply(_canopy, _sol)
 shade(_canopy, False)
 
+# 손잡이는 조금 더 크고 매끄러운 J 자. 멀리서 우산으로 읽히는 건 이 갈고리다.
+O_HOOK = [(0.0, 0.0, 0.034), (0.0, 0.0, -0.012)]
+_OHR, _OHC = 0.030, -0.030
+for _i in range(1, 10):
+    _a = math.pi * _i / 9.0
+    O_HOOK.append((0.0, _OHR * (1.0 - math.cos(_a)), _OHC - _OHR * math.sin(_a) * 0.60))
+O_HOOK_R = [0.0100, 0.0100] + [0.0100 - 0.0028 * (i / 8.0) ** 1.4 for i in range(9)]
+
 _parts = [
-    tube("umbo_hook", HOOK, HOOK_R, 7, M_GRIP),
-    lobed("umbo_shaft", [(0.028, 0.0050), (O_SHAFT_TOP, 0.0046)], 6, M_METAL),
-    lobed("umbo_tip", [(O_SHAFT_TOP, 0.0060), (O_SHAFT_TOP + 0.016, 0.0026)], 6, M_METAL),
+    tube("umbo_hook", O_HOOK, O_HOOK_R, 8, M_OPEN_GRIP),
+    # 축은 12% 굵게. 캐노피 중심(0,0)과 정확히 정렬된다.
+    lobed("umbo_shaft", [(0.030, 0.0057), (O_SHAFT_TOP, 0.0053)], 8, M_OPEN_METAL),
+    lobed("umbo_tip", [(O_SHAFT_TOP, 0.0072), (O_SHAFT_TOP + 0.018, 0.0028)], 8, M_OPEN_METAL),
     _canopy,
 ]
-# 살 — 아랫면에 얇게. 펼쳐진 우산이라는 최소한의 내부 구조.
 for k in range(NRIB):
-    a = 2.0 * math.pi * k / NSEG * 2.0
+    a_ = 2.0 * math.pi * k / NSEG * 2.0
     pts, rad = [], []
-    for r, z, dz in [(0.030, 0.2960, 0.0)] + O_RINGS:
-        pts.append((r * math.cos(a), r * math.sin(a), z + dz - 0.0034))
-        rad.append(0.0022 if r < 0.1 else 0.0016)
-    _parts.append(tube("umbo_rib%d" % k, pts, rad, 4, M_METAL))
+    for r, z, dz in [(0.028, O_APEX - 0.030, 0.0)] + O_RINGS:
+        pts.append((r * math.cos(a_), r * math.sin(a_), z + dz - 0.0036))
+        rad.append(0.0022 if r < 0.09 else 0.0016)
+    _parts.append(tube("umbo_rib%d" % k, pts, rad, 4, M_OPEN_METAL))
 for _p in _parts:
     if _p is not _canopy:
         bevel(_p, BEVEL_S, 1)
