@@ -100,13 +100,17 @@ def round_rect(w, h, r, seg=3):
     return out
 
 
-def plate(name, w, h, r, thick, mat, seg=3, y=0.0, cx=0.0, cz=0.0, edge_mat=None):
+def plate(name, w, h, r, thick, mat, seg=3, y=0.0, cx=0.0, cz=0.0, edge_mat=None,
+          rot=0.0):
     """XZ 평면의 라운드 사각형 판. y 를 중심으로 thick 만큼 두껍다.
 
     `edge_mat` 을 주면 옆면만 다른 재질이 된다 — 옆면을 본체보다 밝게 잡아
     조명이 만드는 어두운 테두리를 지우는 데 쓴다.
     """
     ring = round_rect(w, h, r, seg)
+    if rot:
+        _c, _s = math.cos(math.radians(rot)), math.sin(math.radians(rot))
+        ring = [(x * _c - z * _s, x * _s + z * _c) for x, z in ring]
     n = len(ring)
     front = [(x + cx, y - thick / 2.0, z + cz) for x, z in ring]
     back = [(x + cx, y + thick / 2.0, z + cz) for x, z in ring]
@@ -279,6 +283,13 @@ M_CARD_EDGE = new_mat("ITM_CardEdge", "C99B2E", 0.40)   # 골든 옐로 (옆면�
 M_CARD2 = new_mat("ITM_CardCream", "FFF0B8", 0.34)      # 크림 아이보리 (하단 바·뒷면 띠)
 M_CARD_NFC = new_mat("ITM_CardNfc", "FFF4C7", 0.34)     # 밝은 아이보리 (NFC 안쪽 선)
 M_POINT = new_mat("ITM_PointCoral", "F2645A", 0.36)     # 코랄 레드 (NFC 바깥 선)
+
+# 노선도 — 노선 색은 셋까지만 쓴다. 서울 노선도의 인상을 만드는 건
+# **초록 순환선과 그걸 가로지르는 선들**이지 색의 가짓수가 아니다.
+M_PAPER = new_mat("ITM_MapPaper", "F2F4F0", 0.92)       # 종이
+M_LINE_G = new_mat("ITM_MapLineG", "35A85C", 0.52)      # 순환선
+M_LINE_O = new_mat("ITM_MapLineO", "E8842E", 0.52)
+M_LINE_B = new_mat("ITM_MapLineB", "2F72BE", 0.52)
 
 M_CLOTH = new_mat("ITM_MaskCloth", "EEF4F7", 0.96)      # 블루화이트 — 무광 부직포
 M_CLOTH_IN = new_mat("ITM_MaskInner", "E3EDF2", 0.96)   # 안쪽 면
@@ -606,6 +617,74 @@ for _p in _parts:
         bevel(_p, BEVEL_S, 1)
         shade(_p, False)
 ITEMS["ITM09_UmbrellaOpen"] = finish("ITM09_UmbrellaOpen", _parts)
+
+# ======================================= ITM-13 노선도 (종이)
+# 실제 서울 노선도를 옮겨 그리지 않는다 — 남의 저작물이고, 78mm 종이에
+# 옮겨 봐야 게임에서 한 획도 안 보인다. 멀리서 읽히는 건 하나뿐이다:
+# **초록 순환선과 그걸 가로지르는 색 선들.** 그것만 추상화해서 넣는다.
+MW_, MH_, MT_ = 0.078, 0.056, 0.0014
+_MP = 0.00006                          # 인쇄면 띄우기 (Z-파이팅 방지)
+_my = -MT_ / 2.0 - _MP
+_parts = [plate("map_paper", MW_, MH_, 0.0020, MT_, M_PAPER, seg=2)]
+
+# 가로지르는 노선 둘 — 사선으로 엇갈려야 '망'으로 읽힌다.
+for _i, (_ln, _ang, _cx, _cz, _m) in enumerate((
+        (0.070, 24.0, -0.002, 0.004, M_LINE_O),
+        (0.062, -38.0, 0.004, -0.002, M_LINE_B))):
+    _parts.append(plate("map_line%d" % _i, _ln, 0.0026, 0.0012, _MP * 2, _m,
+                        seg=1, y=_my, cx=_cx, cz=_cz, rot=_ang))
+
+# 순환선 — 이 고리 하나가 서울 노선도라는 신호다.
+_parts.append(arc_band("map_loop", 0.0132, 0.0158, 0.0, 360.0, 16,
+                       _MP * 2, M_LINE_G, y=_my - _MP))
+
+# 역 점 — 고리 위에 여섯. 색을 더 늘리지 않고 종이색으로 뚫는다.
+for _i in range(6):
+    _a = math.radians(18.0 + 60.0 * _i)
+    _parts.append(plate("map_dot%d" % _i, 0.0038, 0.0038, 0.0019, _MP * 2, M_PAPER,
+                        seg=2, y=_my - _MP * 2,
+                        cx=0.0145 * math.cos(_a), cz=0.0145 * math.sin(_a)))
+
+for _p in _parts:
+    shade(_p, False)
+ITEMS["ITM13_RouteMap"] = finish("ITM13_RouteMap", _parts)
+
+# ======================================= ITM-01 효자손 (기존 자산 복제)
+# 새로 짜지 않는다. mc_character.blend 에 이미 있고 GP(할아버지)가 쓰는
+# 물건이라 형태가 검증돼 있다 — 다만 그 파일 안에만 있어서 **어떤 GLB 로도
+# 나가지 않았다.** P1 인데 게임에 도달할 경로가 없었다. 여기로 복제해 온다.
+# 원본은 열지 않고 라이브러리에서 읽기만 한다 (mc_character.blend 무수정).
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+with bpy.data.libraries.load(os.path.join(_REPO, "assets", "mc_character.blend")) as (_src, _dst):
+    if "PR_Hyojason" not in _src.objects:
+        raise RuntimeError("PR_Hyojason not found in mc_character.blend")
+    _dst.objects = ["PR_Hyojason"]
+_hyo = next(o for o in _dst.objects if o and o.name.startswith("PR_Hyojason"))
+bpy.context.collection.objects.link(_hyo)
+_hyo.parent = None
+_hyo.modifiers.clear()
+# 라이브러리 로드는 부모 아마추어(GP_Rig)까지 딸려 온다. 씬에 남기지 않는다.
+for _o in list(bpy.data.objects):
+    if _o is not _hyo and _o.name not in ITEMS:
+        bpy.data.objects.remove(_o, do_unlink=True)
+for _a in list(bpy.data.armatures):
+    bpy.data.armatures.remove(_a)
+_hyo.name = "ITM01_Backscratcher"
+_hyo.data.name = "ITM01_Backscratcher"
+# 원본은 원점(손잡이)에서 **아래로** 뻗는다 — 손에 매달린 상태 그대로다.
+# 세트의 다른 물건은 원점에서 위로 서므로 X 축 180도로 세운다. 거울이 아니라
+# 회전이라 형태는 그대로다.
+_hyo.matrix_world.identity()
+_hyo.rotation_euler = (math.pi, 0.0, 0.0)
+set_active(_hyo)
+bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+_hyo.location = (0.0, 0.0, 0.0)
+# 머티리얼은 색을 바꾸지 않고 이름만 세트 규약에 맞춘다 — 나무는 갈색이 맞다.
+for _m in _hyo.data.materials:
+    if _m and not _m.name.startswith("ITM_"):
+        _m.name = "ITM_Wood"
+shade(_hyo, False)
+ITEMS["ITM01_Backscratcher"] = _hyo
 
 # --------------------------------------------------------------------- 검산
 def _family(mat):

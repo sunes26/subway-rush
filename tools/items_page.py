@@ -1,4 +1,4 @@
-"""ITM 소품 렌더 → index.html 의 '픽업 소품' 항목.
+"""ITM 소품 렌더 → index.html 의 '소품' 항목.
 
 실행:  python3 tools/items_page.py [render/_items] [index.html]
 
@@ -27,14 +27,16 @@ PAGE = sys.argv[2] if len(sys.argv) > 2 else os.path.join(REPO, "index.html")
 CODE = "itm"
 VIEWS = ["front", "q34", "side", "back"]
 LABEL = {
+    "ITM01_Backscratcher": ("ITM-01", "효자손", "자판기 하단 긁기 해금 · 할아버지 분기 열쇠"),
     "ITM04_Card": ("ITM-04", "교통카드", "개찰구 통과 · 시작 상시 소지"),
     "ITM06_Mask": ("ITM-06", "마스크", "인파 밀림 저항 +50%"),
     "ITM06_MaskFolded": ("ITM-06B", "마스크 (접힌 상태)", "편의점 매대 진열용"),
     "ITM09_Umbrella": ("ITM-09", "우산 (접힌 상태)", "우산꽂이 · 인파 비켜세우기"),
     "ITM09_UmbrellaOpen": ("ITM-09B", "우산 (펼친 상태)", "접힌 우산과 같은 제품"),
+    "ITM13_RouteMap": ("ITM-13", "노선도", "안내판 획득 · 미니맵 + 열차 문 위치"),
 }
-ORDER = ["ITM04_Card", "ITM06_Mask", "ITM06_MaskFolded",
-         "ITM09_Umbrella", "ITM09_UmbrellaOpen"]
+ORDER = ["ITM01_Backscratcher", "ITM04_Card", "ITM06_Mask", "ITM06_MaskFolded",
+         "ITM09_Umbrella", "ITM09_UmbrellaOpen", "ITM13_RouteMap"]
 
 
 def _need(path):
@@ -132,13 +134,13 @@ def main():
 
     detail = (
         '<div class="detail" data-char="%s"><button class="back">&larr; 목록</button>'
-        '<div class="dhead"><span class="eid">ITM</span><h2>픽업 소품</h2>'
+        '<div class="dhead"><span class="eid">ITM</span><h2>소품</h2>'
         '<span class="tail">정적 메시 · %d종 · 합계 %s tris</span></div>'
         '%s</div>'
         % (CODE, len(ORDER), format(total, ","), "".join(blocks)))
 
     entry = ('<button class="entry" data-go="%s"><span class="eid">ITM</span>'
-             '<span class="ename">픽업 소품</span>'
+             '<span class="ename">소품</span>'
              '<span class="emeta">정적 메시 %d종</span>'
              '<span class="arrow">&rarr;</span></button>' % (CODE, len(ORDER)))
 
