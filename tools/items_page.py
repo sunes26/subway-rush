@@ -34,7 +34,7 @@ LABEL = {
     "ITM09_Umbrella": ("ITM-09", "우산 (접힌 상태)", "우산꽂이 · 인파 비켜세우기"),
     "ITM09_UmbrellaOpen": ("ITM-09B", "우산 (펼친 상태)", "접힌 우산과 같은 제품"),
     "ITM13_RouteMap": ("ITM-13", "노선도", "안내판 획득 · 미니맵 + 열차 문 위치"),
-    "FURN_Locker": ("FURN", "물품보관소", "독립형 모듈 · 문 8칸 분리 · 배치 존 미정"),
+    "FURN_Locker": ("FURN", "물품보관소", "독립형 모듈 · 4열×6행 문 24칸 분리 · 배치 존 미정"),
 }
 ORDER = ["ITM01_Backscratcher", "ITM04_Card", "ITM06_Mask", "ITM06_MaskFolded",
          "ITM09_Umbrella", "ITM09_UmbrellaOpen", "ITM13_RouteMap",
