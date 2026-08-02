@@ -9,8 +9,10 @@
   숨기는 것 말고는 못 한다. 그래서 별도 GLB 로 뽑고 자리는 데이터로 넘긴다.
 
 색 체계 (세 소품이 한 세트로 보이게)
-  * 순수 검정·순수 흰색을 쓰지 않는다. 가장 어두운 색이 #20252E, 가장 밝은
-    색이 #F0F1EE 다. 게임 화면에서 부드러운 인상을 유지한다.
+  * 순수 검정·순수 흰색을 쓰지 않는다. 가장 어두운 색이 #2B3D66, 가장 밝은
+    색이 #F4F8F8 다. 검정에 가까운 음영을 두면 그 면이 파인 것처럼 보인다.
+  * 탁한 저채도 대신 같은 색 계열 안에서 **밝고 맑은 중간톤**을 쓴다.
+    회색이 섞이면 먼지 낀 색이 되고, 세 소품이 한 세트로 안 보인다.
   * 한 소품이 쓰는 주요 색은 3~4개까지. 면마다 임의로 칠하지 않고 **구조와
     재질이 바뀌는 곳에서만** 나눈다.
   * 접힘·주름은 색을 따로 칠하지 않고 같은 색 계열의 명도 차이로만 낸다.
@@ -254,21 +256,21 @@ sc.render.fps = 30
 sc.unit_settings.system = 'METRIC'
 
 # 세 소품이 공유하는 팔레트. 순수 검정(#000)·순수 흰색(#fff)은 쓰지 않는다.
-M_CARD = new_mat("ITM_CardBody", "17617A", 0.46)        # 딥 틸 (주색)
-M_CARD2 = new_mat("ITM_CardSky", "79BDD0", 0.44)        # 소프트 스카이 (보조)
-M_CARD3 = new_mat("ITM_CardNavy", "183846", 0.48)       # 딥 네이비 (마감)
-M_POINT = new_mat("ITM_PointYellow", "C89B4C", 0.46)    # 머스터드 (세트 공용 포인트) — 채도를 낮춰 시선 분산
+M_CARD = new_mat("ITM_CardBody", "17809E", 0.42)        # 비비드 틸 (주색)
+M_CARD2 = new_mat("ITM_CardSky", "8FD6E8", 0.40)        # 브라이트 스카이 (보조)
+M_CARD3 = new_mat("ITM_CardNavy", "1D5468", 0.46)       # 딥 틸 (마감) — 검정에 가깝지 않게
+M_POINT = new_mat("ITM_PointYellow", "EDBE4F", 0.42)    # 웜 옐로 (세트 공용 포인트) — 맑게, 형광은 아니게
 
-M_CLOTH = new_mat("ITM_MaskCloth", "E8ECEC", 0.96)      # 쿨 화이트 — 무광 부직포
-M_CLOTH_IN = new_mat("ITM_MaskInner", "DCE0E0", 0.96)   # 안쪽 면 — 기본색보다 5%만 어둡게
-M_LOOP = new_mat("ITM_MaskLoop", "F0F1EE", 0.94)        # 오프화이트 끈
+M_CLOTH = new_mat("ITM_MaskCloth", "EDF3F5", 0.96)      # 블루화이트 — 무광 부직포. 회색기를 뺀다
+M_CLOTH_IN = new_mat("ITM_MaskInner", "D6E3E8", 0.96)   # 안쪽 면 — 회색이 아닌 연한 블루그레이
+M_LOOP = new_mat("ITM_MaskLoop", "F4F8F8", 0.94)        # 오프화이트 끈
 
-M_CANOPY = new_mat("ITM_UmbCanopy", "344B78", 0.74)     # 미드 네이비 (천 기본)
-M_FOLD = new_mat("ITM_UmbFold", "2E4470", 0.74)         # 딥 블루 (접힘 음영) — 검게 파이지 않게
-M_FOLD2 = new_mat("ITM_UmbFoldLit", "455F8D", 0.74)     # 슬레이트 블루 (밝은 접힘)
-M_STRAP = new_mat("ITM_UmbStrap", "202D47", 0.60)       # 다크 네이비 스트랩
-M_GRIP = new_mat("ITM_UmbGrip", "262B36", 0.56)         # 블루블랙 손잡이
-M_METAL = new_mat("ITM_UmbMetal", "6A737D", 0.40, metallic=0.55)   # 건메탈 — 손잡이와 구분되게 밝게
+M_CANOPY = new_mat("ITM_UmbCanopy", "3F5E96", 0.70)     # 미드 블루 (천 기본) — 한 톤 밝게
+M_FOLD = new_mat("ITM_UmbFold", "33497A", 0.70)         # 딥 네이비 (접힘 음영) — 검정이 아니게
+M_FOLD2 = new_mat("ITM_UmbFoldLit", "5273AD", 0.70)     # 밝은 접힘면
+M_STRAP = new_mat("ITM_UmbStrap", "2B3D66", 0.58)       # 딥 네이비 스트랩
+M_GRIP = new_mat("ITM_UmbGrip", "2F3644", 0.54)         # 차콜 블루 손잡이 — 순수 검정 회피
+M_METAL = new_mat("ITM_UmbMetal", "7E8892", 0.38, metallic=0.50)   # 건메탈 — 손잡이와 구분되게 밝게
 
 ITEMS = {}
 
