@@ -13,7 +13,7 @@ from lib.blend import need_obj, set_active
 def run(spec, glb, fbx, report):
     rig = need_obj(spec["rig"])
     mesh = need_obj(spec["mesh"])
-    props = [(need_obj(n), b, h) for n, b, h in spec["props"]]
+    props = [(need_obj(p["name"]), p["bone"]) for p in spec["props"]]
     checks = {}
 
     # ---------------------------------------------------- 익스포트 전 점검
@@ -26,7 +26,7 @@ def run(spec, glb, fbx, report):
         raise RuntimeError("rig scale != 1")
     if not any(m.type == 'ARMATURE' for m in mesh.modifiers):
         raise RuntimeError("Armature modifier missing on %s" % mesh.name)
-    for o, bone, _ in props:
+    for o, bone in props:
         if o.parent is not rig or o.parent_type != 'BONE' or o.parent_bone != bone:
             raise RuntimeError("%s not bone-parented to %s (got %r)"
                                % (o.name, bone, o.parent_bone))
@@ -75,8 +75,8 @@ def run(spec, glb, fbx, report):
     # 숨긴 프롭은 선택 자체가 안 된다. 잠깐 보이게 돌려놓고 GLB·FBX 를
     # **둘 다** 내보낸 뒤 되돌린다 — FBX 앞에서 되돌렸다가 FBX 에만
     # 프롭이 빠진 적이 있다.
-    hidden = [(o, o.hide_viewport, o.hide_render) for o, _, _ in props]
-    for o, _, _ in props:
+    hidden = [(o, o.hide_viewport, o.hide_render) for o, _ in props]
+    for o, _ in props:
         o.hide_viewport = False
         o.hide_render = False
     bpy.context.view_layer.update()

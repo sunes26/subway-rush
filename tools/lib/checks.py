@@ -24,6 +24,15 @@ SOLE_Z = 0.0351
 SAMPLE_EVERY = 3               # 관통 검사 샘플 간격 (짧은 클립은 매 프레임)
 
 
+def _allow(spec, kind, key, default):
+    """선언에 기록된 허용치. 없으면 기본 문턱.
+
+    문턱을 그냥 느슨하게 풀면 검사가 의미를 잃는다. '이 값이 이 캐릭터에서는
+    정상이며 이유는 이것' 을 선언에 남기고, 그보다 나빠지면 실패시킨다.
+    """
+    return spec.get("allow", {}).get(kind, {}).get(key, default)
+
+
 class Report(object):
     def __init__(self, code):
         self.d = {"code": code, "fail": [], "warn": []}
@@ -43,7 +52,7 @@ class Report(object):
 def static(spec, R):
     rig = bpy.data.objects[spec["rig"]]
     mesh = bpy.data.objects[spec["mesh"]]
-    props = [(bpy.data.objects[n], b) for n, b, _ in spec["props"]]
+    props = [(bpy.data.objects[p["name"]], p["bone"]) for p in spec["props"]]
     sc = bpy.context.scene
     d = R.d
 
@@ -78,8 +87,13 @@ def static(spec, R):
         open_e = len([e for e in bmp.edges if len(e.link_faces) != 2])
         bmp.free()
         d.setdefault("prop_open_edges", {})[o.name] = open_e
-        if open_e:
-            R.fail("%s has %d open/non-manifold edges" % (o.name, open_e))
+        ok = _allow(spec, "open_edges", o.name, 0)
+        if open_e > ok:
+            R.fail("%s has %d open/non-manifold edges (allowed %d)"
+                   % (o.name, open_e, ok))
+        elif open_e < ok:
+            R.warn("%s open edges %d < allowance %d — 허용치를 조일 수 있다"
+                   % (o.name, open_e, ok))
 
     mods = [(m.name, m.type) for m in mesh.modifiers]
     d["modifiers"] = {mesh.name: mods}
@@ -217,3 +231,276 @@ def _kd(points):
         t.insert(p, i)
     t.balance()
     return t
+
+
+# ------------------------------------------------------------ 애니메이션
+def animation(spec, R):
+    """전 클립 · 전 프레임 검사.
+
+    판정 기준은 대부분 **MC 원본 대비**다. 절대값으로 두면 캐릭터마다
+    임의의 문턱을 다시 정하게 되고, 회귀인지 원래 그런 건지 알 수 없다.
+    """
+    rig = bpy.data.objects[spec["rig"]]
+    mesh = bpy.data.objects[spec["mesh"]]
+    me = mesh.data
+    sc = bpy.context.scene
+    dg = bpy.context.evaluated_depsgraph_get()
+    d = R.d
+    gi = {g.name: g.index for g in mesh.vertex_groups}
+
+
+    garment_mats = set(spec.get("garment_materials", ()))
+    garment_slots = [i for i, m in enumerate(me.materials)
+                     if m and m.name in garment_mats]
+    garment_idx = sorted({vi for p in me.polygons
+                          if p.material_index in garment_slots for vi in p.vertices})
+
+    skin = _skin_verts(mesh)
+    if skin is None:
+        R.warn("no MC_White slot — arm↔torso gap measured on all verts")
+        skin = {v.index for v in me.vertices}
+
+    foot_idx = {s: _group_verts(mesh, ["Foot." + s], 0.6) for s in ("L", "R")}
+    head_idx = _group_verts(mesh, ["Head"], 0.995)
+    # 프롭마다 쥔 손이 다르다 — ACT-08 은 총이 오른손, 봉이 왼손이다.
+    # 한 손으로 다 재면 봉이 오른손에서 30cm 떨어져 있다고 나온다(실측).
+    hands, grips = {}, {}
+    for _p in spec["props"]:
+        hb = _p["hand"]
+        if hb is None:
+            continue
+        hands[_p["name"]] = _group_verts(mesh, [hb], 0.6)
+        side = hb.split(".")[-1]
+        grips[_p["name"]] = _group_verts(mesh,
+                                         ["UpperArm." + side, "LowerArm." + side], 0.5)
+        if len(hands[_p["name"]]) < 50:
+            raise RuntimeError("hand region for %s too small: %d"
+                               % (_p["name"], len(hands[_p["name"]])))
+    arm_idx = {s: _group_verts(mesh, ["UpperArm." + s, "LowerArm." + s], 0.6, skin)
+               for s in ("L", "R")}
+    torso_idx = _group_verts(mesh, ["Spine", "Chest", "Hips"], 0.85, skin)
+
+    # 그립 접촉 판정용 구름. BVH 최근접 면으로 하면 안 된다 — BVH 는 의상 셸을
+    # 빼고 만들어서, 소매가 덮은 구간에는 맨살 면이 없어 팔 속의 점이 엉덩이
+    # 면으로 잡힌다(ACT-08 에서 15~27mm 깊이로 오검출).
+    grip_torso = _group_verts(mesh, ["Spine", "Chest", "Hips"], 0.5)
+
+    # '쥔 프롭' 은 hand 가 선언된 것, '매단 프롭' 은 나머지다.
+    # 본 이름으로 가르면 안 된다 — CP 캐리어는 Prop.Case 지만 손이 쥔다.
+    held = [(bpy.data.objects[p["name"]], p["bone"])
+            for p in spec["props"] if p["hand"]]
+    stowed = [(bpy.data.objects[p["name"]], p["bone"])
+              for p in spec["props"] if not p["hand"]]
+
+    ad = rig.animation_data or rig.animation_data_create()
+
+    # 의상 셸의 기준 침투 깊이는 **정지 포즈**에서 잰다. 첫 클립에서 잡으면
+    # 정렬 순서에 따라 달리는 자세가 기준이 되어 들쭉날쭉해진다.
+    ad.action = None
+    sc.frame_set(1)
+    dg.update()
+    ev0 = mesh.evaluated_get(dg)
+    wv0 = [mesh.matrix_world @ v.co for v in ev0.data.vertices]
+    base_depth = 0.0
+    if garment_idx:
+        bvh0 = _body_bvh(mesh, ev0, garment_slots)
+        for i in garment_idx:
+            q = wv0[i]
+            if _inside(bvh0, q):
+                nr = bvh0.find_nearest(q)
+                if nr[0] is not None:
+                    base_depth = max(base_depth, (q - nr[0]).length)
+    d["garment_rest_depth_m"] = round(base_depth, 5)
+
+    slide_base = spec.get("slide_base", {})
+    d["anim"] = {}
+    for name, (nf, loop) in spec["clips"].items():
+        act = bpy.data.actions.get(name)
+        if act is None:
+            continue
+        ad.action = act
+        fr = [round(x, 2) for x in act.frame_range]
+        if fr != [1.0, float(nf)]:
+            R.fail("%s frame_range %s != [1, %d]" % (name, fr, nf))
+
+        pen = {"prop": 0, "garment": 0.0, "prop_frame": None, "garment_frame": None}
+        prev_foot = None
+        slide = {"L": 0.0, "R": 0.0}
+        minz, max_root_h, max_hips_h = 9e9, 0.0, 0.0
+        hips_start = hips_end = 0.0
+        prop_gap_max = 0.0
+        face_gap_min = 9e9
+        arm_torso_min = {"L": 9e9, "R": 9e9}
+        stow_drift = 0.0
+        stow_ref = {}
+        first_snap = None
+        loop_delta = None
+
+        for f in range(1, nf + 1):
+            sc.frame_set(f)
+            dg.update()
+            ev = mesh.evaluated_get(dg)
+            wv = [mesh.matrix_world @ v.co for v in ev.data.vertices]
+
+            pbr = rig.pose.bones["Root"]
+            max_root_h = max(max_root_h, abs(pbr.location[0]), abs(pbr.location[2]))
+            pbh = rig.pose.bones["Hips"]
+            hips_h = max(abs(pbh.location[0]), abs(pbh.location[2]))
+            max_hips_h = max(max_hips_h, hips_h)
+            if f == 1:
+                hips_start = hips_h
+            if f == nf:
+                hips_end = hips_h
+            minz = min(minz, min(p.z for p in wv))
+
+            fc = {}
+            for s in ("L", "R"):
+                pts = sorted((wv[i] for i in foot_idx[s]),
+                             key=lambda p: p.z)[:max(1, len(foot_idx[s]) // 5)]
+                fc[s] = Vector((sum(p.x for p in pts) / len(pts),
+                                sum(p.y for p in pts) / len(pts),
+                                sum(p.z for p in pts) / len(pts)))
+            if prev_foot:
+                for s in ("L", "R"):
+                    if fc[s].z < 0.055:      # 지지발만 센다
+                        slide[s] = max(slide[s], (fc[s].xy - prev_foot[s].xy).length)
+            prev_foot = fc
+
+            head_pts = [wv[i] for i in head_idx]
+            for o, _ in held:
+                hand_pts = [wv[i] for i in hands[o.name]]
+                pev = o.evaluated_get(dg)
+                pv = [pev.matrix_world @ v.co for v in pev.data.vertices]
+                prop_gap_max = max(prop_gap_max,
+                                   min(min((p - q).length for q in hand_pts) for p in pv))
+                face_gap_min = min(face_gap_min,
+                                   min(min((p - q).length for q in head_pts) for p in pv))
+
+            # 팔 ↔ 몸통은 반드시 맨몸끼리. MC 기준선 3.4mm 자체가 맨몸 수치다.
+            for s in ("L", "R"):
+                a = [wv[i] for i in arm_idx[s]]
+                t = [wv[i] for i in torso_idx]
+                if a and t:
+                    arm_torso_min[s] = min(arm_torso_min[s],
+                                           min(min((x - y).length for y in t) for x in a))
+
+            # 허리에 매단 프롭은 그 본의 **로컬 좌표**로 비교한다. 월드 오프셋으로
+            # 재면 본이 회전할 때 오프셋도 같이 돌아 가짜 드리프트가 나온다.
+            for o, bone in stowed:
+                oev = o.evaluated_get(dg)
+                c = sum((oev.matrix_world @ v.co for v in oev.data.vertices),
+                        Vector()) / len(oev.data.vertices)
+                bm_ = rig.matrix_world @ rig.pose.bones[bone].matrix
+                loc = bm_.inverted() @ c
+                if o.name not in stow_ref:
+                    stow_ref[o.name] = loc
+                else:
+                    stow_drift = max(stow_drift, (loc - stow_ref[o.name]).length)
+
+            if f % SAMPLE_EVERY == 1 or nf <= 20:
+                bvh = _body_bvh(mesh, ev, garment_slots)
+                kt = _kd([wv[i] for i in grip_torso])
+                inside_prop = 0
+                for o, _ in held:
+                    ka = _kd([wv[i] for i in grips[o.name]])
+                    pev = o.evaluated_get(dg)
+                    for v in pev.data.vertices:
+                        p = pev.matrix_world @ v.co
+                        if _inside(bvh, p) and not (ka.find(p)[2] < kt.find(p)[2]):
+                            inside_prop += 1
+                depth = 0.0
+                for i in garment_idx:
+                    q = wv[i]
+                    if _inside(bvh, q):
+                        nr = bvh.find_nearest(q)
+                        if nr[0] is not None:
+                            depth = max(depth, (q - nr[0]).length)
+                if inside_prop > pen["prop"]:
+                    pen["prop"], pen["prop_frame"] = inside_prop, f
+                if depth > pen["garment"]:
+                    pen["garment"], pen["garment_frame"] = depth, f
+
+            if f == 1:
+                first_snap = [Vector(p) for p in wv]
+            if f == nf and loop and first_snap is not None:
+                loop_delta = max((a - b).length for a, b in zip(wv, first_snap))
+
+        ad.action = None
+        e = {"frames": nf, "loop": loop, "min_z": round(minz, 5),
+             "foot_slide_max_m": {k: round(v, 5) for k, v in slide.items()},
+             "root_horizontal_max": round(max_root_h, 6),
+             "hips_horizontal_max": round(max_hips_h, 5),
+             "prop_to_hand_max_m": round(prop_gap_max, 4),
+             "prop_to_face_min_m": round(face_gap_min, 4),
+             "arm_torso_min_m": {k: round(v, 5) for k, v in arm_torso_min.items()},
+             "prop_verts_inside_body": pen["prop"],
+             "garment_max_depth_m": round(pen["garment"], 5),
+             "pen_frames": [pen["prop_frame"], pen["garment_frame"]]}
+        if stowed:
+            e["stowed_drift_m"] = round(stow_drift, 5)
+        if loop_delta is not None:
+            e["loop_delta"] = round(loop_delta, 6)
+        d["anim"][name] = e
+
+        if max_root_h > 1e-4:
+            R.fail("%s has horizontal root motion %.5f" % (name, max_root_h))
+        if max_hips_h > spec.get("hips_orbit_ok", {}).get(name, 1e-4):
+            R.fail("%s hips horizontal %.5f" % (name, max_hips_h))
+        if max(hips_start, hips_end) > 1e-4:
+            R.fail("%s hips not closed at ends (%.5f / %.5f)"
+                   % (name, hips_start, hips_end))
+        if minz < -0.002:
+            R.fail("%s foot goes below ground: %.4f" % (name, minz))
+        if minz > 0.075:
+            R.warn("%s never touches ground plane (min z %.4f)" % (name, minz))
+        if held and face_gap_min < spec.get("prop_face_min", 0.010):
+            R.fail("%s prop intersects the head (%.4f)" % (name, face_gap_min))
+        if held and prop_gap_max > spec.get("prop_hand_max", 0.018):
+            R.fail("%s hand leaves the prop (%.4f)" % (name, prop_gap_max))
+        at_min = _allow(spec, "arm_torso", name, MC_ARM_TORSO)
+        for s in ("L", "R"):
+            if arm_torso_min[s] < at_min:
+                R.fail("%s arm.%s digs into torso: %.4f (limit %.4f)"
+                       % (name, s, arm_torso_min[s], at_min))
+        if stowed and stow_drift > 0.004:
+            R.fail("%s stowed prop drifts off its bone: %.4f m" % (name, stow_drift))
+        if loop and (loop_delta or 0) > 0.0015:
+            R.fail("%s loop seam delta %.5f" % (name, loop_delta))
+        pin = _allow(spec, "prop_inside", name, 0)
+        if pen["prop"] > pin:
+            R.fail("%s prop penetrates body at f%s (%d verts, allowed %d)"
+                   % (name, pen["prop_frame"], pen["prop"], pin))
+        # 의상 셸은 본체를 오프셋한 복제라 설계상 겹친다. 어깨 요크는 볼조인트
+        # 위에 씌운 평면 셸이라 팔을 들면 필연적으로 접힌다 — 정지 대비
+        # 증가분만 본다.
+        gd_max = _allow(spec, "garment_depth", name,
+                        base_depth + spec.get("garment_slack", 0.015))
+        if garment_idx and pen["garment"] > gd_max:
+            R.fail("%s garment swallowed at f%s (depth %.4f > limit %.4f, rest %.4f)"
+                   % (name, pen["garment_frame"], pen["garment"], gd_max, base_depth))
+        base = MC_SLIDE.get(slide_base.get(name, ""))
+        if base is not None:
+            e["mc_baseline"] = base
+            for s in ("L", "R"):
+                if slide[s] > base[s] + 0.0008:
+                    R.fail("%s foot slide %s regressed: %.4f > MC %.4f"
+                           % (name, s, slide[s], base[s]))
+    sc.frame_set(1)
+
+
+def run(spec, report):
+    import json
+    R = Report(spec["code"])
+    static(spec, R)
+    animation(spec, R)
+    R.d["ok"] = R.ok
+    if report:
+        with open(report, "w") as fh:
+            json.dump(R.d, fh, indent=1, ensure_ascii=False)
+    print("VERIFY", "PASS" if R.ok else "FAIL",
+          "fails=%d warns=%d" % (len(R.d["fail"]), len(R.d["warn"])))
+    for m in R.d["fail"][:25]:
+        print("  FAIL", m)
+    for m in R.d["warn"][:10]:
+        print("  WARN", m)
+    return R

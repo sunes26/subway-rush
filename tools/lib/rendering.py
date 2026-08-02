@@ -38,7 +38,7 @@ def _prop_setter(spec, variant):
     엔진도 같은 규칙을 쓰므로 여기 로직이 곧 연동 명세다.
     """
     pv = spec.get("prop_visibility")
-    objs = {n: need_obj(n) for n, _, _ in spec["props"]}
+    objs = {p["name"]: need_obj(p["name"]) for p in spec["props"]}
     if not pv:
         def noop(_name):
             return

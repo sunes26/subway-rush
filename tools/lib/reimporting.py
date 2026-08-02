@@ -65,7 +65,8 @@ def _inspect(spec, tag, fail):
             fail("%s: max influence %d > 4" % (tag, maxinf))
 
     # 프롭은 이름 접두사로 찾는다 (임포터가 .001 을 붙일 수 있다)
-    for pname, bone, _ in spec["props"]:
+    for _p in spec["props"]:
+        pname, bone = _p["name"], _p["bone"]
         p = next((m for m in meshes
                   if m.name == pname or m.name.startswith(pname + ".")), None)
         if p is None:

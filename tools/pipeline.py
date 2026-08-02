@@ -1,6 +1,7 @@
 """캐릭터 파이프라인 단일 진입점.
 
 Blender 안에서:
+    blender -b assets/ss_character.blend --python tools/pipeline.py -- verify ss
     blender -b assets/ss_character.blend --python tools/pipeline.py -- export ss
     blender -b assets/ss_character.blend --python tools/pipeline.py -- render ss all
     blender -b --factory-startup --python tools/pipeline.py -- reimport ss
@@ -59,10 +60,16 @@ elif CMD == "render":
                   flat=os.environ.get("FLAT", "0") == "1",
                   variant=os.environ.get("VARIANT") or None)
 
+elif CMD == "verify":
+    from lib import checks
+    R = checks.run(S, REPORT or "/tmp/%s_verify.json" % CODE)
+    if not R.ok:
+        raise SystemExit(1)
+
 elif CMD == "page":
     # 페이지 반영은 Blender 없이 돈다.
     from lib import page
     page.run(S, after=os.environ.get("AFTER") or REST[0] if REST else None)
 
 else:
-    raise SystemExit("unknown command %r (export | reimport | render | page)" % CMD)
+    raise SystemExit("unknown command %r (verify | export | reimport | render | page)" % CMD)

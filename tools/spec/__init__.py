@@ -34,4 +34,11 @@ def load(code):
             raise RuntimeError("spec %s missing key %r" % (code, k))
     if S["code"] != code:
         raise RuntimeError("spec %s declares code %r" % (code, S["code"]))
+    # 프롭 선언을 정규형으로. 튜플 길이가 늘어도 소비자가 안 깨지게 한다.
+    norm = []
+    for p in S["props"]:
+        p = tuple(p) + (None,) * (4 - len(p))
+        norm.append({"name": p[0], "bone": p[1], "hidden": bool(p[2]), "hand": p[3]})
+    S = dict(S)
+    S["props"] = norm
     return S
