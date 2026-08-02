@@ -97,8 +97,12 @@ def round_rect(w, h, r, seg=3):
     return out
 
 
-def plate(name, w, h, r, thick, mat, seg=3, y=0.0, cx=0.0, cz=0.0):
-    """XZ 평면의 라운드 사각형 판. y 를 중심으로 thick 만큼 두껍다."""
+def plate(name, w, h, r, thick, mat, seg=3, y=0.0, cx=0.0, cz=0.0, edge_mat=None):
+    """XZ 평면의 라운드 사각형 판. y 를 중심으로 thick 만큼 두껍다.
+
+    `edge_mat` 을 주면 옆면만 다른 재질이 된다 — 옆면을 본체보다 밝게 잡아
+    조명이 만드는 어두운 테두리를 지우는 데 쓴다.
+    """
     ring = round_rect(w, h, r, seg)
     n = len(ring)
     front = [(x + cx, y - thick / 2.0, z + cz) for x, z in ring]
@@ -106,7 +110,10 @@ def plate(name, w, h, r, thick, mat, seg=3, y=0.0, cx=0.0, cz=0.0):
     faces = [tuple(range(n))]                                  # 앞면
     faces += [(n + i, n + (i + 1) % n, (i + 1) % n, i) for i in range(n)]  # 옆면
     faces.append(tuple(range(2 * n - 1, n - 1, -1)))            # 뒷면
-    return _mesh(name, front + back, faces, mat)
+    if edge_mat is None:
+        return _mesh(name, front + back, faces, mat)
+    idx = [0] + [1] * n + [0]
+    return _mesh(name, front + back, faces, [mat, edge_mat], idx)
 
 
 def arc_band(name, r0, r1, a0, a1, seg, thick, mat, y=0.0, cx=0.0, cz=0.0):
@@ -256,24 +263,34 @@ sc.render.fps = 30
 sc.unit_settings.system = 'METRIC'
 
 # 세 소품이 공유하는 팔레트. 순수 검정(#000)·순수 흰색(#fff)은 쓰지 않는다.
-M_CARD = new_mat("ITM_CardBody", "1F7A9A", 0.40)        # 비비드 틸 (주색)
-M_CARD2 = new_mat("ITM_CardSky", "7FD3E8", 0.38)        # 브라이트 스카이 (보조)
-M_CARD3 = new_mat("ITM_CardNavy", "155C74", 0.44)       # 딥 틸 (마감) — 검정에 가깝지 않게
-M_POINT = new_mat("ITM_PointYellow", "F2C14E", 0.40)    # 카드 NFC 포인트
-M_STRAP_PT = new_mat("ITM_StrapYellow", "E0B547", 0.44) # 우산 스트랩 포인트 (같은 계열)
-M_PLEAT = new_mat("ITM_MaskPleat", "D9E5EC", 0.96)      # 주름 음영 (펼친 마스크)
-M_FOLDSH = new_mat("ITM_MaskFoldSh", "DCE6EC", 0.96)    # 접힘 음영 (접힌 마스크)    # 웜 옐로 (세트 공용 포인트) — 맑게, 형광은 아니게
+# 팔레트 — 캐주얼 모바일 게임 기준. 회색기를 빼고 중간 명도를 올린다.
+# 어둡게 만들 때 회색을 섞지 않고 **같은 색의 더 깊은 버전**을 쓴다.
+# 카드=틸 · 우산=로열블루로 주색을 갈라 작게 보여도 구별되게 하고,
+# 옐로 포인트만 공유해 한 세트로 묶는다.
+M_CARD = new_mat("ITM_CardBody", "168DB2", 0.38)        # 브라이트 틸블루 (주색)
+# 옆면을 본체보다 **밝게** 잡는다. 같은 색을 주면 조명이 깎아 어두운 테두리가
+# 생겨 카드가 두꺼워 보인다 (실측: 이전 판에서 옆면만 검게 읽혔다).
+M_CARD_EDGE = new_mat("ITM_CardEdge", "28A9CA", 0.36)   # 아쿠아 블루 (옆면)
+M_CARD2 = new_mat("ITM_CardSky", "8BE4F2", 0.34)        # 클린 스카이블루 (하단 바)
+M_CARD_NFC = new_mat("ITM_CardNfc", "A5EAF3", 0.34)     # 페일 시안 (NFC 안쪽 선)
+M_CARD3 = new_mat("ITM_CardBack", "147A98", 0.40)       # 뒷면 띠 — 검은 마그네틱처럼 안 보이게
+M_POINT = new_mat("ITM_PointYellow", "FFC84A", 0.36)    # 선명한 옐로 (NFC 포인트)
 
-M_CLOTH = new_mat("ITM_MaskCloth", "EEF4F7", 0.96)      # 블루화이트 — 무광 부직포. 회색기를 뺀다
-M_CLOTH_IN = new_mat("ITM_MaskInner", "E3EDF2", 0.96)   # 안쪽 면 — 회색이 아닌 연한 블루그레이
+M_CLOTH = new_mat("ITM_MaskCloth", "EEF4F7", 0.96)      # 블루화이트 — 무광 부직포
+M_CLOTH_IN = new_mat("ITM_MaskInner", "E3EDF2", 0.96)   # 안쪽 면
 M_LOOP = new_mat("ITM_MaskLoop", "F7FAFB", 0.94)        # 오프화이트 끈
+M_PLEAT = new_mat("ITM_MaskPleat", "D9E5EC", 0.96)      # 주름 음영 (펼친 마스크)
+M_FOLDSH = new_mat("ITM_MaskFoldSh", "DCE6EC", 0.96)    # 접힘 음영 (접힌 마스크)
 
-M_CANOPY = new_mat("ITM_UmbCanopy", "4A6FB3", 0.68)     # 미드 블루 (천 기본) — 한 톤 밝게
-M_FOLD = new_mat("ITM_UmbFold", "253D6A", 0.68)         # 딥 네이비 (접힘 음영) — 검정이 아니게
-M_FOLD2 = new_mat("ITM_UmbFoldLit", "35548D", 0.68)     # 밝은 접힘면
-M_STRAP = new_mat("ITM_UmbStrap", "253D6A", 0.58)       # 딥 네이비 스트랩
-M_GRIP = new_mat("ITM_UmbGrip", "2A313C", 0.54)         # 차콜 블루 손잡이 — 순수 검정 회피
-M_METAL = new_mat("ITM_UmbMetal", "707A86", 0.38, metallic=0.45)   # 건메탈 — 손잡이와 구분되게 밝게
+# 우산 — 같은 블루 계열 안에서 명도만 8~15% 차이. 검게 뭉치는 면을 만들지 않는다.
+M_CANOPY = new_mat("ITM_UmbCanopy", "4F78D1", 0.66)     # 로열블루 (주색)
+M_FOLD2 = new_mat("ITM_UmbLit", "668CE0", 0.66)         # 클리어 블루 (빛 받는 패널)
+M_FOLD = new_mat("ITM_UmbDark", "365BA8", 0.66)         # 딥 블루 (그늘 패널)
+M_DEEP = new_mat("ITM_UmbDeep", "294784", 0.66)         # 네이비 블루 (가장 깊은 음영)
+M_STRAP = new_mat("ITM_UmbStrapBase", "365BA8", 0.62)   # 스트랩 바탕
+M_STRAP_PT = new_mat("ITM_StrapYellow", "F4BF3F", 0.44) # 골든 옐로 (무광 밴드)
+M_GRIP = new_mat("ITM_UmbGrip", "303846", 0.52)         # 블루 차콜 손잡이
+M_METAL = new_mat("ITM_UmbMetal", "778594", 0.36, metallic=0.40)   # 쿨 건메탈
 
 ITEMS = {}
 
@@ -289,7 +306,7 @@ CR = 0.0042                       # 네 귀 라운딩 (실물 3.18mm 와 같은 
 FLAT = 0.00005
 _fy = -CT / 2.0 - FLAT
 
-_body = plate("card_body", CW, CH, CR, CT, M_CARD, seg=3)
+_body = plate("card_body", CW, CH, CR, CT, M_CARD, seg=3, edge_mat=M_CARD_EDGE)
 bevel(_body, BEVEL_S * 0.30, 1)   # 옆면 어두운 테두리를 얇게
 _parts = [_body]
 
@@ -305,7 +322,7 @@ _parts.append(plate("card_band", CW * 0.88, CH * 0.12, 0.0018, FLAT * 2, M_CARD2
 _WT, _WG = 0.0013, 0.0040
 for _i in range(3):
     _r = 0.0060 + _WG * _i
-    _m = M_POINT if _i == 2 else M_CARD2
+    _m = M_POINT if _i == 2 else M_CARD_NFC
     _parts.append(arc_band("card_wave%d" % _i, _r, _r + _WT, -52.0, 52.0, 5,
                            FLAT * 2, _m, y=_fy, cx=-CW * 0.10, cz=CH * 0.09))
 
@@ -408,9 +425,11 @@ for _i in range(1, 8):
 HOOK_R = [0.0088, 0.0088] + [0.0088 - 0.0026 * (i / 6.0) ** 1.4 for i in range(7)]
 
 CAN_LO, CAN_HI = 0.046, 0.268          # 최대 폭을 줄이고 세로로 길게
-CAN_MATS = [M_CANOPY, M_FOLD, M_FOLD2]
-# 열마다 다른 재질·반경. 규칙적인 반복은 좌우 대칭으로 읽히므로 어긋나게 둔다.
-CAN_PATTERN = [0, 1, 2, 0, 2, 1, 0, 1]
+# 패널 색은 **조명 방향을 따르는 명도 흐름**이다. 무작위로 교차시키면
+# 서커스 우산처럼 보인다. 키 라이트가 +38도에서 오므로 그쪽 열이 밝고
+# 반대쪽이 그늘진다. 같은 블루 계열 안에서 명도만 갈린다.
+CAN_MATS = [M_CANOPY, M_FOLD2, M_FOLD, M_DEEP]
+CAN_PATTERN = [0, 1, 1, 0, 2, 3, 2, 0]
 CAN_WOBBLE = (1.00, 0.90, 1.05, 0.95, 1.02, 0.87, 1.06, 0.93)
 
 _parts = [
@@ -503,22 +522,25 @@ for r, z, dz in O_RINGS:
         rr = r if rib else r * 0.955
         zz = z + (dz if rib else -dz)
         _vs.append((rr * math.cos(a), rr * math.sin(a), zz))
+# 패널을 두 색으로 교차 배치하면 서커스 우산이 된다. **중심이 밝고
+# 가장자리로 갈수록 한 단계씩 깊어지는 흐름**만 준다 (링 단위).
 _fs, _idx = [], []
-for k in range(NSEG):                                  # 꼭대기 부채꼴
+for k in range(NSEG):                                  # 꼭대기 부채꼴 — 가장 밝다
     _fs.append((0, 1 + k, 1 + (k + 1) % NSEG))
-    _idx.append(0 if (k // 2) % 2 == 0 else 1)
+    _idx.append(1)
+RING_MAT = [0, 2]                                      # 중간 = 주색, 가장자리 = 딥
 for ri in range(len(O_RINGS) - 1):
     b0, b1 = 1 + ri * NSEG, 1 + (ri + 1) * NSEG
     for k in range(NSEG):
         kn = (k + 1) % NSEG
         _fs.append((b0 + k, b0 + kn, b1 + kn, b1 + k))
-        _idx.append(0 if (k // 2) % 2 == 0 else 1)
+        _idx.append(RING_MAT[ri])
 _canopy = _mesh("umbo_canopy", _vs, _fs, [M_CANOPY, M_FOLD2, M_FOLD], _idx)
 set_active(_canopy)
 _sol = _canopy.modifiers.new("Solidify", 'SOLIDIFY')
 _sol.thickness = 0.0026
 _sol.offset = 0.0
-_sol.material_offset = 2                               # 안쪽(아랫면)은 딥 네이비
+_sol.material_offset = 2                               # 아랫면은 윗면보다 한 단계 깊은 블루
 _sol.material_offset_rim = 2
 _apply(_canopy, _sol)
 shade(_canopy, False)
