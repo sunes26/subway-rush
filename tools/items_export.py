@@ -8,6 +8,10 @@
   '메시 개수 · 머티리얼이 살아남았는가' 둘뿐이라 짧게 끝난다.
 
 익스포트 뒤 반드시 재임포트로 확인한다 — 익스포트 성공 메시지는 검증이 아니다.
+
+**이 저장소에서 텍스처를 싣는 유일한 익스포트다.** 다른 곳은 전부
+export_image_format='NONE' 이다 (게임이 툰 단색이라 텍스처를 안 쓴다).
+노선도만 예외 — 역명을 폴리곤으로 넣을 수 없어서다.
 """
 import bpy
 import json
@@ -28,7 +32,7 @@ mats = sorted({m.name for o in meshes for m in o.data.materials if m})
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.export_scene.gltf(filepath=GLB, export_format='GLB', use_selection=True,
                           export_apply=False, export_animations=False,
-                          export_yup=True, export_image_format='NONE')
+                          export_yup=True, export_image_format='AUTO')
 
 # ---- 재임포트 검증 -----------------------------------------------------
 bpy.ops.wm.read_factory_settings(use_empty=True)

@@ -43,6 +43,7 @@ PHONE_L = 0.100         # PR_Phone 장변 (기존 소품 대조용)
 BEVEL_S = 0.0006        # 공통 베벨
 
 rep = {}
+_REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 # ------------------------------------------------------------------ 도우미
@@ -287,9 +288,6 @@ M_POINT = new_mat("ITM_PointCoral", "F2645A", 0.36)     # 코랄 레드 (NFC 바
 # 노선도 — 노선 색은 셋까지만 쓴다. 서울 노선도의 인상을 만드는 건
 # **초록 순환선과 그걸 가로지르는 선들**이지 색의 가짓수가 아니다.
 M_PAPER = new_mat("ITM_MapPaper", "F2F4F0", 0.92)       # 종이
-M_LINE_G = new_mat("ITM_MapLineG", "35A85C", 0.52)      # 순환선
-M_LINE_O = new_mat("ITM_MapLineO", "E8842E", 0.52)
-M_LINE_B = new_mat("ITM_MapLineB", "2F72BE", 0.52)
 
 M_CLOTH = new_mat("ITM_MaskCloth", "EEF4F7", 0.96)      # 블루화이트 — 무광 부직포
 M_CLOTH_IN = new_mat("ITM_MaskInner", "E3EDF2", 0.96)   # 안쪽 면
@@ -619,43 +617,52 @@ for _p in _parts:
 ITEMS["ITM09_UmbrellaOpen"] = finish("ITM09_UmbrellaOpen", _parts)
 
 # ======================================= ITM-13 노선도 (종이)
-# 실제 서울 노선도를 옮겨 그리지 않는다 — 남의 저작물이고, 78mm 종이에
-# 옮겨 봐야 게임에서 한 획도 안 보인다. 멀리서 읽히는 건 하나뿐이다:
-# **초록 순환선과 그걸 가로지르는 색 선들.** 그것만 추상화해서 넣는다.
+# **이 저장소에서 텍스처를 쓰는 유일한 물건이다.** 역명을 폴리곤으로 넣으면
+# 글리프 하나가 폴리곤 덩어리라 43개 역만으로 역사 전체보다 무거워진다.
+# 그림은 tools/routemap_texture.py 가 실제 호선 색·노선 구조·역명으로
+# 직접 그린다 — 서울교통공사 도판 파일을 굽지 않는다.
+# 앞면만 인쇄면이고 뒷면·옆면은 무지 종이다. 재질을 나눠 UV 는 앞면에만 준다.
+_TEX = os.path.join(_REPO_DIR, "assets", "tex", "itm13_routemap.png")
+if not os.path.exists(_TEX):
+    raise RuntimeError("노선도 텍스처가 없다. 먼저 tools/routemap_texture.py 를 "
+                       "돌려라: %s" % _TEX)
+M_MAPTEX = bpy.data.materials.new("ITM_MapPrint")
+M_MAPTEX.use_nodes = True
+_bsdf = next(n for n in M_MAPTEX.node_tree.nodes
+             if n.bl_idname == 'ShaderNodeBsdfPrincipled')
+_bsdf.inputs["Roughness"].default_value = 0.92
+_bsdf.inputs["Base Color"].default_value = (0.92, 0.92, 0.90, 1.0)
+_img = M_MAPTEX.node_tree.nodes.new('ShaderNodeTexImage')
+_img.image = bpy.data.images.load(_TEX)
+_img.image.pack()                       # GLB 에 함께 실리도록 파일을 물고 간다
+_img.location = (-340, 240)
+M_MAPTEX.node_tree.links.new(_bsdf.inputs["Base Color"], _img.outputs["Color"])
+
 MW_, MH_, MT_ = 0.078, 0.056, 0.0014
-_MP = 0.00006                          # 인쇄면 띄우기 (Z-파이팅 방지)
-_my = -MT_ / 2.0 - _MP
-_parts = [plate("map_paper", MW_, MH_, 0.0020, MT_, M_PAPER, seg=2)]
-
-# 가로지르는 노선 둘 — 사선으로 엇갈려야 '망'으로 읽힌다.
-for _i, (_ln, _ang, _cx, _cz, _m) in enumerate((
-        (0.070, 24.0, -0.002, 0.004, M_LINE_O),
-        (0.062, -38.0, 0.004, -0.002, M_LINE_B))):
-    _parts.append(plate("map_line%d" % _i, _ln, 0.0026, 0.0012, _MP * 2, _m,
-                        seg=1, y=_my, cx=_cx, cz=_cz, rot=_ang))
-
-# 순환선 — 이 고리 하나가 서울 노선도라는 신호다.
-_parts.append(arc_band("map_loop", 0.0132, 0.0158, 0.0, 360.0, 16,
-                       _MP * 2, M_LINE_G, y=_my - _MP))
-
-# 역 점 — 고리 위에 여섯. 색을 더 늘리지 않고 종이색으로 뚫는다.
-for _i in range(6):
-    _a = math.radians(18.0 + 60.0 * _i)
-    _parts.append(plate("map_dot%d" % _i, 0.0038, 0.0038, 0.0019, _MP * 2, M_PAPER,
-                        seg=2, y=_my - _MP * 2,
-                        cx=0.0145 * math.cos(_a), cz=0.0145 * math.sin(_a)))
-
-for _p in _parts:
-    shade(_p, False)
-ITEMS["ITM13_RouteMap"] = finish("ITM13_RouteMap", _parts)
+_ring = round_rect(MW_, MH_, 0.0020, 3)
+_n = len(_ring)
+_vs = ([(x, -MT_ / 2.0, z) for x, z in _ring]
+       + [(x, MT_ / 2.0, z) for x, z in _ring])
+_fs = [tuple(range(_n))]                                            # 앞면(인쇄)
+_fs += [(_n + i, _n + (i + 1) % _n, (i + 1) % _n, i) for i in range(_n)]   # 옆면
+_fs.append(tuple(range(2 * _n - 1, _n - 1, -1)))                     # 뒷면
+_idx = [0] + [1] * _n + [1]
+_map = _mesh("map_paper", _vs, _fs, [M_MAPTEX, M_PAPER], _idx)
+# UV — 앞면 루프만 종이 평면에 맞춘다. 나머지 면은 무지 재질이라 값이 무의미하다.
+_uv = _map.data.uv_layers.new(name="UVMap")
+for poly in _map.data.polygons:
+    for li in poly.loop_indices:
+        v = _map.data.vertices[_map.data.loops[li].vertex_index].co
+        _uv.data[li].uv = ((v.x + MW_ / 2.0) / MW_, (v.z + MH_ / 2.0) / MH_)
+shade(_map, False)
+ITEMS["ITM13_RouteMap"] = finish("ITM13_RouteMap", [_map])
 
 # ======================================= ITM-01 효자손 (기존 자산 복제)
 # 새로 짜지 않는다. mc_character.blend 에 이미 있고 GP(할아버지)가 쓰는
 # 물건이라 형태가 검증돼 있다 — 다만 그 파일 안에만 있어서 **어떤 GLB 로도
 # 나가지 않았다.** P1 인데 게임에 도달할 경로가 없었다. 여기로 복제해 온다.
 # 원본은 열지 않고 라이브러리에서 읽기만 한다 (mc_character.blend 무수정).
-_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-with bpy.data.libraries.load(os.path.join(_REPO, "assets", "mc_character.blend")) as (_src, _dst):
+with bpy.data.libraries.load(os.path.join(_REPO_DIR, "assets", "mc_character.blend")) as (_src, _dst):
     if "PR_Hyojason" not in _src.objects:
         raise RuntimeError("PR_Hyojason not found in mc_character.blend")
     _dst.objects = ["PR_Hyojason"]
