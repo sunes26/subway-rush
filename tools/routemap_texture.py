@@ -1,199 +1,167 @@
-"""ITM-13 노선도 텍스처 생성.
+"""ITM-13 노선도 텍스처 — 수도권 전철 전 노선망 (공식 도식 좌표).
 
-실행:  python3 tools/routemap_texture.py [out.png]
+실행:  python3 tools/routemap_texture.py [out.png] [--no-names]
 
-왜 직접 그리는가
-  서울교통공사가 발행한 노선도 **도판 파일**은 그 기관의 저작물이라 게임
-  에셋으로 굽지 않는다. 반면 어느 역이 어느 호선에 있고 어디서 갈아타는가는
-  사실이다. 그 사실만 가져와 여기서 새로 그린다.
+데이터
+  assets/data/seoul_rail.csv — routemap_data.py 가 서울교통공사 사이버스테이션
+  getLineData.do 에서 뽑는다. 점 1,195개 · 역 800개 · 노선 24개.
 
-왜 텍스처인가
-  이 저장소는 텍스처를 하나도 쓰지 않는다(export_station.py 가 이미지를
-  통째로 뺀다). 그런데 역명을 폴리곤으로 넣으면 글리프 하나가 폴리곤
-  덩어리라 43개 역만 해도 역사 전체보다 무거워진다. 노선도만 예외로 둔다.
+왜 추정이 없는가
+  선 모양·역 순서·환승 표시·역명 붙일 방향이 전부 원본에 있다.
+  노선마다 점이 순서대로 늘어서 있고, 이름 없는 점은 노선이 꺾이는 자리다.
+  그대로 이으면 공식 노선도의 선 모양이 나온다 — 실제로 없는 교차가
+  생길 수 없고, 역 순서를 지어낼 일도 없다.
 
-레이아웃
-  2호선을 둥근 사각형 고리로 그린다 — 실제 노선도도 그렇고, 그 고리 하나가
-  '서울 노선도'라는 신호다. 역명은 고리 바깥으로 뺀다. 위·아래 구간에서는
-  가로로 쓰면 서로 부딪히므로 90도 돌려 세운다.
+  서울교통공사가 발행한 노선도 **이미지 파일**은 굽지 않는다. 좌표·역명·
+  환승 관계는 사실이라 그것만 가져와 여기서 새로 그린다.
+
+라벨
+  data-labelPos 가 방향(N/S/E/W/NE/…)을 준다. 공식 도판이 겹치지 않게
+  정해 둔 값이라 그대로 따른다.
 """
+import csv
 import math
 import os
 import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
-OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "assets", "tex", "itm13_routemap.png")
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(HERE)
+ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
+NAMES = "--no-names" not in sys.argv
+CSV = os.path.join(REPO, "assets", "data", "seoul_rail.csv")
+OUT = ARGS[0] if ARGS else os.path.join(REPO, "assets", "tex", "itm13_routemap.png")
 
-S = 1024                     # 텍스처 한 변
+W, H = 2048, 1344            # 원본 좌표계가 298×193 가로형이다
 PAPER = (247, 246, 242)
-INK = (58, 62, 68)
+INK = (46, 50, 56)
+MARGIN = 46
+TOP = 128
 
 FONT_PATHS = ("/System/Library/Fonts/AppleSDGothicNeo.ttc",
               "/System/Library/Fonts/Supplemental/AppleGothic.ttf")
 
-# 실제 호선 색
-C2 = (0, 168, 77)            # 2호선 순환
-C1 = (0, 82, 164)            # 1호선
-C3 = (239, 124, 28)          # 3호선
-C4 = (0, 165, 222)           # 4호선
-C5 = (153, 108, 172)         # 5호선
-CK = (119, 196, 163)         # 경의중앙
-CA = (73, 144, 214)          # 공항철도
-
-# 2호선 순환선 43개 역. 시청에서 시계 반대 방향(을지로입구 → 왕십리 → 잠실 →
-# 강남 → 신림 → 신도림 → 당산 → 홍대입구 → 시청)이 실제 순서다.
-LOOP = [
-    "시청", "을지로입구", "을지로3가", "을지로4가", "동대문역사문화공원", "신당",
-    "상왕십리", "왕십리", "한양대", "뚝섬", "성수", "건대입구", "구의", "강변",
-    "잠실나루", "잠실", "잠실새내", "종합운동장", "삼성", "선릉", "역삼", "강남",
-    "교대", "서초", "방배", "사당", "낙성대", "서울대입구", "봉천", "신림",
-    "신대방", "구로디지털단지", "대림", "신도림", "문래", "영등포구청", "당산",
-    "합정", "홍대입구", "신촌", "이대", "아현", "충정로",
-]
-# 환승역 — 점을 크게 그린다
-TRANSFER = {"시청", "을지로3가", "을지로4가", "동대문역사문화공원", "왕십리", "성수",
-            "건대입구", "잠실", "종합운동장", "삼성", "선릉", "강남", "교대", "사당",
-            "신도림", "영등포구청", "당산", "합정", "홍대입구", "충정로", "신설동"}
-
-MARGIN = 116                 # 고리 좌우 여백
-TOP = 236                    # 고리 위쪽 — 제목·범례와 세워 쓴 역명이 겹치지 않게
-BOT = 128                    # 고리 아래쪽
-CORNER = 118                 # 고리 모서리 반지름
-LW = 13                      # 노선 두께
+# data-labelPos → (dx, dy, 가로정렬, 세로정렬) 배수
+DIRS = {
+    "N": (0, -1, "c", "b"), "S": (0, 1, "c", "t"),
+    "E": (1, 0, "l", "m"), "W": (-1, 0, "r", "m"),
+    "NE": (1, -1, "l", "b"), "NW": (-1, -1, "r", "b"),
+    "SE": (1, 1, "l", "t"), "SW": (-1, 1, "r", "t"),
+}
 
 
 def _font(px, bold=True):
     for p in FONT_PATHS:
         try:
-            f = ImageFont.truetype(p, px, index=1 if (bold and p.endswith(".ttc")) else 0)
-            return f
+            return ImageFont.truetype(p, px, index=1 if (bold and p.endswith(".ttc")) else 0)
         except Exception:
             continue
-    raise RuntimeError("한글 폰트를 찾지 못했다: %s" % (FONT_PATHS,))
-
-
-def rounded_loop_points(x0, y0, x1, y1, r, n):
-    """둥근 사각형 둘레를 n 등분한 점과 그 지점의 '바깥 방향'을 돌려준다."""
-    segs = []                                   # (길이, 시작점, 끝점 or 호 정보)
-    straight = [((x0 + r, y0), (x1 - r, y0), (0, -1)),
-                ((x1, y0 + r), (x1, y1 - r), (1, 0)),
-                ((x1 - r, y1), (x0 + r, y1), (0, 1)),
-                ((x0, y1 - r), (x0, y0 + r), (-1, 0))]
-    arcs = [((x1 - r, y0 + r), 270.0), ((x1 - r, y1 - r), 0.0),
-            ((x0 + r, y1 - r), 90.0), ((x0 + r, y0 + r), 180.0)]
-    for i in range(4):
-        a, b, nv = straight[i]
-        segs.append(("L", math.hypot(b[0] - a[0], b[1] - a[1]), a, b, nv))
-        c, a0 = arcs[i]
-        segs.append(("A", math.pi * r / 2.0, c, a0, r))
-    total = sum(s[1] for s in segs)
-    pts = []
-    for k in range(n):
-        d = total * k / n
-        for s in segs:
-            if d > s[1]:
-                d -= s[1]
-                continue
-            if s[0] == "L":
-                _, ln, a, b, nv = s
-                t = d / ln
-                pts.append((a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, nv))
-            else:
-                _, ln, c, a0, rr = s
-                ang = math.radians(a0 + 90.0 * (d / ln))
-                nv = (math.cos(ang), math.sin(ang))
-                pts.append((c[0] + rr * nv[0], c[1] + rr * nv[1], nv))
-            break
-    return pts
-
-
-def draw_label(img, text, anchor, nv, font, colour=INK):
-    """고리 바깥 방향(nv)으로 역명을 붙인다. 위·아래 구간은 세워 쓴다."""
-    # 글자에 종이색 테두리를 두른다. 교차 노선 위에 얹히면 그냥은 묻힌다
-    # (실측: 시청이 1호선에, 동대문역사문화공원이 3호선에 먹혔다).
-    HALO = 3
-    tmp = Image.new("RGBA", (1, 1))
-    w, h = ImageDraw.Draw(tmp).textbbox((0, 0), text, font=font,
-                                        stroke_width=HALO)[2:]
-    vertical = abs(nv[1]) > abs(nv[0])
-    lab = Image.new("RGBA", (w + 4, h + 4), (0, 0, 0, 0))
-    ImageDraw.Draw(lab).text((2, 2), text, font=font, fill=colour + (255,),
-                             stroke_width=HALO, stroke_fill=PAPER + (235,))
-    if vertical:
-        lab = lab.rotate(90, expand=True)
-    lw, lh = lab.size
-    gap = 12
-    x = anchor[0] + nv[0] * (gap + lw / 2.0) - lw / 2.0
-    y = anchor[1] + nv[1] * (gap + lh / 2.0) - lh / 2.0
-    img.alpha_composite(lab, (int(round(x)), int(round(y))))
+    raise RuntimeError("한글 폰트를 찾지 못했다")
 
 
 def main():
-    img = Image.new("RGBA", (S, S), PAPER + (255,))
+    rows = list(csv.DictReader(open(CSV, encoding="utf-8")))
+    if not rows:
+        raise RuntimeError("데이터가 비었다: %s" % CSV)
+    for r in rows:
+        r["x"], r["y"], r["seq"] = float(r["x"]), float(r["y"]), int(r["seq"])
+
+    xs = [r["x"] for r in rows]
+    ys = [r["y"] for r in rows]
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    aw, ah = W - 2 * MARGIN, H - TOP - MARGIN
+    sc = min(aw / (x1 - x0), ah / (y1 - y0))
+    ox = MARGIN + (aw - (x1 - x0) * sc) / 2.0
+    oy = TOP + (ah - (y1 - y0) * sc) / 2.0
+
+    def px(r):
+        return (ox + (r["x"] - x0) * sc, oy + (r["y"] - y0) * sc)
+
+    img = Image.new("RGBA", (W, H), PAPER + (255,))
     d = ImageDraw.Draw(img)
-    f_st = _font(19)
-    f_off = _font(17)
-    f_ttl = _font(34)
+    LW = 6
 
-    x0, y0 = MARGIN, TOP
-    x1, y1 = S - MARGIN, S - BOT
-    pts = rounded_loop_points(x0, y0, x1, y1, CORNER, len(LOOP))
+    lines = {}
+    for r in rows:
+        lines.setdefault(r["line_key"], {"line": r["line"], "colour": r["colour"],
+                                         "pts": []})["pts"].append(r)
+    for L in lines.values():
+        L["pts"].sort(key=lambda r: r["seq"])
 
-    # ---- 교차 호선. 실제 환승역을 지나가게 놓는다 -------------------------
-    def at(name):
-        i = LOOP.index(name)
-        return pts[i][0], pts[i][1]
-
-    crossings = [
-        (C1, [(at("시청")[0], 30), at("시청"), at("신도림"), (at("신도림")[0] - 96, S - 40)]),
-        (C3, [(at("을지로3가")[0] + 150, 30), at("을지로3가"), at("교대"),
-              (at("교대")[0] + 40, S - 40)]),
-        (C4, [(at("동대문역사문화공원")[0] + 190, 40), at("동대문역사문화공원"),
-              at("사당"), (at("사당")[0] - 70, S - 40)]),
-        (C5, [(40, at("영등포구청")[1] + 60), at("영등포구청"), at("왕십리"),
-              (S - 40, at("왕십리")[1] - 40)]),
-        (CK, [(30, at("홍대입구")[1] - 120), at("홍대입구"), at("왕십리"),
-              (S - 30, at("왕십리")[1] + 70)]),
-        (CA, [(24, at("홍대입구")[1] + 34), at("홍대입구"),
-              (at("홍대입구")[0] + 210, at("홍대입구")[1] + 250)]),
-    ]
-    for col, path in crossings:
-        d.line([(p[0], p[1]) for p in path], fill=col + (255,), width=LW - 3,
+    # ---- 노선 -------------------------------------------------------------
+    for L in lines.values():
+        col = tuple(int(L["colour"][i:i + 2], 16) for i in (0, 2, 4))
+        d.line([px(p) for p in L["pts"]], fill=col + (255,), width=LW,
                joint="curve")
 
-    # ---- 2호선 순환선 ----------------------------------------------------
-    ring = [(p[0], p[1]) for p in pts] + [(pts[0][0], pts[0][1])]
-    d.line(ring, fill=C2 + (255,), width=LW, joint="curve")
+    # ---- 역 마커 ----------------------------------------------------------
+    for r in rows:
+        if not r["name"]:
+            continue
+        x, y = px(r)
+        if "interchange" in r["marker"]:
+            rr = LW * 1.15
+            d.ellipse((x - rr, y - rr, x + rr, y + rr), fill=(255, 255, 255, 255),
+                      outline=INK + (255,), width=3)
+        else:
+            rr = LW * 0.55
+            d.ellipse((x - rr, y - rr, x + rr, y + rr), fill=(255, 255, 255, 255),
+                      outline=INK + (210,), width=2)
 
-    # ---- 역 점 + 역명 ----------------------------------------------------
-    for i, name in enumerate(LOOP):
-        x, y, nv = pts[i]
-        big = name in TRANSFER
-        r = 11 if big else 7
-        d.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 255),
-                  outline=INK + (255,), width=4 if big else 3)
-        draw_label(img, name, (x, y), nv, f_st)
+    # ---- 역명 -------------------------------------------------------------
+    if NAMES:
+        f = _font(15)
+        for r in rows:
+            nm = r["name"]
+            if not nm:
+                continue
+            x, y = px(r)
+            dx, dy, ha, va = DIRS.get(r["label_pos"] or "E", DIRS["E"])
+            bb = d.textbbox((0, 0), nm, font=f, stroke_width=2)
+            tw, th = bb[2] - bb[0], bb[3] - bb[1]
+            gap = LW * 1.5
+            tx = x + dx * gap
+            ty = y + dy * gap
+            if ha == "c":
+                tx -= tw / 2.0
+            elif ha == "r":
+                tx -= tw
+            if va == "m":
+                ty -= th / 2.0
+            elif va == "b":
+                ty -= th
+            d.text((tx, ty), nm, font=f, fill=INK + (255,),
+                   stroke_width=2, stroke_fill=PAPER + (230,))
 
-    # ---- 제목 · 범례 -----------------------------------------------------
-    d.text((MARGIN - 8, 34), "수도권 전철 노선도", font=f_ttl, fill=INK + (255,))
-    legend = [("1", C1), ("2", C2), ("3", C3), ("4", C4), ("5", C5),
-              ("경의중앙", CK), ("공항철도", CA)]
-    f_lg = _font(16)
-    lx, ly, h = MARGIN - 8, 96, 30
-    for lab, col in legend:
-        tw = d.textbbox((0, 0), lab, font=f_lg)[2]
-        w = max(h, tw + 20)                       # 여러 글자는 알약 모양으로 늘린다
-        d.rounded_rectangle((lx, ly, lx + w, ly + h), radius=h // 2, fill=col + (255,))
-        d.text((lx + (w - tw) / 2.0, ly + 5), lab, font=f_lg, fill=(255, 255, 255, 255))
-        lx += w + 12
+    # ---- 제목 · 범례 ------------------------------------------------------
+    d.text((MARGIN, 22), "수도권 전철 노선도", font=_font(44), fill=INK + (255,))
+    named = sum(1 for r in rows if r["name"])
+    d.text((MARGIN, 78), "%d역 · %d노선 · 서울교통공사 사이버스테이션 공식 좌표"
+           % (named, len(set(r["line"] for r in rows))), font=_font(17),
+           fill=(118, 124, 132, 255))
+    fl = _font(17)
+    seen, lx, ly, hh = [], MARGIN + 560, 26, 30
+    for r in rows:
+        if r["line"] in seen:
+            continue
+        seen.append(r["line"])
+        col = tuple(int(r["colour"][i:i + 2], 16) for i in (0, 2, 4))
+        tw = d.textbbox((0, 0), r["line"], font=fl)[2]
+        ww = max(hh, tw + 18)
+        if lx + ww > W - MARGIN:
+            lx, ly = MARGIN + 560, ly + hh + 7
+        d.rounded_rectangle((lx, ly, lx + ww, ly + hh), radius=hh // 2,
+                            fill=col + (255,))
+        d.text((lx + (ww - tw) / 2.0, ly + 5), r["line"], font=fl,
+               fill=(255, 255, 255, 255))
+        lx += ww + 8
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     img.convert("RGB").save(OUT, optimize=True)
-    print("ROUTEMAP OK -> %s  %dx%d  %.1f KB  역 %d개"
-          % (OUT, S, S, os.path.getsize(OUT) / 1024.0, len(LOOP)))
+    print("ROUTEMAP OK -> %s  %dx%d  %.1f KB  %d역 · %d노선%s"
+          % (OUT, W, H, os.path.getsize(OUT) / 1024.0, named, len(seen),
+             " · 역명 포함" if NAMES else " · 역명 생략"))
 
 
 main()

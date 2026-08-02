@@ -638,7 +638,8 @@ _img.image.pack()                       # GLB 에 함께 실리도록 파일을 
 _img.location = (-340, 240)
 M_MAPTEX.node_tree.links.new(_bsdf.inputs["Base Color"], _img.outputs["Color"])
 
-MW_, MH_, MT_ = 0.078, 0.056, 0.0014
+# 종이 비율을 텍스처(2048x1344 = 1.524)에 맞춘다. 안 맞추면 지도가 늘어난다.
+MW_, MH_, MT_ = 0.082, 0.0538, 0.0014
 _ring = round_rect(MW_, MH_, 0.0020, 3)
 _n = len(_ring)
 _vs = ([(x, -MT_ / 2.0, z) for x, z in _ring]
