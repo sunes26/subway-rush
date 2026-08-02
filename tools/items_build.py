@@ -8,12 +8,14 @@
   찍고, 우산은 인파를 비켜세우고, 마스크는 착용한다. 맵에 구우면 그 자리에서
   숨기는 것 말고는 못 한다. 그래서 별도 GLB 로 뽑고 자리는 데이터로 넘긴다.
 
-공통 기준
-  * 실루엣만으로 정체가 읽혀야 한다. 표면 디테일보다 외곽선에 폴리곤을 쓴다.
-  * 베벨은 BEVEL_S 하나로 통일한다. 부품마다 다른 값을 주면 같은 물건인데
-    부위별로 다른 재질처럼 보인다.
-  * 의미 없는 작은 돌출은 넣지 않는다. 멀리서 안 보이면 폴리곤 낭비다.
-  * 재질은 부위 기능이 갈리는 곳에서만 나눈다 (천 / 금속 / 플라스틱).
+색 체계 (세 소품이 한 세트로 보이게)
+  * 순수 검정·순수 흰색을 쓰지 않는다. 가장 어두운 색이 #20252E, 가장 밝은
+    색이 #F0F1EE 다. 게임 화면에서 부드러운 인상을 유지한다.
+  * 한 소품이 쓰는 주요 색은 3~4개까지. 면마다 임의로 칠하지 않고 **구조와
+    재질이 바뀌는 곳에서만** 나눈다.
+  * 접힘·주름은 색을 따로 칠하지 않고 같은 색 계열의 명도 차이로만 낸다.
+  * 포인트 컬러(웜 옐로)는 카드 NFC 심볼과 우산 스트랩에만 아주 조금 쓴다 —
+    두 소품이 같은 세트라는 신호가 이것 하나다.
 
 크기 규약
   캐릭터 전신이 0.888 이고, 기존 소품은 실물보다 1.5배쯤 과장돼 있다
@@ -42,27 +44,23 @@ rep = {}
 
 
 # ------------------------------------------------------------------ 도우미
-def _mesh(name, verts, faces, mat):
+def _mesh(name, verts, faces, mats, mat_idx=None):
     me = bpy.data.meshes.new(name)
     me.from_pydata(verts, [], faces)
     me.update()
     o = bpy.data.objects.new(name, me)
     bpy.context.collection.objects.link(o)
-    o.data.materials.append(mat)
+    for m in (mats if isinstance(mats, (list, tuple)) else [mats]):
+        o.data.materials.append(m)
+    if mat_idx is not None:
+        for p, i in zip(me.polygons, mat_idx):
+            p.material_index = i
     return o
 
 
 def _apply(o, mod):
     set_active(o)
     bpy.ops.object.modifier_apply(modifier=mod.name)
-
-
-def solidify(o, thickness, offset=0.0):
-    m = o.modifiers.new("Solidify", 'SOLIDIFY')
-    m.thickness = thickness
-    m.offset = offset
-    _apply(o, m)
-    return o
 
 
 def bevel(o, width, segments=1):
@@ -78,11 +76,7 @@ def bevel(o, width, segments=1):
 
 
 def round_rect(w, h, r, seg=3):
-    """가운데가 (0,0) 인 라운드 사각형 외곽선 (x, z). 반시계 방향.
-
-    네 귀를 같은 반지름·같은 분할로 돈다 — 귀마다 다르면 '정리되지 않은
-    모서리'로 읽힌다.
-    """
+    """가운데가 (0,0) 인 라운드 사각형 외곽선 (x, z). 반시계 방향."""
     hw, hh = w / 2.0 - r, h / 2.0 - r
     if hw < 0 or hh < 0:
         raise RuntimeError("corner radius %g too large for %gx%g" % (r, w, h))
@@ -101,29 +95,69 @@ def round_rect(w, h, r, seg=3):
     return out
 
 
-def plate(name, w, h, r, thick, mat, seg=3, y=0.0):
+def plate(name, w, h, r, thick, mat, seg=3, y=0.0, cx=0.0, cz=0.0):
     """XZ 평면의 라운드 사각형 판. y 를 중심으로 thick 만큼 두껍다."""
-    verts = [(x, y, z) for x, z in round_rect(w, h, r, seg)]
-    o = _mesh(name, verts, [tuple(range(len(verts)))], mat)
-    solidify(o, thick, offset=0.0)
-    return o
+    ring = round_rect(w, h, r, seg)
+    n = len(ring)
+    front = [(x + cx, y - thick / 2.0, z + cz) for x, z in ring]
+    back = [(x + cx, y + thick / 2.0, z + cz) for x, z in ring]
+    faces = [tuple(range(n))]                                  # 앞면
+    faces += [(n + i, n + (i + 1) % n, (i + 1) % n, i) for i in range(n)]  # 옆면
+    faces.append(tuple(range(2 * n - 1, n - 1, -1)))            # 뒷면
+    return _mesh(name, front + back, faces, mat)
+
+
+def arc_band(name, r0, r1, a0, a1, seg, thick, mat, y=0.0, cx=0.0, cz=0.0):
+    """부채꼴 띠(원호 밴드). NFC 파동 심볼을 만드는 데 쓴다."""
+    fr, bk = [], []
+    for i in range(seg + 1):
+        a = math.radians(a0 + (a1 - a0) * i / seg)
+        for r in (r1, r0):
+            fr.append((cx + r * math.cos(a), y - thick / 2.0, cz + r * math.sin(a)))
+            bk.append((cx + r * math.cos(a), y + thick / 2.0, cz + r * math.sin(a)))
+    n = len(fr)
+    verts = fr + bk
+    faces = []
+    for i in range(seg):
+        o_ = i * 2
+        faces.append((o_, o_ + 2, o_ + 3, o_ + 1))                       # 앞
+        faces.append((n + o_ + 1, n + o_ + 3, n + o_ + 2, n + o_))       # 뒤
+        faces.append((o_, o_ + 1, n + o_ + 1, n + o_))                   # 안쪽 옆
+        faces.append((o_ + 2, n + o_ + 2, n + o_ + 3, o_ + 3))           # 바깥 옆
+    faces.append((0, 1, n + 1, n))
+    faces.append((seg * 2, n + seg * 2, n + seg * 2 + 1, seg * 2 + 1))
+    return _mesh(name, verts, faces, mat)
 
 
 def tube(name, pts, radius, seg, mat):
-    """점 목록을 잇는 튜브. 정점을 직접 놓는다 — 실린더를 회전 적용한 뒤
-    월드 XY 로 반경을 주면 기울어진 구간이 전단된다."""
+    """점 목록을 잇는 튜브.
+
+    단면 좌표계를 **평행 이송**한다. 점마다 고정 기준축(up)에서 새로 만들면,
+    경로가 수직에 가까워지는 순간 기준축이 바뀌며 링 감김이 뒤집힌다.
+    그 이음매의 사각형은 나비넥타이가 되어 면적이 상쇄돼 0 이 된다
+    (실측: 마스크 귀걸이에서 4개).
+
+    정점을 직접 놓는 이유는 따로 있다 — 실린더를 회전 적용한 뒤 월드 XY 로
+    반경을 주면 기울어진 구간이 전단된다.
+    """
     P = [Vector(p) for p in pts]
     if len(P) < 2:
         raise RuntimeError("tube needs >= 2 points")
-    verts, faces = [], []
-    up = Vector((0.0, 0.0, 1.0))
-    for i, p in enumerate(P):
+    tangents = []
+    for i in range(len(P)):
         d = P[min(i + 1, len(P) - 1)] - P[max(i - 1, 0)]
-        if d.length < 1e-9:
-            d = Vector((0.0, 0.0, 1.0))
-        d.normalize()
-        ref = up if abs(d.dot(up)) < 0.95 else Vector((1.0, 0.0, 0.0))
-        u = d.cross(ref).normalized()
+        tangents.append(d.normalized() if d.length > 1e-9 else Vector((0.0, 0.0, 1.0)))
+    ref = Vector((0.0, 0.0, 1.0))
+    if abs(tangents[0].dot(ref)) > 0.95:
+        ref = Vector((1.0, 0.0, 0.0))
+    u = tangents[0].cross(ref).normalized()
+    verts, faces = [], []
+    for i, p in enumerate(P):
+        d = tangents[i]
+        u = (u - d * u.dot(d))                    # 이전 축을 새 단면에 투영
+        if u.length < 1e-9:
+            u = d.cross(Vector((1.0, 0.0, 0.0)))
+        u.normalize()
         v = d.cross(u).normalized()
         for k in range(seg):
             a = 2.0 * math.pi * k / seg
@@ -138,23 +172,35 @@ def tube(name, pts, radius, seg, mat):
     return _mesh(name, verts, faces, mat)
 
 
-def lobed(name, rings, seg, mat, lobe=0.0):
-    """(z, radius) 고리를 쌓은 회전체. lobe>0 이면 반경이 한 칸씩 번갈아 줄어
-    세로 골이 생긴다 — 접힌 우산천의 '덩어리감'이 이걸로 읽힌다."""
-    verts, faces = [], []
+def lobed(name, rings, seg, mats, lobe=0.0, wobble=(), mat_pattern=None):
+    """(z, radius) 고리를 쌓은 회전체.
+
+    `lobe` 는 반경을 한 칸씩 번갈아 줄여 세로 골을 만든다. `wobble` 은 열마다
+    반경을 조금씩 흔들어 **접힌 천의 비대칭 실루엣**을 낸다 — 완전히 균일한
+    육각 기둥은 우산이 아니라 케이스로 읽힌다.
+
+    `mat_pattern` 은 열별 머티리얼 인덱스다. 접힘 음영을 검은 면으로 칠하지
+    않고 **같은 색 계열의 명도 차이**로 내는 방법이 이것이다.
+    """
+    verts, faces, idx = [], [], []
+    nr = len(rings)
     for z, r in rings:
         for k in range(seg):
             a = 2.0 * math.pi * k / seg
-            rr = r * (1.0 - lobe * (k % 2))
+            w = wobble[k % len(wobble)] if wobble else 1.0
+            rr = r * (1.0 - lobe * (k % 2)) * w
             verts.append((rr * math.cos(a), rr * math.sin(a), z))
-    for i in range(len(rings) - 1):
+    for i in range(nr - 1):
         for k in range(seg):
             a, b = i * seg + k, i * seg + (k + 1) % seg
             faces.append((a, b, b + seg, a + seg))
+            idx.append(mat_pattern[k % len(mat_pattern)] if mat_pattern else 0)
     faces.append(tuple(range(seg - 1, -1, -1)))
-    base = (len(rings) - 1) * seg
+    idx.append(0)
+    base = (nr - 1) * seg
     faces.append(tuple(range(base, base + seg)))
-    return _mesh(name, verts, faces, mat)
+    idx.append(0)
+    return _mesh(name, verts, faces, mats, idx)
 
 
 def finish(name, parts):
@@ -169,6 +215,14 @@ def finish(name, parts):
     o = bpy.context.active_object
     o.name = name
     o.data.name = name
+    # 정리 패스. 튜브 이음매에서 폭이 0 에 가까운 슬리버 면이 남는다
+    # (실측: 귀걸이 끈에서 4개). 임계값을 푸는 대신 지운다.
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.mesh.remove_doubles(threshold=1e-5)
+    bpy.ops.mesh.dissolve_degenerate(threshold=1e-5)
+    bpy.ops.mesh.delete_loose(use_verts=True, use_edges=True, use_faces=False)
+    bpy.ops.object.mode_set(mode='OBJECT')
     bpy.ops.object.shade_flat()
     o.location = (0.0, 0.0, 0.0)
     return o
@@ -189,126 +243,168 @@ sc = bpy.context.scene
 sc.render.fps = 30
 sc.unit_settings.system = 'METRIC'
 
-M_CARD = new_mat("ITM_CardBody", "2C6E8C", 0.44)
-M_CARD2 = new_mat("ITM_CardAccent", "8FCBDD", 0.40)
-M_CHIP = new_mat("ITM_CardChip", "D9B25E", 0.30, metallic=0.70)
-M_DARK = new_mat("ITM_Dark", "20222A", 0.46)
-M_CLOTH = new_mat("ITM_MaskCloth", "EFEFE9", 0.94)          # 부직포 — 완전 무광
-M_LOOP = new_mat("ITM_MaskLoop", "E2E2DC", 0.92)
-M_CANOPY = new_mat("ITM_UmbrellaCanopy", "2A3A5E", 0.78)    # 천
-M_METAL = new_mat("ITM_UmbrellaMetal", "9AA0A8", 0.34, metallic=0.80)
-M_GRIP = new_mat("ITM_UmbrellaGrip", "23252B", 0.52)        # 플라스틱
+# 세 소품이 공유하는 팔레트. 순수 검정(#000)·순수 흰색(#fff)은 쓰지 않는다.
+M_CARD = new_mat("ITM_CardBody", "17617A", 0.46)        # 딥 틸 (주색)
+M_CARD2 = new_mat("ITM_CardSky", "79BDD0", 0.44)        # 소프트 스카이 (보조)
+M_CARD3 = new_mat("ITM_CardNavy", "183846", 0.48)       # 딥 네이비 (마감)
+M_POINT = new_mat("ITM_PointYellow", "E5B84A", 0.40)    # 웜 옐로 (세트 공용 포인트)
+
+M_CLOTH = new_mat("ITM_MaskCloth", "E8ECEC", 0.96)      # 쿨 화이트 — 무광 부직포
+M_CLOTH_IN = new_mat("ITM_MaskInner", "C7D0D1", 0.96)   # 안쪽 면 소프트 그레이
+M_LOOP = new_mat("ITM_MaskLoop", "F0F1EE", 0.94)        # 오프화이트 끈
+
+M_CANOPY = new_mat("ITM_UmbCanopy", "344B78", 0.74)     # 미드 네이비 (천 기본)
+M_FOLD = new_mat("ITM_UmbFold", "263A61", 0.74)         # 딥 블루 (접힘 음영)
+M_FOLD2 = new_mat("ITM_UmbFoldLit", "455F8D", 0.74)     # 슬레이트 블루 (밝은 접힘)
+M_STRAP = new_mat("ITM_UmbStrap", "202D47", 0.60)       # 다크 네이비 스트랩
+M_GRIP = new_mat("ITM_UmbGrip", "20252E", 0.54)         # 블루블랙 손잡이
+M_METAL = new_mat("ITM_UmbMetal", "59616A", 0.42, metallic=0.55)   # 건메탈
 
 ITEMS = {}
 
 # ============================================== ITM-04 교통카드 (P0)
-# 실물 85.6×54×0.76mm. 두께는 실물 비율로 얇게(장변의 2.6%), 가로세로는
-# 손에 들려야 하므로 기존 소품과 같은 배율로 키운다.
+# 금융카드로 보이던 요소를 걷어냈다 — 금색 IC 칩과 카드번호처럼 읽히던
+# 가로선 둘을 없애고, 대신 NFC 파동(원호 3겹)을 넣었다. 태그하는 물건이라는
+# 신호가 이것 하나로 충분하다.
 # 원점은 카드 중심 — 개찰구에 찍을 때 손이 카드 가운데를 쥔다.
-CW, CH, CT = 0.084, 0.053, 0.0022
+CW, CH, CT = 0.084, 0.053, 0.0032
 CR = 0.0042                       # 네 귀 라운딩 (실물 3.18mm 와 같은 비율)
-_PROUD = 0.00022                  # 면 위에 얹는 높이. 0 이면 Z-파이팅으로 지글거린다
-_fy = -CT / 2.0 - _PROUD
+# 그래픽은 표면과 같은 높이로 읽혀야 한다. 0 으로 두면 Z-파이팅이 지글거리므로
+# 84mm 카드에서 0.05mm 만 띄운다 — 눈으로는 평평하다.
+FLAT = 0.00005
+_fy = -CT / 2.0 - FLAT
 
 _body = plate("card_body", CW, CH, CR, CT, M_CARD, seg=3)
-# 베벨은 본체에만. 두께 0.0004 짜리 장식 판에 걸면 면이 통째로 무너진다
-# (실측: 영-면적 면 36개).
 bevel(_body, BEVEL_S * 0.5, 1)
 _parts = [_body]
 
-# 앞면 그래픽 — 아래쪽 컬러 블록 + 가는 선 둘. 브랜드·로고는 넣지 않는다.
-_band = plate("card_band", CW * 0.99, CH * 0.28, CR * 0.45, _PROUD * 2, M_CARD2, seg=2, y=_fy)
-_band.location = (0.0, 0.0, -CH * 0.33)
-_parts.append(_band)
-for i, zc in enumerate((CH * 0.02, CH * 0.13)):
-    _ln = plate("card_line%d" % i, CW * 0.40, 0.0019, 0.0005, _PROUD * 2, M_CARD2, seg=1, y=_fy)
-    _ln.location = (CW * 0.24, 0.0, zc)
-    _parts.append(_ln)
+# 하단 보조 그래픽 영역 — 카드를 양분하던 무거운 띠를 낮췄다 (28% → 15%).
+# 옆면에 진한 선이 생기지 않도록 외곽선보다 안쪽으로 물린다.
+_parts.append(plate("card_band", CW * 0.90, CH * 0.15, 0.0022, FLAT * 2, M_CARD2,
+                    seg=2, y=_fy, cz=-CH * 0.335))
 
-# IC 칩 — 앞면 좌상단. 얇고 정돈된 라운드 사각형으로 거의 면에 붙인다.
-_chip = plate("card_chip", CW * 0.17, CH * 0.24, 0.0012, _PROUD * 3, M_CHIP, seg=2, y=_fy)
-_chip.location = (-CW * 0.28, 0.0, CH * 0.17)
-_parts.append(_chip)
+# NFC 파동 — 왼쪽에서 오른쪽으로 퍼지는 원호 3겹. 바깥으로 갈수록 얇아진다.
+for _i, (_r, _t, _m) in enumerate(((0.0072, 0.0016, M_CARD2),
+                                   (0.0118, 0.0014, M_CARD2),
+                                   (0.0164, 0.0012, M_POINT))):
+    _parts.append(arc_band("card_wave%d" % _i, _r, _r + _t, -52.0, 52.0, 5,
+                           FLAT * 2, _m, y=_fy, cx=-CW * 0.28, cz=CH * 0.06))
 
-# 뒷면 자기띠 — 실루엣에는 안 잡히지만 앞뒤가 구분된다.
-_stripe = plate("card_stripe", CW * 0.98, CH * 0.15, 0.0007, _PROUD * 2, M_DARK, seg=1,
-                y=CT / 2.0 + _PROUD)
-_stripe.location = (0.0, 0.0, CH * 0.28)
-_parts.append(_stripe)
+# 뒷면 마감 띠 — 실루엣에는 안 잡히지만 앞뒤가 구분된다. 순수 검정 대신 네이비.
+_parts.append(plate("card_stripe", CW * 0.90, CH * 0.14, 0.0007, FLAT * 2, M_CARD3,
+                    seg=1, y=CT / 2.0 + FLAT, cz=CH * 0.27))
 
 ITEMS["ITM04_Card"] = finish("ITM04_Card", _parts)
 
 # ============================================== ITM-06 마스크 (P1)
-# 일회용 부직포 마스크. 상자를 쌓아 접힘선을 흉내 냈더니 '계단 블록'이 됐고,
-# 격자 한 겹만으로는 '휜 판때기'였다. 셋을 동시에 만족해야 마스크로 읽힌다 —
+# 일회용 부직포 마스크. 아래가 뾰족하게 좁아지던 사다리꼴과 세게 말려
+# 어두워지던 턱선을 걷어냈다 — 밝고 균일한 부직포로 읽혀야 한다.
 #   ① 코가 앞으로 나오고 좌우가 뒤로 감긴다 (가로 곡률)
-#   ② 위·아래가 얼굴 쪽으로 말린다, 특히 턱선 (세로 곡률)
-#   ③ 가로 주름 3개 (세로 방향 삼각파)
+#   ② 위·아래가 얼굴 쪽으로 완만히 말린다 (세로 곡률)
+#   ③ 가로 주름 3개. 색을 칠하지 않고 얕은 접힘의 명암으로만 낸다.
 MW, MH = 0.090, 0.062
-NOSE, TUCK, CHIN, PLEAT = 0.020, 0.013, 1.7, 0.0034
-NCOL, NROW = 7, 10
+NOSE, TUCK, CHIN, PLEAT = 0.020, 0.0100, 1.0, 0.0016
+NCOL, NROW = 7, 13
 _vs, _fs = [], []
 for ri in range(NROW):
     zt = ri / (NROW - 1.0) - 0.5                      # -0.5(아래) ~ +0.5(위)
     curl = TUCK * (abs(zt) / 0.5) ** 2 * (CHIN if zt < 0 else 1.0)
-    t = 3.0 * (zt + 0.5)                              # 세로 3주기
+    # 3주기 삼각파를 행 수가 적을 때 쓰면 행마다 방향이 뒤집혀 체크무늬로
+    # 보인다(실측). 행을 늘려 한 주기를 4행 이상으로 샘플링한다.
+    t = 3.0 * (zt + 0.5)
     pleat = PLEAT * (2.0 * abs(t - round(t)) - 0.5)
     for ci in range(NCOL):
         xt = ci / (NCOL - 1.0) - 0.5
         wrap = -NOSE * (1.0 - (xt / 0.5) ** 2)        # 가운데가 앞(-Y)
-        narrow = 1.0 - 0.32 * max(0.0, -zt)           # 턱쪽으로 좁아지는 사다리꼴
+        # 아래로 아주 완만하게만 좁아진다. 세게 좁히면 아래가 뾰족해지고
+        # solidify 테두리가 삼각 돌출로 튀어나온다 (실측).
+        narrow = 1.0 - 0.10 * max(0.0, -zt)
         _vs.append((xt * MW * narrow, wrap + curl + pleat, zt * MH))
 for ri in range(NROW - 1):
     for ci in range(NCOL - 1):
         i = ri * NCOL + ci
         _fs.append((i, i + 1, i + NCOL + 1, i + NCOL))
-_panel = _mesh("mask_panel", _vs, _fs, M_CLOTH)
-solidify(_panel, 0.0016, offset=0.0)                  # 부직포 한 장 두께
+_panel = _mesh("mask_panel", _vs, _fs, [M_CLOTH, M_CLOTH_IN])
+set_active(_panel)
+_sol = _panel.modifiers.new("Solidify", 'SOLIDIFY')
+_sol.thickness = 0.0015                               # 부직포 한 장 두께
+_sol.offset = 0.0
+_sol.material_offset = 1                              # 안쪽 면만 소프트 그레이
+_sol.material_offset_rim = 1
+_apply(_panel, _sol)
 _parts = [_panel]
 
-# 귀걸이 — 얇고 부드러운 고리. 각진 프레임처럼 보이면 안 되므로 점을 촘촘히
-# 놓고 단면은 5각으로 줄인다 (멀리서 원형으로 읽힌다).
+# 귀걸이 — 얇고 둥근 탄성 끈. 각진 와이어로 보이면 안 되므로 점을 촘촘히
+# 놓고 단면은 6각으로 올린다.
 for sx in (1, -1):
-    x0 = MW * 0.44 * sx
-    arc = [(x0 + 0.005 * sx * math.sin(math.pi * i / 6.0),
-            0.004 + 0.040 * math.sin(math.pi * i / 6.0),
-            math.cos(math.pi * i / 6.0) * MH * 0.33) for i in range(7)]
-    _parts.append(tube("mask_loop%s" % ("L" if sx > 0 else "R"), arc, 0.0013, 4, M_LOOP))
+    x0 = MW * 0.43 * sx
+    arc = [(x0 + 0.005 * sx * math.sin(math.pi * i / 7.0),
+            0.004 + 0.038 * math.sin(math.pi * i / 7.0),
+            math.cos(math.pi * i / 7.0) * MH * 0.31) for i in range(8)]
+    _parts.append(tube("mask_loop%s" % ("L" if sx > 0 else "R"), arc, 0.0011, 6, M_LOOP))
 ITEMS["ITM06_Mask"] = finish("ITM06_Mask", _parts)
 
 # ============================================== ITM-09 우산 (P1)
-# 접힌 장우산. 이전 것은 가늘고 길어 펜처럼 보였다. 짧고 굵게 가고,
-# 천 뭉치에 세로 골(lobe)을 넣어 '접힌 원단 덩어리'로 읽히게 한다.
-# 손잡이는 직선형 하나로 정리했다 — J 갈고리는 작은 돌출만 늘리고 멀리서
-# 손잡이로 안 읽혔다.
+# 접힌 장우산. 우산을 우산으로 만드는 건 캐노피가 아니라 **J자 갈고리**다
+# (방추형은 펜, 직선 그립은 다트로 보였다).
+# 천은 육각 기둥이 아니라 여러 겹이 모인 비대칭 덩어리로 읽혀야 한다 —
+# 열마다 반경을 흔들고(wobble), 접힘 음영을 **같은 색 계열의 명도 차이**로 낸다.
+# 검은 면을 섞으면 천이 아니라 그림자 뭉치가 된다.
 # **원점을 손잡이 쥐는 자리에 둔다** — 여기가 (0,0,0) 이어야 손에 붙였을 때
-# 우산이 손에서 자라난다. 중심에 두면 손 한가운데를 꿰뚫는다.
-# 손잡이는 **J자 갈고리**로 간다. 직선 그립을 가는 목에 붙였더니 다트처럼
-# 보였다 — 우산을 우산으로 만드는 건 캐노피가 아니라 이 갈고리다.
-# 캐노피는 원뿔이 아니라 거의 평행한 '묶음'이다. 위로 좁아지게 하면 펜이 된다.
-# 곧은 대 + 반원 갈고리. 점을 촘촘히 놓아야 꺾임이 각지지 않는다.
+# 우산이 손에서 자라난다.
 HOOK = [(0.0, 0.0, 0.030), (0.0, 0.0, -0.014)]
-_HR, _HC = 0.026, -0.030          # 갈고리 반지름 · 원 중심 z
-for _i in range(1, 8):
-    _a = math.pi * _i / 7.0
+_HR, _HC = 0.026, -0.030
+for _i in range(1, 7):
+    _a = math.pi * _i / 6.0
     HOOK.append((0.0, _HR * (1.0 - math.cos(_a)), _HC - _HR * math.sin(_a) * 0.62))
-CAN_LO, CAN_HI = 0.048, 0.253
+
+CAN_LO, CAN_HI = 0.048, 0.256
+# 8열. 0=기본 · 1=어두운 접힘 · 2=밝은 접힘 을 섞어 겹겹이 접힌 느낌을 낸다.
+CAN_MATS = [M_CANOPY, M_FOLD, M_FOLD2]
+CAN_PATTERN = [0, 1, 2, 0, 1, 0, 2, 1]
+CAN_WOBBLE = (1.00, 0.88, 1.06, 0.93, 1.03, 0.86, 1.08, 0.91)
+
 _parts = [
     tube("umb_hook", HOOK, 0.0090, 6, M_GRIP),
-    lobed("umb_shaft", [(0.026, 0.0052), (CAN_LO + 0.004, 0.0052)], 6, M_METAL),
-    lobed("umb_canopy", [(CAN_LO, 0.0182), (CAN_LO + 0.026, 0.0212),
-                         (CAN_LO + 0.100, 0.0216), (CAN_HI - 0.020, 0.0206),
-                         (CAN_HI, 0.0176)], 6, M_CANOPY, lobe=0.20),
-    # 고정 밴드 — 천을 묶고 있는 것이 보이게 천보다 굵게 두른다.
-    lobed("umb_band", [(CAN_LO + 0.060, 0.0230), (CAN_LO + 0.078, 0.0230)], 6, M_GRIP),
-    # 끝 석돌 — 짧게. 바늘처럼 길면 우산이 아니라 창이 된다.
-    lobed("umb_ferrule", [(CAN_HI, 0.0064), (CAN_HI + 0.013, 0.0032)], 6, M_METAL),
+    lobed("umb_shaft", [(0.026, 0.0050), (CAN_LO + 0.004, 0.0050)], 6, M_METAL),
+    # 위가 가장 풍성하고 밴드 쪽이 잘록하다.
+    lobed("umb_canopy",
+          [(CAN_LO, 0.0160), (CAN_LO + 0.030, 0.0208), (CAN_LO + 0.075, 0.0192),
+           (CAN_HI - 0.048, 0.0232), (CAN_HI - 0.014, 0.0210), (CAN_HI, 0.0166)],
+          8, CAN_MATS, lobe=0.11, wobble=CAN_WOBBLE, mat_pattern=CAN_PATTERN),
+    # 스트랩 — 검은 링이 아니라 천을 감는 얇은 띠. 천보다 아주 조금만 굵다.
+    lobed("umb_strap", [(CAN_LO + 0.070, 0.0212), (CAN_LO + 0.079, 0.0212)],
+          8, M_STRAP, wobble=CAN_WOBBLE),
+    lobed("umb_strap_pt", [(CAN_LO + 0.0725, 0.0216), (CAN_LO + 0.0765, 0.0216)],
+          8, M_POINT, wobble=CAN_WOBBLE),
+    # 끝 팁 — 묻히지 않게 또렷한 형태로.
+    lobed("umb_ferrule", [(CAN_HI - 0.002, 0.0082), (CAN_HI + 0.010, 0.0068),
+                          (CAN_HI + 0.020, 0.0030)], 6, M_METAL),
 ]
 for _p in _parts:
     bevel(_p, BEVEL_S, 1)
 ITEMS["ITM09_Umbrella"] = finish("ITM09_Umbrella", _parts)
 
 # --------------------------------------------------------------------- 검산
+def _family(mat):
+    """색 계열 이름. 채도가 낮으면 전부 'neutral', 아니면 30도 색상 버킷."""
+    b = next(n for n in mat.node_tree.nodes if n.bl_idname == 'ShaderNodeBsdfPrincipled')
+    lin = b.inputs["Base Color"].default_value[:3]
+    srgb = [(1.055 * c ** (1 / 2.4) - 0.055) if c > 0.0031308 else c * 12.92 for c in lin]
+    import colorsys
+    h, sv, v = colorsys.rgb_to_hsv(*srgb)
+    if sv < 0.16:
+        return "neutral"
+    return "hue%d" % (int(round(h * 12)) % 12)
+
+
+PURE = {(0.0, 0.0, 0.0), (1.0, 1.0, 1.0)}
+for m in bpy.data.materials:
+    b = next((n for n in m.node_tree.nodes if n.bl_idname == 'ShaderNodeBsdfPrincipled'), None)
+    c = tuple(round(v, 3) for v in b.inputs["Base Color"].default_value[:3])
+    if c in PURE:
+        raise RuntimeError("%s is pure black/white: %s" % (m.name, c))
+
 for name, o in ITEMS.items():
     rep[name] = measure(o)
     me = o.data
@@ -318,9 +414,28 @@ for name, o in ITEMS.items():
         raise RuntimeError("%s has %d loose vertices" % (name, len(loose)))
     if not me.materials:
         raise RuntimeError("%s has no material" % name)
+    # '주요 색상 3~4개' 는 슬롯 수가 아니라 **색 계열** 수다. 접힘 음영은
+    # 같은 색상 계열의 명도 차이로 내라는 지시였으므로 한 계열로 센다.
+    fams = {_family(m) for m in me.materials if m}
+    if len(fams) > 4:
+        raise RuntimeError("%s uses %d colour families %s (3~4개까지)"
+                           % (name, len(fams), sorted(fams)))
+    rep[name]["colour_families"] = sorted(fams)
     if max(abs(v) for v in o.location) > 1e-6:
         raise RuntimeError("%s origin is not at 0: %s" % (name, list(o.location)))
-    degen = [p.index for p in me.polygons if p.area < 1e-10]
+    # polygon.area 는 편집 모드 조작 뒤 갱신되지 않은 값을 돌려준다 —
+    # 멀쩡한 면을 0 으로 보고했다(실측 4개). 좌표로 직접 잰다 (뉴얼 법).
+    degen = []
+    for poly in me.polygons:
+        n = Vector((0.0, 0.0, 0.0))
+        vs = [me.vertices[i].co for i in poly.vertices]
+        for i, a in enumerate(vs):
+            b = vs[(i + 1) % len(vs)]
+            n += Vector(((a.y - b.y) * (a.z + b.z),
+                         (a.z - b.z) * (a.x + b.x),
+                         (a.x - b.x) * (a.y + b.y)))
+        if n.length * 0.5 < 1e-9:
+            degen.append(poly.index)
     if degen:
         raise RuntimeError("%s has %d zero-area faces" % (name, len(degen)))
 
