@@ -265,16 +265,19 @@ sc.unit_settings.system = 'METRIC'
 # 세 소품이 공유하는 팔레트. 순수 검정(#000)·순수 흰색(#fff)은 쓰지 않는다.
 # 팔레트 — 캐주얼 모바일 게임 기준. 회색기를 빼고 중간 명도를 올린다.
 # 어둡게 만들 때 회색을 섞지 않고 **같은 색의 더 깊은 버전**을 쓴다.
-# 카드=틸 · 우산=로열블루로 주색을 갈라 작게 보여도 구별되게 하고,
-# 옐로 포인트만 공유해 한 세트로 묶는다.
-M_CARD = new_mat("ITM_CardBody", "168DB2", 0.38)        # 브라이트 틸블루 (주색)
+# 카드=옐로 · 우산=에메랄드 그린으로 주색을 갈라 작게 보여도 구별되게 한다.
+# 세트를 묶는 고리는 옐로다 — 카드 본체가 옐로이고 우산 스트랩이 옐로다.
+M_CARD = new_mat("ITM_CardBody", "F6C84A", 0.38)        # 선샤인 옐로 (주색)
 # 옆면을 본체보다 **밝게** 잡는다. 같은 색을 주면 조명이 깎아 어두운 테두리가
 # 생겨 카드가 두꺼워 보인다 (실측: 이전 판에서 옆면만 검게 읽혔다).
-M_CARD_EDGE = new_mat("ITM_CardEdge", "28A9CA", 0.36)   # 아쿠아 블루 (옆면)
-M_CARD2 = new_mat("ITM_CardSky", "8BE4F2", 0.34)        # 클린 스카이블루 (하단 바)
-M_CARD_NFC = new_mat("ITM_CardNfc", "A5EAF3", 0.34)     # 페일 시안 (NFC 안쪽 선)
-M_CARD3 = new_mat("ITM_CardBack", "147A98", 0.40)       # 뒷면 띠 — 검은 마그네틱처럼 안 보이게
-M_POINT = new_mat("ITM_PointYellow", "FFC84A", 0.36)    # 선명한 옐로 (NFC 포인트)
+M_CARD_EDGE = new_mat("ITM_CardEdge", "FFE48A", 0.36)   # 크림 옐로 (옆면·밝은 면)
+# 하단 바에 크림(#FFE48A)을 쓰면 본체(#F6C84A)와 명도차가 12% 뿐이라
+# 그래픽이 통째로 사라진다(실측). 네 색은 그대로 두고 역할만 바꿔
+# 바에 오커를, NFC 안쪽 선에 크림을 준다.
+M_CARD2 = new_mat("ITM_CardBar", "C5922E", 0.38)        # 오커 (하단 바)
+M_CARD_NFC = new_mat("ITM_CardNfc", "FFE48A", 0.34)     # 크림 옐로 (NFC 안쪽 선)
+M_CARD3 = new_mat("ITM_CardBack", "C5922E", 0.40)       # 오커 뒷면 띠 — 검은 마그네틱처럼 안 보이게
+M_POINT = new_mat("ITM_PointCoral", "F26F5B", 0.36)     # 코랄 (NFC 포인트)
 
 M_CLOTH = new_mat("ITM_MaskCloth", "EEF4F7", 0.96)      # 블루화이트 — 무광 부직포
 M_CLOTH_IN = new_mat("ITM_MaskInner", "E3EDF2", 0.96)   # 안쪽 면
@@ -283,13 +286,13 @@ M_PLEAT = new_mat("ITM_MaskPleat", "D9E5EC", 0.96)      # 주름 음영 (펼친 
 M_FOLDSH = new_mat("ITM_MaskFoldSh", "DCE6EC", 0.96)    # 접힘 음영 (접힌 마스크)
 
 # 우산 — 같은 블루 계열 안에서 명도만 8~15% 차이. 검게 뭉치는 면을 만들지 않는다.
-M_CANOPY = new_mat("ITM_UmbCanopy", "4F78D1", 0.66)     # 로열블루 (주색)
-M_FOLD2 = new_mat("ITM_UmbLit", "668CE0", 0.66)         # 클리어 블루 (빛 받는 패널)
-M_FOLD = new_mat("ITM_UmbDark", "365BA8", 0.66)         # 딥 블루 (그늘 패널)
-M_DEEP = new_mat("ITM_UmbDeep", "294784", 0.66)         # 네이비 블루 (가장 깊은 음영)
-M_STRAP = new_mat("ITM_UmbStrapBase", "365BA8", 0.62)   # 스트랩 바탕
-M_STRAP_PT = new_mat("ITM_StrapYellow", "F4BF3F", 0.44) # 골든 옐로 (무광 밴드)
-M_GRIP = new_mat("ITM_UmbGrip", "303846", 0.52)         # 블루 차콜 손잡이
+M_CANOPY = new_mat("ITM_UmbCanopy", "3FAF78", 0.64)     # 에메랄드 그린 (주색)
+M_FOLD2 = new_mat("ITM_UmbLit", "63C991", 0.64)         # 프레시 그린 (빛 받는 패널)
+M_FOLD = new_mat("ITM_UmbDark", "287956", 0.64)         # 딥 그린 (그늘 패널)
+M_DEEP = new_mat("ITM_UmbDeep", "1E5C42", 0.64)         # 더 깊은 그린 — 검정 대신 같은 계열로
+M_STRAP = new_mat("ITM_UmbStrapBase", "287956", 0.60)   # 스트랩 바탕
+M_STRAP_PT = new_mat("ITM_StrapYellow", "FFD15A", 0.44) # 웜 옐로 (무광 밴드)
+M_GRIP = new_mat("ITM_UmbGrip", "293C35", 0.52)         # 딥 그린 차콜 손잡이
 M_METAL = new_mat("ITM_UmbMetal", "778594", 0.36, metallic=0.40)   # 쿨 건메탈
 
 ITEMS = {}
