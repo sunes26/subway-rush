@@ -28,7 +28,7 @@
   손에 붙일 지점에 원점을 둔다 — 우산은 손잡이, 카드·마스크는 중심.
 """
 import bpy, sys, os, json, math
-from mathutils import Vector
+from mathutils import Vector, Euler
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.blend import new_mat, set_active   # noqa: E402
@@ -302,6 +302,11 @@ M_POINT = new_mat("ITM_PointCoral", "F2645A", 0.36)     # 코랄 레드 (NFC 바
 # 노선도 — 노선 색은 셋까지만 쓴다. 서울 노선도의 인상을 만드는 건
 # **초록 순환선과 그걸 가로지르는 선들**이지 색의 가짓수가 아니다.
 M_PAPER = new_mat("ITM_MapPaper", "F2F4F0", 0.92)       # 종이
+
+# 붕어빵 — 구운 밀가루 반죽. 따뜻한 황금 갈색 계열 셋으로만 간다.
+M_BUN = new_mat("ITM_BunDough", "D9A05A", 0.74)         # 반죽 기본
+M_BUN_D = new_mat("ITM_BunCrust", "B4763A", 0.72)       # 구운 테두리·비늘
+M_BUN_EYE = new_mat("ITM_BunEye", "5C3B22", 0.60)       # 눈
 
 M_CLOTH = new_mat("ITM_MaskCloth", "EEF4F7", 0.96)      # 블루화이트 — 무광 부직포
 M_CLOTH_IN = new_mat("ITM_MaskInner", "E3EDF2", 0.96)   # 안쪽 면
@@ -707,6 +712,80 @@ for _m in _hyo.data.materials:
         _m.name = "ITM_Wood"
 shade(_hyo, False)
 ITEMS["ITM01_Backscratcher"] = _hyo
+
+# ======================================= ITM-12 붕어빵 (낱개 · 진열용)
+# 실물 12cm. 캐릭터 전신 0.888 기준으로 0.075 다.
+# 실루엣이 전부다 — 꼬리·지느러미·눈이 있어야 '물고기 모양 간식'으로 읽힌다.
+# 옆에서 보면 납작한 판이므로 두께는 얇게 가져간다.
+BUN_L, BUN_T = 0.075, 0.019
+
+
+def bun_outline():
+    """붕어 옆모습 외곽선 (x, z). 머리가 +x, 꼬리가 -x."""
+    return [
+        (0.500, 0.000), (0.468, 0.096), (0.386, 0.170), (0.268, 0.212),
+        (0.130, 0.228), (-0.020, 0.214), (-0.150, 0.176), (-0.244, 0.126),
+        (-0.300, 0.180), (-0.420, 0.246), (-0.500, 0.170), (-0.478, 0.000),
+        (-0.500, -0.170), (-0.420, -0.246), (-0.300, -0.180), (-0.244, -0.126),
+        (-0.150, -0.176), (-0.020, -0.214), (0.130, -0.228), (0.268, -0.212),
+        (0.386, -0.170), (0.468, -0.096),
+    ]
+
+
+def make_bun(name):
+    ring = [(x * BUN_L, 0.0, z * BUN_L) for x, z in bun_outline()]
+    n = len(ring)
+    o = _mesh(name, ring, [tuple(range(n))], M_BUN)
+    set_active(o)
+    m = o.modifiers.new("Solidify", 'SOLIDIFY')
+    m.thickness = BUN_T
+    m.offset = 0.0
+    _apply(o, m)
+    # 배가 살짝 부풀어야 빵으로 보인다. 납작하면 종이 물고기다.
+    for v in o.data.vertices:
+        r = math.hypot(v.co.x, v.co.z) / (BUN_L * 0.5)
+        v.co.y *= 1.0 + 0.55 * max(0.0, 1.0 - r) ** 1.4
+    bevel(o, 0.0012, 1)
+    shade(o, False)
+    parts = [o]
+    # 비늘 — 얕은 능선 셋. 무늬를 새기지 않고 얹는다(폴리곤이 싸다).
+    for i, xc in enumerate((0.10, -0.02, -0.14)):
+        for sy in (-1, 1):
+            parts.append(slab("bun_scale%d%d" % (i, sy > 0),
+                              (xc * BUN_L, sy * (BUN_T * 0.52), 0.0),
+                              (BUN_L * 0.028, BUN_T * 0.10, BUN_L * 0.30), M_BUN_D))
+    # 지느러미 — 등에 하나. 실루엣을 물고기로 굳힌다.
+    # 등지느러미. 몸 위에 얹으면 상자를 올려놓은 것으로 보이므로 절반을
+    # 몸에 묻는다 (등 최고점이 0.228·BUN_L 이다).
+    parts.append(slab("bun_fin", (-0.03 * BUN_L, 0.0, BUN_L * 0.208),
+                      (BUN_L * 0.22, BUN_T * 0.58, BUN_L * 0.062), M_BUN_D))
+    # 눈 — 양면. 한쪽만 넣으면 뒤집혔을 때 정체가 사라진다.
+    for sy in (-1, 1):
+        parts.append(slab("bun_eye%d" % (sy > 0),
+                          (0.315 * BUN_L, sy * (BUN_T * 0.50), 0.055 * BUN_L),
+                          (BUN_L * 0.055, BUN_T * 0.12, BUN_L * 0.055), M_BUN_EYE))
+    for p in parts:
+        shade(p, False)
+    return finish(name, parts)
+
+
+ITEMS["ITM12_Bungeoppang"] = make_bun("ITM12_Bungeoppang")
+
+# 진열용 — 카트 위에 늘어놓는 한 벌. 완전히 같은 각도로 늘어놓으면 공장에서
+# 찍어낸 것처럼 보이므로 조금씩 어긋나게 둔다.
+_set = []
+# 앞줄 셋 · 뒷줄 둘. 한 줄로 늘어놓으면 공장 진열대처럼 보인다.
+for _i, (_x, _y, _rz, _ry) in enumerate((
+        (-0.080, -0.026, 6.0, 0.0), (0.000, -0.030, -4.0, 2.0),
+        (0.080, -0.024, 5.0, -3.0), (-0.041, 0.026, -7.0, 1.5),
+        (0.041, 0.030, 4.0, -1.0))):
+    _b = make_bun("bun_set%d" % _i)
+    _b.rotation_euler = Euler((0.0, math.radians(_ry), math.radians(_rz)), 'XYZ')
+    _b.location = (_x, _y, 0.0)
+    set_active(_b)
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=False)
+    _set.append(_b)
+ITEMS["ITM12_BungeoppangSet"] = finish("ITM12_BungeoppangSet", _set)
 
 # ======================================= 물품보관소 (독립형 모듈 · 가구)
 # 배치 존과 상호작용은 아직 정해지지 않았다. 어느 구역에도 놓을 수 있는
