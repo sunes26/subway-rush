@@ -13,6 +13,24 @@ export type Stage = Readonly<{
   resize(): void
   /** 존에 따라 안개·배경색을 바꾼다 — 지상은 하늘, 지하는 형광등 */
   setMood(zone: ZoneId, dt: number): void
+  /**
+   * 간접광 성분의 배율.
+   *
+   * 라이트맵은 Blender 에서 `DIFFUSE` **직접 + 간접**을 구운 것이다. 즉 여기 있는
+   * 앰비언트·반구광·바닥반사가 하는 일을 이미 담고 있다. 둘을 그대로 더하면
+   * 이중 계산이 되어 역 전체가 하얗게 날아간다 — 실제로 처음 붙였을 때 그랬다.
+   *
+   * three 의 `lightMap` 은 **순수 가산**이다 — 어둡게 만들지 못하고 더하기만 한다.
+   * 그래서 라이트맵이 명암을 만들려면 그것이 조명의 **주된 몫**이어야 한다.
+   * 방향광을 그대로 두면 라이트맵이 얹히는 만큼 통째로 밝아질 뿐이다
+   * (0.22 로 간접만 줄였을 때 실제로 그랬다 — 하얗게 붙은 채 그대로였다).
+   *
+   * 그렇다고 전부 0 으로 두면 툰 램프가 법선을 못 읽어 형태가 납작해진다.
+   * 방향광은 **형태를 읽을 만큼만** 남기고, 방향 없는 성분은 거의 지운다.
+   *
+   * 라이트맵이 없는 빌드(사이드카 없이 익스포트)에서는 1.0 그대로 — 예전 룩이 나온다.
+   */
+  setIndirect(scale: number): void
   dispose(): void
 }>
 
@@ -76,6 +94,7 @@ export const createStage = (canvas: HTMLCanvasElement): Stage => {
   let far = 150
   let sunI = MOOD.Z1.sun
   let ambI = MOOD.Z1.amb
+  let indirect = 1
 
   /**
    * 매 프레임 호출한다. resize 이벤트에 의존하지 않는 이유:
@@ -110,19 +129,25 @@ export const createStage = (canvas: HTMLCanvasElement): Stage => {
       far += (targetFar - far) * k
       sunI += (m.sun - sunI) * k
       ambI += (m.amb - ambI) * k
-      amb.intensity = ambI
-      hemi.intensity = zone === 'Z1' ? 0.42 : 0.5
+      amb.intensity = ambI * indirect
+      hemi.intensity = (zone === 'Z1' ? 0.42 : 0.5) * indirect
       ;(scene.background as Color).copy(bg)
       const f = scene.fog as Fog
       f.color.copy(fogC)
       f.near = near
       f.far = far
-      sun.intensity = sunI
+      // 방향광은 간접보다 덜 줄인다 — 형태(툰 램프)는 이쪽이 만든다
+      sun.intensity = sunI * (0.30 + 0.70 * indirect)
       // 지하에서는 태양을 천장 형광등처럼 위에서 내린다
       const underground = zone !== 'Z1'
       sun.position.set(underground ? 0 : -40, underground ? FLOOR.B1 + 40 : 60, underground ? 6 : 30)
       // 지상은 아스팔트라 반사가 약하고, 지하는 밝은 화강석이라 강하다
-      bounce.intensity = underground ? 0.34 : 0.12
+      bounce.intensity = (underground ? 0.34 : 0.12) * indirect
+      // 형광 보조광은 절반만 줄인다 — 완전히 빼면 아래를 향한 면이 다시 죽는다
+      fluor.intensity = 0.24 * (0.30 + 0.70 * indirect)
+    },
+    setIndirect(scale) {
+      indirect = scale
     },
     dispose() {
       renderer.dispose()

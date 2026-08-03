@@ -40,6 +40,10 @@ const SHOTS: readonly Shot[] = [
   { name: '01b-z1-stop', pos: { x: -55, y: 24, z: 0 }, yaw: Math.PI, note: '정류장 — 표지판이 진행 반대편에 있는지' },
   { name: '10-z3-gates', pos: { x: 56.5, y: 16, z: B1 }, yaw: 0, note: 'Z3 개찰구 정면 — 게이트 9기 · 피치 2.0m' },
   { name: '11-z3-gate-close', pos: { x: 59.2, y: 14, z: B1 }, yaw: 0, note: 'Z3 개찰구 근접' },
+  // ⚠ 비스듬한 각도를 반드시 한 장 남긴다. ○/✕ 기호가 카메라를 따라 도는 회귀는
+  //    정면 앵글에서는 **똑같이 나와서** 안 잡힌다. 여기서만 티가 난다 —
+  //    고정이면 사인 판과 같이 찌그러져 보이고, 빌보드면 혼자 정면을 본다.
+  { name: '11b-z3-gate-oblique', pos: { x: 56.5, y: 8.5, z: B1 }, yaw: 0.5, note: 'Z3 개찰구 사선 — 기호가 사인 면에 붙어 있는지' },
   { name: '12-z4-corridor', pos: { x: 80, y: 7, z: B1 }, yaw: 0, note: 'Z4 운임구역 통로' },
   { name: '13-z4-descent', pos: { x: 94.5, y: 6.7, z: B1 }, yaw: 0, pitch: -0.35, note: 'Z4 하강 상단 — 계단·에스컬레이터' },
   { name: '14-z4-bottom', pos: { x: 121, y: 5, z: B2 }, yaw: Math.PI, pitch: 0.3, note: 'Z4 하단에서 올려다봄' },
@@ -84,6 +88,11 @@ const place = async (page: Page, s: Shot): Promise<{ x: number; y: number; z: nu
   await page.waitForTimeout(340)
   return page.evaluate(() => window.__game!.state().player.pos)
 }
+
+// 촬영 시간은 **지점 수 × 렌더 시간**이지 품질 신호가 아니다. 기본 60초는
+// 지점이 26개가 되고 GLB 가 13 MB 를 넘긴 시점에 소프트웨어 래스터에서 터졌다
+// (21번째 지점에서 끊겼다). 프레임 시간을 지키는 건 `feel.spec` 이지 여기가 아니다.
+test.setTimeout(240_000)
 
 test('맵 순회 촬영', async ({ page }) => {
   const errors: string[] = []

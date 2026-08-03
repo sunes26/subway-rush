@@ -26,12 +26,13 @@ export const rollSeed = (seed: number) => {
   return { workingIds, cardBalance, ledHint, ledBrokenId }
 }
 
-export const initialState = (seed: number): GameState => {
+export const initialState = (seed: number, freeplay = false): GameState => {
   const roll = rollSeed(seed)
   return {
     phase: 'title',
     seed,
     timeLeftMs: TOTAL_TIME_MS,
+    freeplay,
     elapsedMs: 0,
     zone: 'Z1',
     player: {
@@ -105,7 +106,7 @@ export const reducer = (s: GameState, a: Action): GameState => {
       const gates = s.gates
       return {
         ...s,
-        timeLeftMs: s.timeLeftMs - a.dtMs,
+        timeLeftMs: s.freeplay ? s.timeLeftMs : s.timeLeftMs - a.dtMs,
         elapsedMs: s.elapsedMs + a.dtMs,
         lightMs: (s.lightMs + a.dtMs) % TRAFFIC_LIGHT.cycleMs,
         gates: {
@@ -191,7 +192,7 @@ export const reducer = (s: GameState, a: Action): GameState => {
 
     case 'TIME_PENALTY':
       return pushFx(
-        { ...s, timeLeftMs: s.timeLeftMs - a.ms },
+        { ...s, timeLeftMs: s.freeplay ? s.timeLeftMs : s.timeLeftMs - a.ms },
         { kind: 'timePenalty', text: `${a.label} −${(a.ms / 1000).toFixed(0)}s`, lifeMs: 1400, value: a.ms },
       )
 

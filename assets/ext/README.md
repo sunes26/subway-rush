@@ -6,6 +6,18 @@
 | 파일 | 출처 | 라이선스 | 반입 스크립트 |
 |---|---|---|---|
 | `korean_fire_extinguisher_01_1k.blend` | [Poly Haven — Korean Fire Extinguisher 01](https://polyhaven.com/a/korean_fire_extinguisher_01) (UM JOORIN) | **CC0** | `tools/import_extinguisher.py` |
+| `metal_trash_can_1k.blend` | [Poly Haven — Metal Trash Can](https://polyhaven.com/a/metal_trash_can) | **CC0** | `tools/import_props.py` |
+| `korean_public_payphone_01_1k.blend` | [Poly Haven — Korean Public Payphone 01](https://polyhaven.com/a/korean_public_payphone_01) | **CC0** | `tools/import_props.py` |
+| `potted_plant_01_1k.blend` | [Poly Haven — Potted Plant 01](https://polyhaven.com/a/potted_plant_01) | **CC0** | `tools/import_props.py` |
+| `potted_plant_02_1k.blend` | [Poly Haven — Potted Plant 02](https://polyhaven.com/a/potted_plant_02) | **CC0** | (예비 — 아직 안 씀) |
+| `WetFloorSign_01_1k.blend` | [Poly Haven — Wet Floor Sign 01](https://polyhaven.com/a/WetFloorSign_01) | **CC0** | `tools/import_props.py` |
+| `security_camera_01_1k.blend` | [Poly Haven — Security Camera 01](https://polyhaven.com/a/security_camera_01) | **CC0** | `tools/import_props.py` |
+| `water_manhole_cover_1k.blend` | [Poly Haven — Water Manhole Cover](https://polyhaven.com/a/water_manhole_cover) | **CC0** | `tools/import_props.py` |
+
+> `fire_alarm` 은 받지 않았다. 내려받은 1k `.blend` 가 크기는 맞는데
+> Blender 4.2 가 `not a blend file` 로 거부한다(zstd 헤더는 정상). 원본 쪽 문제로 보인다.
+> `import_props.py` 는 원본 하나가 안 읽혀도 나머지 반입을 계속한다 — 한 종 때문에
+> 여섯 종을 통째로 버릴 이유가 없다.
 
 ## 반입 규칙
 

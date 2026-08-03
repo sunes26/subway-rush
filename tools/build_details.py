@@ -16,6 +16,7 @@
 
 import bpy
 import mathutils
+from mathutils import Vector
 
 FONT = bpy.data.fonts["Malgun Gothic Bold"]
 
@@ -178,7 +179,11 @@ def z5_hanging_ads(a):
 # ────────────────────────────── Z2 대합실 ──────────────────────────────
 
 def _col_centers(name):
-    """병합된 기둥 메시에서 기둥별 중심을 뽑는다 (x 로 군집)."""
+    """병합된 기둥 메시에서 x·y 각각의 군집을 뽑는다.
+
+    ⚠ 돌려주는 두 목록의 **곱집합을 기둥 자리로 쓰지 말 것.** 기둥이 격자로
+    놓여 있지 않으면 없는 자리가 생긴다 (`_col_islands` 주석 참조).
+    """
     o = bpy.data.objects[name]
     pts = [o.matrix_world @ v.co for v in o.data.vertices]
     xs = sorted({round(p.x, 2) for p in pts})
@@ -196,31 +201,61 @@ def _col_centers(name):
     return cluster(xs), cluster(ys), (max(xs) - min(xs)), pts
 
 
+def _col_islands(name):
+    """기둥 메시를 연결 요소로 쪼개 **기둥 하나씩** (cx, cy, r) 을 돌려준다.
+
+    `_col_centers` 의 x 군집 × y 군집 **곱집합**을 쓰면 안 된다. Z2 는 기둥이
+    (12,10)(12,20)(24,10)(24,20)(26,16)(36,10)(36,20)(48,10)(48,20) 아홉 개인데,
+    x 24 와 26 이 0.9 m 밖에 안 떨어져 한 군집(중심 25)으로 뭉치고 y 는 10·16·20
+    세 군집이 되어 곱집합이 4×3 = 12 가 된다. 실제로 그렇게 굽혔더니 (12,16)
+    (25,10)(25,16)(25,20)(36,16)(48,16) 여섯 개가 **기둥 없는 허공**에 떠 있었고
+    (24,10)(24,20)(26,16) 세 기둥에는 띠가 없었다. 곱집합은 격자 배치일 때만 맞다.
+    """
+    import bmesh
+    o = bpy.data.objects[name]
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    bm.verts.ensure_lookup_table()
+    seen, out = set(), []
+    for v in bm.verts:
+        if v.index in seen:
+            continue
+        stack, comp = [v], []
+        seen.add(v.index)
+        while stack:
+            cur = stack.pop()
+            comp.append(cur)
+            for e in cur.link_edges:
+                ov = e.other_vert(cur)
+                if ov.index not in seen:
+                    seen.add(ov.index)
+                    stack.append(ov)
+        cs = [o.matrix_world @ vv.co for vv in comp]
+        x0, x1 = min(c.x for c in cs), max(c.x for c in cs)
+        y0, y1 = min(c.y for c in cs), max(c.y for c in cs)
+        out.append(((x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0) / 2))
+    bm.free()
+    return sorted(out)
+
+
 def z2_column_bands(a):
     """대합실 기둥 띠. Z5 와 같은 이유 — 통짜 원기둥은 스케일이 안 읽힌다."""
     import math
-    cxs, cys, _, pts = _col_centers("Z2_colr_shaft")
-    r = 0.42
-    # 반지름을 실제 메시에서 추정 (기둥 굵기가 존마다 다르다)
-    x0 = cxs[0]
-    near = [p for p in pts if abs(p.x - x0) < 1.0 and abs(p.y - cys[0]) < 1.0]
-    if near:
-        r = max(abs(p.x - x0) for p in near) + 0.006
     made = 0
-    for cx in cxs:
-        for cy in cys:
-            v, f = a.d.setdefault("LINE2_GRN", ([], []))
-            n0 = len(v)
-            seg = 12
-            for i in range(seg):
-                ang = 2 * math.pi * i / seg
-                v += [(cx + r * math.sin(ang), cy + r * math.cos(ang), -4.62),
-                      (cx + r * math.sin(ang), cy + r * math.cos(ang), -4.46)]
-            for i in range(seg):
-                b0 = n0 + i * 2
-                b1 = n0 + ((i + 1) % seg) * 2
-                f.append((b0, b0 + 1, b1 + 1, b1))
-            made += 1
+    for cx, cy, rad in _col_islands("Z2_colr_shaft"):
+        r = rad + 0.006                      # 기둥 표면에서 6 mm — z-파이팅 방지
+        v, f = a.d.setdefault("LINE2_GRN", ([], []))
+        n0 = len(v)
+        seg = 12
+        for i in range(seg):
+            ang = 2 * math.pi * i / seg
+            v += [(cx + r * math.sin(ang), cy + r * math.cos(ang), -4.62),
+                  (cx + r * math.sin(ang), cy + r * math.cos(ang), -4.46)]
+        for i in range(seg):
+            b0 = n0 + i * 2
+            b1 = n0 + ((i + 1) % seg) * 2
+            f.append((b0, b0 + 1, b1 + 1, b1))
+        made += 1
     return made
 
 
@@ -365,29 +400,65 @@ def z4_stair_balusters(a):
     레퍼런스의 계단도 난간동자가 촘촘히 서 있고, 그 리듬이 계단의 길이를 읽게 해 준다.
 
     난간이 계단참(x 107~108.6)에서 꺾이므로 기울기를 1차식으로 가정하면 안 된다 —
-    난간 메시의 **정점에서 직접** 높이를 읽는다.
+    난간 메시에 **레이를 쏴서** 그 x 의 밑면을 직접 읽는다.
+
+    ⚠ 정점을 x 로 양자화해 최솟값을 쓰면 안 된다. 난간은 **회전된 상자**라 정점이
+    8개뿐이고, 양자화 키도 그 8개의 x 값밖에 안 생긴다. `min(키, |키−x|)` 로 고르면
+    중간 구간 전체가 **끝점의 z** 를 쓰게 되어, 동자 절반이 승강장 바닥(z≈−19.9)에
+    꽂히고 절반이 계단 위 공중에 뜬다. 실제로 그렇게 나왔다.
     """
     made = 0
-    for name in ("Z4_st_rail_4.12", "Z4_st_rail_6.70", "Z4_st_rail_9.28"):
+    for name, base in (("Z4_st_rail_4.12", "Z4_st_stringL"),
+                       ("Z4_st_rail_6.70", None),
+                       ("Z4_st_rail_9.28", "Z4_st_stringR")):
         o = bpy.data.objects.get(name)
         if o is None:
             continue
         pts = [o.matrix_world @ v.co for v in o.data.vertices]
         cy = (min(p.y for p in pts) + max(p.y for p in pts)) / 2
-        # x 를 0.1 로 양자화해 그 구간의 난간 밑면(z 최소)을 찾는다
-        low = {}
-        for p in pts:
-            k = round(p.x, 1)
-            low[k] = min(low.get(k, 1e9), p.z)
-        xs = sorted(low)
-        x = xs[0] + 0.6
-        while x < xs[-1] - 0.4:
-            k = min(xs, key=lambda t: abs(t - x))
-            zt = low[k]
-            a.box("STAIR_RAIL", x - 0.028, cy - 0.028, zt - 0.86, x + 0.028, cy + 0.028, zt + 0.01)
-            made += 1
+        x0, x1 = min(p.x for p in pts), max(p.x for p in pts)
+        x = x0 + 0.6
+        while x < x1 - 0.4:
+            zt = _under(o, x, cy)
+            zb = _stand_z(x, cy, base)
+            if zt is not None and zb is not None and zt - zb > 0.15:
+                a.box("STAIR_RAIL", x - 0.028, cy - 0.028, zb,
+                      x + 0.028, cy + 0.028, zt + 0.01)
+                made += 1
             x += 1.25
     return made
+
+
+def _under(o, x, y):
+    """오브젝트 밑면 높이 — 아래에서 위로 쏴 첫 히트."""
+    inv = o.matrix_world.inverted()
+    org = inv @ Vector((x, y, -26.0))
+    tip = inv @ Vector((x, y, 4.0))
+    d = tip - org
+    ok, loc, _n, _i = o.ray_cast(org, d.normalized(), distance=d.length)
+    return (o.matrix_world @ loc).z if ok else None
+
+
+def _stand_z(x, y, base):
+    """동자가 딛는 면. 옆 난간은 계단 옆판(스트링어) 위, 중앙 난간은 계단면 위."""
+    names = ([base] if base else
+             [o.name for o in bpy.data.objects
+              if o.name.startswith(("Z4_st_tread", "Z4_st_nose", "Z4_st_riser"))])
+    best = None
+    for nm in names:
+        ob = bpy.data.objects.get(nm)
+        if ob is None:
+            continue
+        inv = ob.matrix_world.inverted()
+        org = inv @ Vector((x, y, 4.0))
+        tip = inv @ Vector((x, y, -26.0))
+        d = tip - org
+        ok, loc, _n, _i = ob.ray_cast(org, d.normalized(), distance=d.length)
+        if ok:
+            z = (ob.matrix_world @ loc).z
+            if best is None or z > best:
+                best = z
+    return best
 
 
 def z4_skirting(a):

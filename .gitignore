@@ -23,3 +23,10 @@ game/playwright-report/
 # python
 __pycache__/
 *.pyc
+render/hq/
+
+# 라이트맵 산출물 — `station.ts` 의 USE_LIGHTMAP 이 false 라 게임이 안 쓴다.
+# 필요해지면 `tools/hq_lightmap.py` 로 다시 굽는다 (3.3 MB 를 레포에 둘 이유가 없다).
+assets/lightmap_uv.npz*
+game/public/models/map/lightmap/
+game/dist/models/map/lightmap/

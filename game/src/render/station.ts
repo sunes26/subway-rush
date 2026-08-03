@@ -12,8 +12,8 @@
 
 import {
   Box3, type Camera, Color, DoubleSide, Group, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial,
-  PlaneGeometry, Quaternion, Vector3,
-  type BufferGeometry, type Material, type MeshStandardMaterial, type Object3D,
+  PlaneGeometry, Quaternion, RingGeometry, SRGBColorSpace, TextureLoader, Vector3,
+  type BufferGeometry, type Material, type MeshStandardMaterial, type Object3D, type Texture,
 } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js'
@@ -21,7 +21,15 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { PALETTE, TRAIN } from '../data/tuning'
 import { DOOR_XS, GATES } from '../data/world'
 import type { GameState } from '../state/types'
-import { toonMat } from './toon'
+import {
+  buildContactShadows, mayGround, shadowQuadFrom, type ShadowQuad,
+} from './contact-shadows'
+import {
+  buildDynamicGlow, buildGlowMesh, glowQuadsFrom, GLOW_EXCLUDE, GLOW_GAIN,
+  type DynamicGlow, type GlowQuad,
+} from './glow'
+import { splitIslands } from './islands'
+import { depthOffset, toonMat } from './toon'
 
 export const ZONE_FILES = [
   'Z1_GROUND', 'Z2_CONCOURSE', 'Z3_GATES', 'Z4_DESCENT', 'Z5_PLATFORM', 'Z5_TRAIN',
@@ -46,6 +54,28 @@ const isOverhead = (name: string, matName: string): boolean =>
 
 /** 존 그룹을 그릴 최대 거리(m). 안개 far(≈90m)와 맞춰 둔다. */
 const VISIBLE_RANGE = 95
+
+/**
+ * 라이트맵 사용 여부. **지금은 끈다.**
+ *
+ * 파이프라인은 완성돼 있다 — `tools/hq_lightmap.py` 가 존별 2048² 아틀라스를 굽고,
+ * `export_station.py` 가 사이드카(`assets/lightmap_uv.npz`)가 있으면 UV 를 실어 낸다.
+ * 아래 코드도 전부 살아 있어서 이 상수만 켜면 동작한다.
+ *
+ * 그런데 **켜면 화면이 나빠진다.** 세 번 구워 보고 내린 결론이다.
+ *
+ *  · 바닥값 0.35 로 구우면 라이트맵이 순수 가산이라 전부 밝아지기만 하고 명암이 안 생긴다
+ *  · 바닥값을 0.06 으로 낮추면 명암은 생기는데, 아틀라스 **커버리지가 26~42 % 뿐**이라
+ *    타일 줄눈·천장 티바 같은 얇은 트림이 텍셀 몇 개에 뭉개져 **검은 선**으로 굳는다
+ *  · 런타임 광원을 줄여 라이트맵이 주도하게 해도 위 두 증상이 그대로 남는다
+ *
+ * 진짜 원인은 **UV 밀도**다. 128 m 짜리 승강장을 2048² 한 장에 담으면서
+ * Smart UV Project 가 얇은 조각을 잘게 흩뿌린다. 다시 하려면 아틀라스를 존당 여러 장으로
+ * 나누거나, 트림류를 라이트맵에서 빼고 큰 면만 굽는 쪽이 맞다.
+ *
+ * 그때까지는 꺼 둔다. 켜지 않으면 GLB 에 UV 가 안 실려 용량도 22.6 → 13.2 MB 로 돌아간다.
+ */
+const USE_LIGHTMAP = false
 
 /** 병합하지 않고 개별로 남길 부품 (상태에 따라 움직이거나 색이 바뀐다) */
 const DYNAMIC_NAME =
@@ -94,13 +124,79 @@ const GLASS_MATERIALS = new Set([
  *
  * 호스트 표면과 몇 mm 차이라 카메라가 움직이면 깊이 판정이 뒤집혀 점멸한다.
  * 지오메트리도 6mm 띄웠지만(Blender), 원거리에서는 깊이 정밀도가 그걸 못 버틴다.
- * 폴리곤 오프셋으로 확실히 앞에 세운다.
+ * 폴리곤 오프셋으로 확실히 앞에 세운다 — 아래 `DEPTH_LAYER` 의 기본 층이 2다.
  */
 const DECAL_MATERIALS = new Set([
   'ST_TACTILE', 'ST_TACT_WARN', 'PF_TACTILE', 'SW_TACTILE', 'PF_YELLOW',
   'FLOOR_JOINT', 'LINE2_GRN', 'AD_PANEL', 'AD_PANEL2', 'AD_PANEL3',
   'RD_LINE', 'WEAR_LOW', 'WEAR_HIGH',
 ])
+
+/**
+ * 깊이 층 — **완전히 겹친 면의 앞뒤를 못박는다.** 클수록 앞, 음수면 뒤.
+ *
+ * ── 왜 필요한가 (전부 `tests/e2e/gap-diag.spec.ts` 로 실측한 값이다)
+ * "역 입구 계단 옆이 깜빡인다"·"전광판 앞이 깜빡인다"의 정체는 둘 다 같다 —
+ * 두 머티리얼의 면 사이 간격이 **0.00000 mm**, 즉 완전히 같은 평면이다.
+ *   · 계단실: 인도 슬래브 절단면 `SW_PAVER`(8.4 m²) ↔ 계단실 옆벽 `ST_WALL`(86.7 m²)
+ *     — 공유 평면 y=25.4 · y=30.6 (계단 구멍 양옆). "양 옆이 깜빡인다"가 이것이다.
+ *   · 전광판: `SIGN_DARK` ↔ `SIGN_PLATE`, `AD_PANEL` ↔ `AD_PANEL2` — 사인 케이스와
+ *     그 안의 판, 광고 바탕과 그 위 그래픽이 같은 8 mm 슬래브를 공유한다.
+ *
+ * ── 왜 near/far 조정이 답이 아닌가
+ * near 0.08→1.0, far 260→150 을 전부 재 봤다. 겹침이 **정확히 0** 이라 깊이 정밀도를
+ * 아무리 올려도 안 갈린다. 갈리는 건 삼각 분할이 달라 생기는 ULP 잡음뿐이고,
+ * 그래서 픽셀마다 얼룩이 지고 카메라가 움직이면 그 얼룩이 뒤집힌다.
+ *
+ * ── 진짜 원인은 모델링이다
+ * 같은 자리에 면이 두 장 있는 것 자체가 결함이다(Blender 쪽 `tools/`).
+ * 여기서 하는 건 **렌더러가 그 상황에서도 흔들리지 않게** 앞뒤를 고정하는 일이다.
+ * 지오메트리가 고쳐지면 이 표는 그대로 둬도 해가 없다 — 오프셋은 1~5 단위뿐이다.
+ *
+ * 적지 않은 머티리얼은 0(구조체), 단 `DECAL_MATERIALS` 는 기본 2다.
+ */
+const DEPTH_LAYER: Readonly<Record<string, number>> = {
+  // 인도 슬래브는 계단실 안에서 **벽 뒤로** 물러난다. 실내에서 보이는 면은 벽이 맞다.
+  SW_PAVER: -1,
+  // 구조체에 붙는 마감 — 천장 티바·덕트·기둥 걸레받이·벽 트림
+  CEIL_RIB: 1, DUCT: 1, COL_SKIRT: 1, ST_TRIM: 1, PF_DARKWALL: 1,
+  STAIR_TREAD: 1, HQ_PARAPET: 1, ESC_SKIRT: 1,
+  // 바닥 마모 자국은 점자블록·줄눈(2) 밑에 깔린다
+  WEAR_LOW: 1, WEAR_HIGH: 1,
+  STAIR_NOSE: 2, HQ_PARAPET_CAP: 2, ENTR_STEEL: 2,
+  // 점자블록은 두 종류가 맞닿는다 — 경고(점형)를 유도(선형) 위에 둔다
+  ST_TACT_WARN: 3,
+  /**
+   * 사인 적층: 판 → 어두운 문안 블록 → 광고 바탕 → 그래픽.
+   *
+   * `SIGN_DARK` 를 판보다 **뒤**(케이스로 보고 1)에 뒀다가 되돌렸다. 전광판 포스터를
+   * 렌더해 보니 안쪽 문안 막대가 통째로 사라졌다 — `SIGN_DARK` 는 케이스만이 아니라
+   * **밝은 판 위에 얹히는 어두운 문안 블록**으로도 쓰인다. 뒤로 밀면 글이 안 읽힌다.
+   * "해석이 갈리면 두 안을 렌더해 본다"가 여기서 값을 했다.
+   */
+  SIGN_PLATE: 2, SIGN_INFO: 2, MAP_FACE: 2, AD_PANEL: 2,
+  SIGN_DARK: 3, SIGN_EXIT: 3, AD_PANEL2: 4, AD_PANEL3: 5,
+  // 노선 띠는 벽에도 사인 판에도 얹힌다 — 실측(승강장 1.5 m 앞)에서 `SIGN_PLATE` 와
+  // 정확히 같은 평면이었다. 사인 적층 전체보다 앞에 둔다.
+  LINE2_GRN: 6, LINE_BADGE_2: 6, LINE_BADGE_A: 6, LINE_BADGE_K: 6,
+  // 글자는 언제나 맨 앞이다. 이 게임에서 사인 가독성은 룩보다 우선이다.
+  //
+  // ⚠ 이 값을 사인 판(`SIGN_DARK` 3)보다 크게 벌리지 말 것. 매달림 사인은 판 두께가
+  //    9 cm 인데 양면 글자가 각각 판 밖 1 cm 에 있다. 층 간격을 키우면 **반대편 글자가
+  //    판을 뚫고 비쳐** 두 문안이 겹쳐 보인다 — 바닥 사인을 고치려고 9 로 올렸다가
+  //    "화장실" 위에 뒤집힌 "승강장"이 겹쳐 나왔다. 바닥 사인은 층이 아니라
+  //    `hq_fixups.floor_sign_border()` 에서 테두리를 걷어내는 쪽으로 푼다.
+  TXT_DARK: 7, EXIT_TXT: 7,
+  // ⚠ `TXT_WHITE` 만 3(사인 판과 같은 층)이다. 7 로 두면 오프셋이 **판 두께를 이겨**
+  //    매달림 사인의 반대편 문안이 앞면으로 비친다 — 판을 0.14 m 로 키워도 뚫렸다
+  //    (실측: 픽은 판을 맨 앞으로 주는데 화면에는 뒤쪽 글자가 그려진다).
+  //    글자는 판 표면에서 12 mm 앞에 **실제로** 놓여 있으므로 같은 층이면 지오메트리가
+  //    순서를 정하고, 자기 면 글자는 그대로 읽히면서 반대편은 판에 가려진다.
+  TXT_WHITE: 3,
+}
+
+const depthLayerOf = (name: string): number =>
+  DEPTH_LAYER[name] ?? (DECAL_MATERIALS.has(name) ? 2 : 0)
 
 /**
  * 스스로 빛나는 면 — 조명기구와 백라이트 광고판.
@@ -113,6 +209,9 @@ const DECAL_MATERIALS = new Set([
 const SELF_LIT_MATERIALS = new Set([
   'FIXTURE', 'AD_PANEL', 'AD_PANEL2', 'AD_PANEL3', 'VM_LIGHT', 'CHG_SCR', 'ESC_COMB',
   'LED_AMBER', 'SH_GREEN', 'SH_RED',
+  // 바닥 유도 사인 판. Blender 에서 발광 2.5 인데 여기 없어서 툰으로 칠해졌고,
+  // 짙은 남색(0.02,0.12,0.35)이 어두운 단계로 떨어져 **바닥에 검은 구멍**처럼 보였다.
+  'SIGN_INFO',
   // 사인 글자. 발광 띠 위에 툰 셰이딩된 흰 글자를 얹으면 회색이 되어 안 읽힌다.
   // 안내 사인은 읽히는 게 존재 이유다.
   'TXT_WHITE',
@@ -129,6 +228,20 @@ const MIRROR_MATERIAL = 'WC_MIRROR'
 /** 이 거리 밖에서는 반사를 끈다. 화장실 안에서만 보이면 된다. */
 const MIRROR_RANGE = 14
 
+/**
+ * 접촉 그림자를 만들지 **않을** 오브젝트.
+ *
+ * 그림자는 월드 좌표로 굽는다 — 움직이는 것에 붙이면 물체가 떠난 자리에 그림자만 남는다.
+ * 열차(Z5_TRAIN 존 전체)는 아예 제외하고, 여기서는 존 안에서 움직이는 것들을 잡는다.
+ *  · `Z*_ITM*` 줍는 아이템 (사라진다)
+ *  · `Z4_elev_car` 엘리베이터 칸 (오르내린다)
+ */
+const NO_SHADOW_NAME = /(^Z\d_ITM|elev_car)/i
+
+/** 접촉 그림자를 만들지 않을 머티리얼 — 유리·발광면·바닥 데칼은 접지 부품이 아니다 */
+const noShadowMaterial = (name: string): boolean =>
+  GLASS_MATERIALS.has(name) || SELF_LIT_MATERIALS.has(name) || DECAL_MATERIALS.has(name)
+
 const baseColor = (m: Material | Material[]): number => {
   const one = (Array.isArray(m) ? m[0] : m) as MeshStandardMaterial | undefined
   const tint = one?.name ? MATERIAL_TINT[one.name] : undefined
@@ -143,6 +256,9 @@ type Bucket = { geos: BufferGeometry[]; color: number }
 /** 씬 하나를 훑어 정적 메시는 머티리얼별로 모으고, 동적 메시는 그대로 넘긴다. */
 const collect = (
   scene: Object3D,
+  glow: GlowQuad[],
+  glowOverhead: GlowQuad[],
+  shadows: ShadowQuad[] | null,
 ): { buckets: Map<string, Bucket>; overhead: Map<string, Bucket>; dynamics: Mesh[] } => {
   const buckets = new Map<string, Bucket>()
   const overhead = new Map<string, Bucket>()
@@ -159,10 +275,34 @@ const collect = (
     const geo = m.geometry.clone()
     geo.applyMatrix4(m.matrixWorld)
     // 병합하려면 애트리뷰트 구성이 같아야 한다. UV는 안 쓰므로 버린다.
-    geo.deleteAttribute('uv')
+    // (`USE_LIGHTMAP` 이 켜지면 `uv` 는 남긴다 — 라이트맵 좌표가 거기 실려 온다.)
+    if (!USE_LIGHTMAP) geo.deleteAttribute('uv')
     geo.deleteAttribute('uv1')
     geo.deleteAttribute('tangent')
-    const into = isOverhead(m.name, matName) ? overhead : buckets
+    const isUp = isOverhead(m.name, matName)
+    const into = isUp ? overhead : buckets
+
+    /**
+     * 글로우 판은 **병합 전에** 뜬다. 병합 후에는 `merged:AD_PANEL` 하나가 존 전체라
+     * 부품 위치를 되찾을 방법이 없다. 소스 메시도 이미 조인돼 있으므로
+     * (Z5 AD_PANEL 한 메시가 97~127 m) 연결 요소로 한 번 더 쪼개야 부품이 나온다.
+     */
+    if (SELF_LIT_MATERIALS.has(matName) && !GLOW_EXCLUDE.has(matName)) {
+      glowQuadsFrom(
+        splitIslands(geo), baseColor(m.material), GLOW_GAIN[matName] ?? 1,
+        isUp ? glowOverhead : glow,
+      )
+    }
+
+    // 접촉 그림자도 같은 이유로 병합 전, 섬 단위로 뜬다.
+    // 메시 bbox 로 미리 걸러 건축 본체에 union-find 를 돌리지 않는다.
+    if (shadows && !isUp && !noShadowMaterial(matName) && !NO_SHADOW_NAME.test(m.name)) {
+      geo.computeBoundingBox()
+      if (geo.boundingBox && mayGround(geo.boundingBox)) {
+        for (const island of splitIslands(geo, 30_000)) shadowQuadFrom(island, shadows)
+      }
+    }
+
     const key = matName || 'default'
     const b = into.get(key)
     if (b) b.geos.push(geo)
@@ -204,7 +344,30 @@ const makeMirror = (geo: BufferGeometry, color: number): Reflector | null => {
   return mirror
 }
 
-const mergeBuckets = (buckets: Map<string, Bucket>, into: Group): void => {
+/**
+ * 존 라이트맵 아틀라스를 읽는다. 없으면 `null` — 라이트맵 없이도 그대로 돌아간다.
+ *
+ * `flipY = false` 가 필수다. glTF 의 UV 원점은 좌상단이고 three 의 기본 텍스처는
+ * 상하를 뒤집는다 — 놓치면 조명 웅덩이가 위아래 반대로 찍힌다.
+ * 베이크가 선형값을 sRGB 로 인코딩해 저장하므로 three 가 디코딩하도록 `SRGBColorSpace`.
+ */
+const loadLightmap = (
+  loader: TextureLoader, baseUrl: string, zone: string,
+): Promise<Texture | null> =>
+  loader
+    .loadAsync(`${baseUrl}models/map/lightmap/LM_${zone}.webp`)
+    .then((t) => {
+      t.flipY = false
+      t.colorSpace = SRGBColorSpace
+      t.channel = 0
+      t.needsUpdate = true
+      return t
+    })
+    .catch(() => null)
+
+const mergeBuckets = (
+  buckets: Map<string, Bucket>, into: Group, lightMap: Texture | null = null,
+): void => {
   for (const [name, b] of buckets) {
     const merged = b.geos.length === 1 ? b.geos[0] : mergeGeometries(b.geos, false)
     if (!merged) continue
@@ -217,16 +380,25 @@ const mergeBuckets = (buckets: Map<string, Bucket>, into: Group): void => {
       }
     }
     const glass = GLASS_MATERIALS.has(name)
-    const decal = DECAL_MATERIALS.has(name)
+    const layer = depthLayerOf(name)
+    /**
+     * ⚠ 자체발광과 유리에는 라이트맵을 **주지 않는다.**
+     *
+     * `MeshBasicMaterial` 은 라이트맵을 곱하는 게 아니라 상수 1.0 을 **대체**한다.
+     * 넘기면 사인·광고판이 구운 그림자만큼 어두워진다. 안내 사인이 전부 자체발광이라
+     * 이 한 줄로 "구석이 어두워져 사인이 안 읽힌다"는 위험이 구조적으로 사라진다.
+     * 유리는 뒤가 비쳐야 하므로 정적 조명이 의미가 없다.
+     */
+    const lm = glass || SELF_LIT_MATERIALS.has(name) ? null : lightMap
     const mat = glass
       ? toonMat(b.color, { transparent: true, opacity: 0.34 })
       : SELF_LIT_MATERIALS.has(name)
         ? new MeshBasicMaterial({
             color: new Color(b.color),
             toneMapped: false,
-            ...(decal ? { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 } : {}),
+            ...depthOffset(layer),
           })
-        : toonMat(b.color, { decal })
+        : toonMat(b.color, { depthLayer: layer, lightMap: lm })
     const mesh = new Mesh(merged, mat)
     // 유리는 나중에 그린다 — 뒤에 있는 열차·통로가 먼저 깊이버퍼에 들어가야 비쳐 보인다
     if (glass) mesh.renderOrder = 2
@@ -238,8 +410,17 @@ const mergeBuckets = (buckets: Map<string, Bucket>, into: Group): void => {
 
 // ─────────────────────────── 동적 부품 ───────────────────────────
 
-type Flap = { gate: number; node: Object3D; home: number; dir: number }
-type SignFace = { gate: number; mat: MeshBasicMaterial }
+/**
+ * 개찰기 플랩 문 한 장.
+ *
+ * `openAngle` 은 **경첩 기준** 열린 각(rad). 로더가 월드 트랜스폼을 지오메트리에 굽기
+ * 때문에(`bakeGeo`) Blender 에서 원점을 경첩에 두어도 익스포트 뒤에 사라진다 —
+ * 그래서 여기서 다시 경첩으로 원점을 옮기고 노드 위치로 되돌린다.
+ */
+type Flap = { gate: number; node: Object3D; openAngle: number }
+/** 동적 글로우 메시 안에서 이 부품이 차지하는 판 구간 [시작, 개수] */
+type GlowRange = readonly [number, number]
+type SignFace = { gate: number; mat: MeshBasicMaterial; glow: GlowRange }
 /** 같은 진행률로 함께 움직이는 문 묶음 — 좌/우 각각 한 덩어리로 병합한다 */
 type DoorBank = { left: Mesh | null; right: Mesh | null }
 
@@ -258,6 +439,9 @@ const emissiveOf = (o: Object3D, color: number): MeshBasicMaterial => {
   return mat
 }
 
+/** 글로우 색 계산용 스크래치 — 프레임마다 Color 를 새로 만들지 않는다 */
+const tintTmp = new Color()
+
 const worldX = (o: Object3D): number => {
   o.updateWorldMatrix(true, false)
   return new Vector3().setFromMatrixPosition(o.matrixWorld).x
@@ -266,6 +450,31 @@ const worldX = (o: Object3D): number => {
 const worldZ = (o: Object3D): number => {
   o.updateWorldMatrix(true, false)
   return new Vector3().setFromMatrixPosition(o.matrixWorld).z
+}
+
+/**
+ * 플랩 문의 원점을 **경첩**으로 옮기고 열린 각을 돌려준다.
+ *
+ * 문은 닫힌 자세로 들어온다 — 통로를 가로질러(월드 z 로 길게) 서 있고 진행 방향(x)으로 얇다.
+ * 열리면 경첩을 축으로 90° 돌아 하우징에 나란히 눕는다.
+ *
+ * 경첩은 **게이트 중앙에서 먼 쪽** 세로 모서리다. 이름의 N/S 로 정하지 않는다 —
+ * 좌표계 규약(게임 y → three −z)이 한 번이라도 바뀌면 조용히 뒤집히고,
+ * 그러면 문이 하우징 **안쪽**으로 열려 눈앞에서 사라진다.
+ */
+const hingeAt = (node: Mesh, gateId: number): number => {
+  const gate = GATES.find((g) => g.id === gateId)
+  node.geometry.computeBoundingBox()
+  const bb = node.geometry.boundingBox
+  if (!gate || !bb) return 0
+  const centerZ = -gate.y
+  const hz = Math.abs(bb.max.z - centerZ) > Math.abs(bb.min.z - centerZ) ? bb.max.z : bb.min.z
+  const hx = (bb.min.x + bb.max.x) / 2
+  node.geometry.translate(-hx, 0, -hz)
+  node.position.set(hx, 0, hz)
+  // 경첩을 원점으로 옮긴 뒤 문이 뻗은 방향(±z)이 회전 부호를 정한다.
+  // +z 로 뻗으면 +90°, −z 면 −90° 에서 문이 +x(진행 방향)에 눕는다.
+  return (centerZ - hz >= 0 ? 1 : -1) * (Math.PI / 2)
 }
 
 /** 가장 가까운 가동문 중심 x. 패널이 어느 쪽으로 열려야 하는지 정한다. */
@@ -277,23 +486,33 @@ export type Station = Readonly<{
   sync(s: GameState, dtSec: number, greenLight: boolean, lightRemainSec: number): void
   /** 천장·지붕 표시 여부. 1인칭이면 true, 쿼터뷰면 false */
   setOverhead(on: boolean): void
-  stats: Readonly<{ merged: number; dynamic: number }>
+  stats: Readonly<{ merged: number; dynamic: number; lightmaps: number }>
 }>
 
 export const loadStation = async (
   baseUrl: string,
-  camera: Camera,
+  // 게이트 기호를 카메라로 빌보드하던 시절의 인자. 기호가 고정 방향이 되면서 안 쓰지만
+  // 호출부(main.ts)의 시그니처라 남겨 둔다.
+  _camera: Camera,
   onProgress?: (done: number, total: number) => void,
 ): Promise<Station> => {
   const loader = new GLTFLoader()
+  // 라이트맵은 GLB 와 **같이** 받는다. 순차로 받으면 존 6개에 왕복이 6번 더 붙는다.
+  const texLoader = new TextureLoader()
   let done = 0
   const scenes = await Promise.all(
     ZONE_FILES.map(async (z) => {
-      const g = await loader.loadAsync(`${baseUrl}models/map/${z}.glb`)
+      const [g, lm] = await Promise.all([
+        loader.loadAsync(`${baseUrl}models/map/${z}.glb`),
+        loadLightmap(texLoader, baseUrl, z),
+      ])
       onProgress?.(++done, ZONE_FILES.length)
-      return [z, g.scene] as const
+      return [z, g.scene, lm] as const
     }),
   )
+  // 라이트맵이 몇 존이나 붙었는지 남긴다. 사이드카 없이 익스포트하면 0 이 되는데,
+  // 그때는 조용히 라이트맵 없는 예전 룩으로 떨어진다 — 티가 안 나므로 수를 찍어 둔다.
+  const lightmapCount = scenes.filter((s) => s[2] !== null).length
 
   const root = new Group()
   root.name = 'station'
@@ -315,7 +534,27 @@ export const loadStation = async (
   const lamps: SignFace[] = []
   let tlRed: MeshBasicMaterial | null = null
   let tlGreen: MeshBasicMaterial | null = null
+  let tlRedGlow: GlowRange = [0, 0]
+  let tlGreenGlow: GlowRange = [0, 0]
   const tlCount: Object3D[] = []
+
+  /** 글로우 판 목록 — 맵 전체를 한 메시로 굽는다(드로우 콜 3개). glow.ts 주석 참고. */
+  const glowQuads: GlowQuad[] = []
+  const glowOverheadQuads: GlowQuad[] = []
+  const dynGlowQuads: GlowQuad[] = []
+  /** 접촉 그림자 판 — 맵 전체를 한 메시로(드로우 콜 1개). contact-shadows.ts 주석 참고. */
+  const shadowQuads: ShadowQuad[] = []
+
+  /** 상태에 따라 색이 바뀌는 발광 부품의 글로우를 등록하고 그 구간을 돌려준다. */
+  const addDynGlow = (node: Mesh, colorHex: number, gain: number): GlowRange => {
+    const start = dynGlowQuads.length
+    const pos = node.geometry.getAttribute('position')
+    if (!pos) return [start, 0]
+    glowQuadsFrom(
+      [new Box3().setFromBufferAttribute(pos as never)], colorHex, gain, dynGlowQuads,
+    )
+    return [start, dynGlowQuads.length - start]
+  }
   /** 사인 면의 월드 박스 + 정면 법선. 사인이 아래로 기울어져 있어서
    *  단순히 −x로 밀면 프레임 안에 파묻힌다 — 실제 법선을 따라 띄워야 한다. */
   const signBoxes = new Map<number, Box3>()
@@ -335,16 +574,18 @@ export const loadStation = async (
     return geo
   }
 
-  for (const [zone, scene] of scenes) {
+  for (const [zone, scene, lightMap] of scenes) {
     const isTrain = zone === 'Z5_TRAIN'
     const group = isTrain ? trainGroup : new Group()
     group.name = `station:${zone}`
-    const { buckets, overhead, dynamics } = collect(scene)
+    // 열차는 매 프레임 x 로 움직인다 — 월드 좌표 그림자를 붙이면 떠난 자리에 그림자만 남는다
+    const { buckets, overhead, dynamics } =
+      collect(scene, glowQuads, glowOverheadQuads, isTrain ? null : shadowQuads)
     const before = group.children.length
-    mergeBuckets(buckets, group)
+    mergeBuckets(buckets, group, lightMap)
     const oGroup = new Group()
     oGroup.name = `overhead:${zone}`
-    mergeBuckets(overhead, oGroup)
+    mergeBuckets(overhead, oGroup, lightMap)
     if (oGroup.children.length > 0) { group.add(oGroup); overheadGroups.push(oGroup) }
     mergedCount += group.children.length - before + oGroup.children.length
 
@@ -368,25 +609,41 @@ export const loadStation = async (
 
       const flapM = /^Z3_GATE_G(\d)_([NS])_flap$/.exec(m.name)
       if (flapM) {
-        node.material = toonMat(0xd7dce1)
-        flaps.push({ gate: Number(flapM[1]), node, home: node.position.z, dir: flapM[2] === 'N' ? -1 : 1 })
+        // 하우징과 같은 회색이면 닫힌 문이 **벽으로도 문으로도 안 읽힌다.**
+        // 실물 플랩은 반투명 아크릴이라 금속 본체와 확실히 구분된다 — 그 대비만 가져온다.
+        node.material = toonMat(0xbfe4ee)
+        const gate = Number(flapM[1])
+        flaps.push({ gate, node, openAngle: hingeAt(node, gate) })
         continue
       }
       const signM = /^Z3_sign_G(\d)_face$/.exec(m.name)
       if (signM) {
-        signs.push({ gate: Number(signM[1]), mat: emissiveOf(node, 0x00a84d) })
+        signs.push({
+          gate: Number(signM[1]), mat: emissiveOf(node, 0x00a84d),
+          // 게이트 사인은 멀리서 "어느 게이트가 살아 있나"를 읽는 유일한 근거다.
+          // 백라이트가 번져 보여야 통로 끝에서도 초록/빨강이 먼저 눈에 든다.
+          glow: addDynGlow(node, 0x00a84d, 1.35),
+        })
         signBoxes.set(Number(signM[1]), new Box3().setFromObject(node))
         continue
       }
       // 바닥 램프는 **이름으로만** 잡는다. LED_* 머티리얼로 잡으면 게이트 상판까지 물든다
       const lampM = /^Z3_GATE_G(\d)_floorlamp$/.exec(m.name)
       if (lampM) {
-        lamps.push({ gate: Number(lampM[1]), mat: emissiveOf(node, 0x00a84d) })
+        lamps.push({
+          gate: Number(lampM[1]), mat: emissiveOf(node, 0x00a84d),
+          // 바닥 램프는 발밑을 물들이는 게 실물과 같다 — 개찰구 앞에서 진입선을 읽게 해 준다
+          glow: addDynGlow(node, 0x00a84d, 1.6),
+        })
         continue
       }
-      if (matName === 'TL_RED') tlRed = emissiveOf(node, 0xe5484d)
-      else if (matName === 'TL_GRN') tlGreen = emissiveOf(node, 0x00a84d)
-      else if (matName === 'TL_COUNT') tlCount.push(node)
+      if (matName === 'TL_RED') {
+        tlRed = emissiveOf(node, 0xe5484d)
+        tlRedGlow = addDynGlow(node, 0xe5484d, 1.5)
+      } else if (matName === 'TL_GRN') {
+        tlGreen = emissiveOf(node, 0x00a84d)
+        tlGreenGlow = addDynGlow(node, 0x00a84d, 1.5)
+      } else if (matName === 'TL_COUNT') tlCount.push(node)
     }
 
     if (!isTrain) {
@@ -433,14 +690,18 @@ export const loadStation = async (
   // 배경은 상태색(초록/적색), 기호는 흰색. 실제 개찰구 사인과 같은 대비 구조다.
   // 기호를 상태색으로 칠하면 배경에 묻혀 형태가 안 읽힌다 — 색이 아니라 **형태**가 정보다.
   const SYMBOL = 0xf7f7f4
-  const ARROW_BARS = [[-0.17, 0.54], [0, 0.36], [0.17, 0.17]] as const
+  // ○ = 통행 가능 / ✕ = 폐쇄. 한국 지하철 개찰구 상부 표시의 실제 규약이다.
+  // 처음엔 ▲(막대 3개)였는데 화살표는 "저쪽으로 가라"는 뜻이라 의미가 어긋난다 —
+  // 이 표시가 말하는 것은 방향이 아니라 **이 게이트를 지나갈 수 있는가**다.
   const CROSS_BARS = [Math.PI / 4, -Math.PI / 4] as const
   const flatMat = (c: number): MeshBasicMaterial =>
     new MeshBasicMaterial({ color: new Color(c), toneMapped: false, side: DoubleSide })
 
   const gateOrder = GATES.filter((g) => signBoxes.has(g.id))
-  const arrows = new InstancedMesh(new PlaneGeometry(1, 0.12), flatMat(SYMBOL),
-    Math.max(1, gateOrder.length * ARROW_BARS.length))
+  // 링은 막대로 못 만든다. 바깥지름 0.42 는 사인 판 높이(0.44 m)에 맞춘 값이고,
+  // ✕(막대 0.62 를 ±45°로 겹치면 사각 0.44)와 화면상 크기가 같아진다.
+  const arrows = new InstancedMesh(new RingGeometry(0.12, 0.21, 32), flatMat(SYMBOL),
+    Math.max(1, gateOrder.length))
   const crosses = new InstancedMesh(new PlaneGeometry(0.62, 0.12), flatMat(SYMBOL),
     Math.max(1, gateOrder.length * CROSS_BARS.length))
   arrows.frustumCulled = false
@@ -451,47 +712,43 @@ export const loadStation = async (
 
   const symMat = new Matrix4()
   const HIDE = new Vector3(0, 0, 0)
-  const upTmp = new Vector3()
-  /** 회전된 평면의 로컬 +Y가 월드에서 향하는 방향 — 막대를 세로로 쌓을 때 쓴다 */
-  const upOf = (q: Quaternion): Vector3 => upTmp.set(0, 1, 0).applyQuaternion(q)
-
-  const center = new Vector3()
-  const camDir = new Vector3()
-  const anchor = new Vector3()
-  const billboard = new Matrix4()
-  const WORLD_UP = new Vector3(0, 1, 0)
+  const ONE = new Vector3(1, 1, 1)
 
   /**
-   * 기호는 **매 프레임 카메라 쪽으로 빌보드**한다.
+   * 기호는 **고정 방향**이다 — 게이트 열을 따라 들어오는 쪽(서쪽)을 본다.
    *
-   * 사인 면의 법선을 따라 띄우는 방식은 실패했다 — 사인이 기울어져 있고 프레임이
-   * 면보다 앞으로 나와 있어서, 어느 고정 오프셋을 줘도 각도에 따라 파묻힌다.
-   * 카메라 방향으로 띄우면 각도와 무관하게 항상 앞이다. 깊이 테스트는 그대로 두므로
-   * 벽 너머로 비쳐 보이지도 않는다.
+   * 예전에는 매 프레임 카메라로 빌보드했다. 시선을 돌릴 때마다 ○·✕ 가 같이 돌아
+   * 역에 붙은 표지가 아니라 화면에 뜬 UI 로 보였다. 실제 개찰구 상부 표시는 고정이다.
+   *
+   * 빌보드를 쓴 이유였던 "사인이 기울어져 있어 고정 오프셋으로는 파묻힌다"는
+   * 지금 지오메트리에서는 성립하지 않는다. 실측하면 `Z3_sign_G*_face` 는
+   * 법선이 정확히 ±x 인 평판(x 59.905~59.935 · 폭 1.16 · 높이 0.44)이고,
+   * 케이스(`SIGN_DARK` x 59.94~60.06)는 **면보다 뒤**에 있어 서쪽은 비어 있다.
+   * 그래서 면의 서쪽 끝에서 6 cm 만 띄우면 무엇에도 안 파묻힌다.
+   *
+   * 회전과 자리는 사인이 안 움직이므로 **로드 때 한 번** 만들어 둔다 —
+   * 프레임마다 Quaternion 을 새로 만들 이유가 없었다.
    */
+  const SYMBOL_LIFT = 0.06
+  const FACE_WEST = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), -Math.PI / 2)
+  // ✕ 막대는 사인 평면 **안에서** 기운다 — 판을 세운 뒤의 로컬 z 축이 회전축이다
+  const CROSS_Q = CROSS_BARS.map((rot) => FACE_WEST.clone()
+    .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), rot)))
+  const symbolAt = new Map<number, Vector3>()
+  for (const g of gateOrder) {
+    const box = signBoxes.get(g.id) as Box3
+    const c = box.getCenter(new Vector3())
+    symbolAt.set(g.id, new Vector3(box.min.x - SYMBOL_LIFT, c.y, c.z))
+  }
+
   const syncSymbols = (workingIds: readonly number[]): void => {
     gateOrder.forEach((g, i) => {
-      const box = signBoxes.get(g.id) as Box3
-      box.getCenter(center)
-      camDir.copy(camera.position).sub(center).normalize()
-      anchor.copy(center).addScaledVector(camDir, 0.22)
-      const a = anchor
-      // setFromUnitVectors는 롤이 임의라 기호가 기울어진다.
-      // 월드 업을 고정한 lookAt으로 만들어야 ▲가 똑바로 선다.
-      billboard.lookAt(anchor, camera.position, WORLD_UP)
-      const face = new Quaternion().setFromRotationMatrix(billboard)
+      const a = symbolAt.get(g.id) as Vector3
       const ok = workingIds.includes(g.id)
-      ARROW_BARS.forEach(([dy, w], k) => {
-        symMat.compose(
-          a.clone().addScaledVector(upOf(face), dy), face,
-          ok ? new Vector3(w, 1, 1) : HIDE,
-        )
-        arrows.setMatrixAt(i * ARROW_BARS.length + k, symMat)
-      })
-      CROSS_BARS.forEach((rot, k) => {
-        const q = face.clone().multiply(
-          new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), rot))
-        symMat.compose(a, q, ok ? HIDE : new Vector3(1, 1, 1))
+      symMat.compose(a, FACE_WEST, ok ? ONE : HIDE)
+      arrows.setMatrixAt(i, symMat)
+      CROSS_Q.forEach((q, k) => {
+        symMat.compose(a, q, ok ? HIDE : ONE)
         crosses.setMatrixAt(i * CROSS_BARS.length + k, symMat)
       })
     })
@@ -499,17 +756,40 @@ export const loadStation = async (
     crosses.instanceMatrix.needsUpdate = true
   }
 
+  // ── 발광면 글로우. 존별로 나누지 않고 맵 전체를 3덩어리로 굽는다 —
+  //    Z2 지점이 이미 215콜(예산 230)이라 "보이는 존 수 × 콜"을 감당할 여유가 없다.
+  //    거리 페이드(glow.ts uFadeFar 78 m)가 존 컬링(95 m) 안쪽에서 컬링 역할을 대신한다.
+  const glowStatic = buildGlowMesh(glowQuads, 'static')
+  if (glowStatic) root.add(glowStatic)
+  const glowOverhead = buildGlowMesh(glowOverheadQuads, 'overhead')
+  if (glowOverhead) root.add(glowOverhead)
+  const glowDynamic: DynamicGlow | null = buildDynamicGlow(dynGlowQuads, 'dynamic')
+  if (glowDynamic) root.add(glowDynamic.mesh)
+
+  // ── 접촉 그림자 (AO 대용). 역시 맵 전체를 한 덩어리로 — 드로우 콜 +1.
+  const contactShadows = buildContactShadows(shadowQuads)
+  if (contactShadows) root.add(contactShadows)
+
   const green = new Color(PALETTE.line2)
   const red = new Color(PALETTE.danger)
   const dark = new Color(0x1a1d22)
+  /** 글로우 색 갱신은 상태가 바뀔 때만 — 매 프레임 어트리뷰트를 다시 올릴 이유가 없다 */
+  let glowKey = ''
+  const paintGlow = (range: GlowRange, c: Color, gain: number): void => {
+    if (!glowDynamic || range[1] === 0) return
+    tintTmp.copy(c).multiplyScalar(gain)
+    for (let i = 0; i < range[1]; i++) glowDynamic.setColor(range[0] + i, tintTmp)
+  }
 
   return {
     root,
     setOverhead(on) {
       overheadOn = on
       for (const g of overheadGroups) g.visible = on
+      // 천장을 끄는 쿼터뷰에서 천장 조명 글로우만 공중에 남으면 안 된다
+      if (glowOverhead) glowOverhead.visible = on
     },
-    stats: { merged: mergedCount, dynamic: dynamicCount },
+    stats: { merged: mergedCount, dynamic: dynamicCount, lightmaps: lightmapCount },
     sync(s, dtSec, greenLight, lightRemainSec) {
       // ── 존 가시성: 안개 far 밖의 존은 그리지 않는다
       const p = new Vector3(s.player.pos.x, s.player.pos.z, -s.player.pos.y)
@@ -523,11 +803,29 @@ export const loadStation = async (
       for (const lp of lamps) lp.mat.color.copy(s.gates.workingIds.includes(lp.gate) ? green : red)
       syncSymbols(s.gates.workingIds)
 
-      // ── 게이트 플랩
+      // ── 발광 글로우 색 (상태가 바뀐 프레임에만 올린다)
+      const key = `${s.gates.workingIds.join(',')}|${greenLight ? 1 : 0}`
+      if (glowDynamic && key !== glowKey) {
+        glowKey = key
+        for (const sg of signs) {
+          paintGlow(sg.glow, s.gates.workingIds.includes(sg.gate) ? green : red, 1.35)
+        }
+        for (const lp of lamps) {
+          paintGlow(lp.glow, s.gates.workingIds.includes(lp.gate) ? green : red, 1.6)
+        }
+        paintGlow(tlRedGlow, greenLight ? dark : red, 1.5)
+        paintGlow(tlGreenGlow, greenLight ? green : dark, 1.5)
+        glowDynamic.flush()
+      }
+
+      // ── 게이트 플랩 — **기본은 닫힘.** 태그가 통과되면 그 게이트만 열린다.
+      //    `passed` 로 전부 여는 것은 운임구역에 들어간 뒤 되돌아 나올 때 갇히지 않게
+      //    하는 장치다(충돌 쪽 `gateFlaps` 도 같은 조건으로 막기를 그만둔다).
+      //    두 곳이 같은 식을 쓰므로 **보이는 문과 막는 벽이 어긋날 수 없다.**
       for (const f of flaps) {
         const open = s.gates.passed || (s.gates.state === 'open' && s.gates.activeId === f.gate)
-        const target = f.home + (open ? f.dir * 0.5 : 0)
-        f.node.position.z += (target - f.node.position.z) * (1 - Math.exp(-dtSec / 0.09))
+        const target = open ? f.openAngle : 0
+        f.node.rotation.y += (target - f.node.rotation.y) * (1 - Math.exp(-dtSec / 0.09))
       }
 
       // ── 안전문 · 열차

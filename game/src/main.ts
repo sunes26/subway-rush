@@ -8,7 +8,7 @@ import { Frustum, Matrix4, Raycaster, Vector2, Vector3 } from 'three'
 import { createInput, EMPTY_INPUT, type InputFrame } from './core/input'
 import { resolveSeed } from './core/rng'
 import { CAMERA, FPV, MAX_FRAME_MS, MAX_STEPS_PER_FRAME, STEP_MS } from './data/tuning'
-import { GATES, GATE_BODY, GATE_LAMP_Z, TRAFFIC_LIGHT } from './data/world'
+import { GATES, GATE_BODY, GATE_LAMP_Z } from './data/world'
 import { createCameraRig } from './render/camera-rig'
 import { createGuideArrows } from './render/guide-arrows'
 import { loadPlayerRig, type PlayerRig } from './render/player-rig'
@@ -17,7 +17,7 @@ import { loadStation, type Station } from './render/station'
 import { buildWorld } from './render/world-builder'
 import { initialState } from './state/reducer'
 import type { GameState } from './state/types'
-import { lightIsGreen, rebuildDynamics, tick } from './systems/tick'
+import { lightIsGreen, lightRemainSec, rebuildDynamics, tick } from './systems/tick'
 import { createDebug } from './ui/debug'
 import { createHud } from './ui/hud'
 import { createScreens } from './ui/screens'
@@ -61,7 +61,16 @@ const hud = createHud(uiRoot)
 const screens = createScreens(uiRoot)
 const debug = createDebug(uiRoot, stage.renderer)
 
-let state: GameState = initialState(resolveSeed(location.search))
+/**
+ * `?freeplay` (또는 `?notimer`) — 시간제한 없이 맵을 둘러보는 임시 모드.
+ *
+ * 값을 안 받는 플래그라 `URLSearchParams.has` 로 읽는다. 정규식으로 짰다가
+ * 단어 경계를 넣는다는 것이 **백스페이스 문자(0x08)** 로 들어가 한 번도 안 맞았다 —
+ * 눈으로는 똑같이 보여서 화면만 보고는 못 잡는다.
+ */
+const FREEPLAY = ((q) => q.has('freeplay') || q.has('notimer'))(
+  new URLSearchParams(location.search))
+let state: GameState = initialState(resolveSeed(location.search), FREEPLAY)
 let player: PlayerRig | null = null
 let station: Station | null = null
 let shakeUntil = 0
@@ -70,7 +79,7 @@ stage.resize()
 
 const restart = (): void => {
   const seed = (state.seed * 1664525 + 1013904223) >>> 0
-  state = initialState(seed)
+  state = initialState(seed, FREEPLAY)   // 재시작해도 자유 탐색은 유지한다
   prevPos = state.player.pos
   rebuildDynamics(state)
 }
@@ -81,10 +90,6 @@ const handleMeta = (f: InputFrame): void => {
   if (state.phase === 'title' && f.pressStart) state = { ...state, phase: 'playing' }
   if (state.phase === 'ended' && f.pressRestart) restart()
 }
-
-/** 신호등 잔여 시간(초) — 현재 위상에서 다음 전환까지 */
-const lightRemainSec = (s: GameState): number =>
-  (lightIsGreen(s) ? TRAFFIC_LIGHT.greenMs - s.lightMs : TRAFFIC_LIGHT.cycleMs - s.lightMs) / 1000
 
 // ─────────────────── 루프 ───────────────────
 
@@ -169,6 +174,10 @@ const boot = async (): Promise<void> => {
   if (stationResult.status === 'fulfilled') {
     station = stationResult.value
     stage.scene.add(station.root)
+    // 라이트맵이 붙은 존이 있으면 런타임 간접광을 줄인다. 라이트맵이 이미
+    // 간접 성분을 담고 있어서 그대로 두면 이중 계산으로 역이 하얗게 날아간다.
+    // 아틀라스가 없으면(사이드카 없이 익스포트한 빌드) 1.0 그대로 — 예전 룩.
+    stage.setIndirect(station.stats.lightmaps > 0 ? 0.06 : 1)
   } else {
     console.error('[station] GLB 로드 실패 — 그레이박스로 진행합니다', stationResult.reason)
     world.root.visible = true
@@ -223,6 +232,9 @@ input.sample = (): InputFrame => (forcedInput ? { ...rawSample(), ...forcedInput
 // 렌더 계측 훅 (E2E 예산 검증용)
 ;(window as unknown as { __renderer?: unknown; __scene?: unknown }).__renderer = stage.renderer
 ;(window as unknown as { __scene?: unknown }).__scene = stage.scene
+// 진단용 — 월드 좌표를 화면 픽셀로 투영해 볼 수 있게 카메라와 벡터 생성자를 노출한다.
+;(window as unknown as { __camera?: unknown }).__camera = stage.camera
+;(window as unknown as { __V3?: unknown }).__V3 = Vector3
 // 시선 방향을 밖에서 읽을 수 있게 — 마우스 경로가 실제로 카메라를 돌리는지 재려면 필요하다
 ;(window as unknown as { __camera?: unknown }).__camera = stage.camera
 

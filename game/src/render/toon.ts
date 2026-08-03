@@ -7,12 +7,21 @@
 
 import {
   BackSide, Color, DataTexture, DoubleSide, MeshBasicMaterial, MeshToonMaterial,
-  NearestFilter, RedFormat, ShaderMaterial, UnsignedByteType, type Material,
+  NearestFilter, RedFormat, ShaderMaterial, UnsignedByteType,
+  type Material, type Texture,
 } from 'three'
 
-/** 3단 램프 — 4×1 텍스처. NearestFilter로 계단을 살린다. */
+/**
+ * 3단 램프 — 4×1 텍스처. NearestFilter로 계단을 살린다.
+ *
+ * 최저 단계는 88(0.35)이었다. 그 값이면 광원 반대쪽 면이 베이스 컬러의 35 %까지
+ * 떨어져, 계단 핸드레일처럼 **가는 부재의 옆면이 거의 검게** 나온다.
+ * 계단을 아래에서 올려다보면 오른쪽 난간만 검은 막대로 보여 "공중에 뭔가 떠 있다"로
+ * 읽혔다 — 실측해 보니 지오메트리는 좌우 대칭이었고 명암만 그랬다.
+ * 실사 지하철 사진에서 실내 음영은 이만큼 죽지 않는다. 최저·중간을 올려 대비를 낮춘다.
+ */
 export const makeToonRamp = (): DataTexture => {
-  const data = new Uint8Array([88, 150, 214, 255])
+  const data = new Uint8Array([124, 172, 218, 255])
   const tex = new DataTexture(data, data.length, 1, RedFormat, UnsignedByteType)
   tex.minFilter = NearestFilter
   tex.magFilter = NearestFilter
@@ -30,17 +39,56 @@ export type ToonOpts = {
   opacity?: number
   side?: 'double'
   /**
-   * 바닥·벽에 얹히는 데칼(줄눈·점자블록·노선띠).
+   * 깊이 층 — 클수록 앞. 0 이면 오프셋을 아예 안 건다.
    *
-   * 이 지오메트리들은 호스트 표면과 몇 mm 차이라 깊이값이 사실상 같다.
-   * 카메라가 움직일 때마다 어느 쪽이 앞인지 뒤집혀 **점멸한다**.
-   * 폴리곤 오프셋으로 깊이만 앞으로 당긴다 — 위치는 그대로 두고 z-파이팅만 없앤다.
+   * 이 씬에는 **완전히 겹친 면**이 많다(줄눈·점자블록·노선띠 같은 데칼뿐 아니라
+   * 인도 슬래브 절단면 ↔ 계단실 옆벽처럼 구조체끼리도 겹친다).
+   * 겹친 면은 깊이 버퍼가 못 가른다 — 삼각 분할이 서로 달라 픽셀마다 ULP 단위로
+   * 깊이가 갈리고, 카메라가 움직이면 그 얼룩이 프레임마다 뒤집혀 **점멸한다.**
+   * 층을 다르게 주면 폴리곤 오프셋이 그 동률을 깨서 앞뒤가 고정된다.
+   * 어느 층에 무엇이 들어가는지는 `render/station.ts` 의 `DEPTH_LAYER` 가 정한다.
    */
-  decal?: boolean
+  depthLayer?: number
+  /**
+   * Blender 에서 구운 라이트맵 아틀라스 (존당 한 장).
+   *
+   * 게임에는 그림자도 GI 도 없다 — 툰 셰이딩은 면 법선만 보고 밝기 단계를 정하므로
+   * 조명 웅덩이도, 구석 어두움도, 물체가 바닥에 닿는 느낌도 나오지 않는다.
+   * 그 셋을 오프라인에서 구워 곱한다. 런타임 비용은 텍스처 샘플 한 번뿐이다.
+   *
+   * `MeshToonMaterial` 이 이미 `lightMap` 을 지원하므로 GLSL 은 손대지 않는다.
+   */
+  lightMap?: Texture | null
 }
 
+/**
+ * 라이트맵 강도.
+ *
+ * three 의 툰 경로는 `irradiance += lightMapTexel × intensity` 뒤에
+ * `RE_IndirectDiffuse_Toon` 이 `BRDF_Lambert`(= 1/π)를 곱한다.
+ * 그래서 **π 를 넣어야 텍셀 1.0 이 베이스 컬러 1.0 배**가 된다.
+ * 1.0 을 넣으면 전체가 1/π(약 32 %)로 어두워진다.
+ */
+export const LIGHTMAP_INTENSITY = Math.PI
+
+/**
+ * 깊이 층 → 폴리곤 오프셋.
+ *
+ * 값은 **작게** 둔다. 겹친 면을 가르는 데 필요한 건 크기가 아니라 서로 다름이고
+ * (1 단위면 래스터라이저의 ULP 잡음보다 충분히 크다), 넓히면 멀리 있는 얇은 사인이
+ * 벽 뒤로 밀린다 — near 0.08 · far 260 에서 1 단위는 40 m 지점에서 약 1.2 mm 다.
+ */
+export const depthOffset = (layer: number): Partial<{
+  polygonOffset: boolean; polygonOffsetFactor: number; polygonOffsetUnits: number
+}> => (layer === 0
+  ? {}
+  : { polygonOffset: true, polygonOffsetFactor: -layer, polygonOffsetUnits: -layer })
+
 export const toonMat = (color: number, opts: ToonOpts = {}): MeshToonMaterial => {
-  const k = `${color}|${opts.transparent ? 1 : 0}|${opts.opacity ?? 1}|${opts.side ?? ''}|${opts.decal ? 1 : 0}`
+  // ⚠ 캐시 키에 라이트맵을 반드시 넣는다. 색만으로 키를 만들면 존들이 같은 인스턴스를
+  //   공유해 **마지막으로 로드된 존의 아틀라스가 전 존에 적용된다.**
+  const k = `${color}|${opts.transparent ? 1 : 0}|${opts.opacity ?? 1}|${opts.side ?? ''}`
+    + `|${opts.depthLayer ?? 0}|${opts.lightMap?.uuid ?? ''}`
   const hit = cache.get(k)
   if (hit) return hit
   const m = new MeshToonMaterial({
@@ -48,8 +96,9 @@ export const toonMat = (color: number, opts: ToonOpts = {}): MeshToonMaterial =>
     gradientMap: RAMP,
     ...(opts.transparent ? { transparent: true, opacity: opts.opacity ?? 0.5 } : {}),
     ...(opts.side === 'double' ? { side: DoubleSide } : {}),
-    ...(opts.decal
-      ? { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }
+    ...depthOffset(opts.depthLayer ?? 0),
+    ...(opts.lightMap
+      ? { lightMap: opts.lightMap, lightMapIntensity: LIGHTMAP_INTENSITY }
       : {}),
   })
   cache.set(k, m)

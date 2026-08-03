@@ -7,7 +7,7 @@
 
 import { lerpExp, rotateToward, type Vec2 } from '../core/math'
 import type { InputFrame } from '../core/input'
-import { JUMP, MOVE, SPEED, STAMINA } from '../data/tuning'
+import { GATE, JUMP, MOVE, SPEED, STAMINA } from '../data/tuning'
 import { FLOOR, GATES, GATE_FUNNEL_X } from '../data/world'
 import type { Action, GameState } from '../state/types'
 import { resolveMove, sampleGround, depenetrate } from './collision'
@@ -19,6 +19,27 @@ const baseSpeed = (rampKind: 'stairs' | 'escalator' | null, sprinting: boolean):
   if (rampKind === 'escalator') return SPEED.escalatorWalk
   if (rampKind === 'stairs') return sprinting ? SPEED.stairsTwoStep : SPEED.stairsDown
   return sprinting ? SPEED.sprint : SPEED.walk
+}
+
+/**
+ * 퍼널이 붙잡는 y 대역 반폭(m).
+ * 게이트 피치(2.0m)의 절반보다 살짝 넓게 잡아야 게이트 사이에 무주공산이 안 생긴다.
+ */
+const FUNNEL_BAND = 1.1
+
+/**
+ * `advance`(m)만큼 전진하는 동안 가장 가까운 게이트 중앙 쪽으로 y를 당긴다.
+ * 대역 밖이거나 전진이 없으면 손대지 않는다 — 그래서 게이트 앞 좌우 이동이 자유롭다.
+ */
+const funnelY = (y: number, advance: number): number => {
+  let center: number | null = null
+  let bestD = Infinity
+  for (const g of GATES) {
+    const d = Math.abs(y - g.y)
+    if (d < bestD) { bestD = d; center = g.y }
+  }
+  if (center === null || bestD >= FUNNEL_BAND) return y
+  return center + (y - center) * Math.exp(-advance / GATE.funnelLenM)
 }
 
 export const movementSystem = (s: GameState, ctx: MoveCtx): Action[] => {
@@ -93,14 +114,15 @@ export const movementSystem = (s: GameState, ctx: MoveCtx): Action[] => {
   // 통로가 0.55m라 정면 정렬을 요구하면 조작이 답답해진다. 게이트 앞 구간에서
   // 가장 가까운 게이트 중앙으로 y를 부드럽게 끌어당긴다.
   // 충돌 개구부는 이미 넓혀 뒀으므로(GATE_CLEARANCE) 퍼널은 **시각적 관통을 막는 역할**이다.
-  if (nx > GATE_FUNNEL_X.min && nx < GATE_FUNNEL_X.max && Math.abs(p.pos.z - FLOOR.B1) < 1) {
-    let near: number | null = null
-    let bestD = Infinity
-    for (const g of GATES) {
-      const d = Math.abs(ny - g.y)
-      if (d < bestD) { bestD = d; near = g.y }
-    }
-    if (near !== null && bestD < 1.1) ny = lerpExp(ny, near, dt, 0.16)
+  //
+  // 당기는 양은 **전진 거리**에 비례한다. 시간에 비례시켰더니 제자리에 서 있어도,
+  // 옆으로 걸어도 계속 당겨서 게이트 하나에 갇혔다 — 고장 난 게이트 앞에 서면
+  // 옆으로 옮겨 갈 방법이 없었다는 뜻이다. 퍼널은 들어가는 사람을 정렬하는 물건이지
+  // 붙잡아 두는 물건이 아니다.
+  const advance = nx - p.pos.x
+  if (advance > 0 && nx > GATE_FUNNEL_X.min && nx < GATE_FUNNEL_X.max
+      && Math.abs(p.pos.z - FLOOR.B1) < 1) {
+    ny = funnelY(ny, advance)
   }
 
   const res = resolveMove(p.pos.x, p.pos.y, nx, ny, p.pos.z)

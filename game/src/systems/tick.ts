@@ -20,6 +20,10 @@ export type TickCtx = Readonly<{ input: InputFrame; cameraYaw: number }>
 
 export const lightIsGreen = (s: GameState): boolean => s.lightMs < TRAFFIC_LIGHT.greenMs
 
+/** 현재 위상에서 다음 전환까지 남은 초. 신호등 발광과 HUD 표시가 이 하나를 공유한다. */
+export const lightRemainSec = (s: GameState): number =>
+  (lightIsGreen(s) ? TRAFFIC_LIGHT.greenMs - s.lightMs : TRAFFIC_LIGHT.cycleMs - s.lightMs) / 1000
+
 /** 적신호 동안 횡단보도를 막는 보이지 않는 벽. Z1의 유일한 진짜 판단(MAP §3.3). */
 const crossingBlock = (s: GameState): Solid[] =>
   lightIsGreen(s)
@@ -74,6 +78,8 @@ export const tick = (state: GameState, dtMs: number, ctx: TickCtx): GameState =>
   if (zone !== s.zone) s = applyAll(s, [{ t: 'ZONE', zone }])
 
   // 6) 종료 판정
+  //    자유 탐색(`?freeplay`)에서는 열차가 떠나도 끝내지 않는다 — 맵을 계속 보라는 뜻이다.
+  if (s.freeplay) return s
   if (s.phase === 'boarding' && s.train.state === 'departed') {
     s = applyAll(s, [{ t: 'END', endingId: resolveEnding(s).id }])
   } else if (s.phase === 'playing' && s.train.state === 'departed') {

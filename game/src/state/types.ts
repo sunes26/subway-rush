@@ -93,6 +93,17 @@ export type GameState = Readonly<{
   seed: number
   /** 남은 시간(ms) */
   timeLeftMs: number
+  /**
+   * 자유 탐색 모드 — `?freeplay` 로 켠다. **임시 확인용이고 기본값은 꺼짐이다.**
+   *
+   * 두 가지를 멈춘다.
+   *  · HUD 카운트다운(`timeLeftMs`) 이 안 줄어든다
+   *  · 열차가 떠나도 게임이 안 끝난다
+   *
+   * `elapsedMs` 는 그대로 흐른다 — 열차 스케줄의 단일 입력이라 멈추면 열차가 아예 안 온다.
+   * 맵을 보러 들어온 사람도 열차는 봐야 한다.
+   */
+  freeplay: boolean
   /** 시작 후 경과(ms). 열차 스케줄의 단일 입력 */
   elapsedMs: number
   zone: ZoneId
