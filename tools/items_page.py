@@ -33,14 +33,18 @@ LABEL = {
     "ITM06_MaskFolded": ("ITM-06B", "마스크 (접힌 상태)", "편의점 매대 진열용"),
     "ITM09_Umbrella": ("ITM-09", "우산 (접힌 상태)", "우산꽂이 · 인파 비켜세우기"),
     "ITM09_UmbrellaOpen": ("ITM-09B", "우산 (펼친 상태)", "접힌 우산과 같은 제품"),
-    "ITM12_Bungeoppang": ("ITM-12", "붕어빵", "노점 구매 500원 · 할아버지 정당 교환"),
-    "ITM12_BungeoppangSet": ("ITM-12B", "붕어빵 (진열 5개)", "노점 판매대 진열용"),
+    "ITM12_Yanggaeng": ("ITM-12", "양갱", "편의점 진열 · 할아버지 선물 <b>정답</b>"),
+    "ITM12_BananaMilk": ("ITM-12b", "바나나우유", "편의점 진열 · 헷갈리는 오답"),
+    "ITM12_Chocolate": ("ITM-12c", "초콜릿", "편의점 진열 · 헷갈리는 오답"),
+    "ITM12_Soda": ("ITM-12d", "탄산음료", "편의점 진열 · 명확한 오답"),
+    "ITM12_SnackBag": ("ITM-12e", "새우맛 봉지과자", "편의점 진열 · 명확한 오답"),
     "ITM13_RouteMap": ("ITM-13", "노선도", "안내판 획득 · 미니맵 + 열차 문 위치"),
     "FURN_Locker": ("FURN", "물품보관소", "독립형 모듈 · 4열×5행 20칸(큰 290 / 작은 139mm) · 문 분리 · 사용 램프 · 배치 존 미정"),
 }
 ORDER = ["ITM01_Backscratcher", "ITM04_Card", "ITM06_Mask", "ITM06_MaskFolded",
          "ITM09_Umbrella", "ITM09_UmbrellaOpen",
-         "ITM12_Bungeoppang", "ITM12_BungeoppangSet", "ITM13_RouteMap",
+         "ITM12_Yanggaeng", "ITM12_BananaMilk", "ITM12_Chocolate",
+         "ITM12_Soda", "ITM12_SnackBag", "ITM13_RouteMap",
          "FURN_Locker"]
 
 
