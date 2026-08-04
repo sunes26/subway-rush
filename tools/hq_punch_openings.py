@@ -50,8 +50,8 @@ CEIL = ("_ceil", "ceiling", "_hq_tee", "_hq_trof", "_hq_troflight", "_hq_duct",
 def punch(coll_name, x0, y0, x1, y1, z0, z1):
     coll = bpy.data.collections.get(coll_name)
     if coll is None:
-        return 0, 0
-    hit_objs = removed = 0
+        return 0, 0, 0
+    hit_objs = removed = cleaned = 0
     for o in coll.all_objects:
         if o.type != "MESH" or o.name.startswith("xx_"):
             continue
@@ -61,6 +61,36 @@ def punch(coll_name, x0, y0, x1, y1, z0, z1):
         inv = mw.inverted()
         bm = bmesh.new()
         bm.from_mesh(o.data)
+
+        # ⚠ **같은 평면을 두 번 자르면 영면적 면이 쌓인다.**
+        # 이 패스는 ORDER 안에 있어 빌드마다 돈다. 정점이 이미 평면 위에 있는데
+        # 또 `bisect_plane` 을 부르면 겹친 정점·면이 한 벌씩 더 생긴다.
+        # 실측: `Z5_ceil_grid` 가 20,104면인데 그중 17,388면이 영면적이었고,
+        # 빌드 한 번마다 828면씩 늘고 있었다(GLB 총량 +56 KB/회).
+        # → 자르기 전에 겹친 정점을 붙이고 영면적을 없앤다. 누적분도 여기서 걷힌다.
+        junk = sum(1 for f in bm.faces if f.calc_area() < 1e-9)
+        if junk:
+            bmesh.ops.remove_doubles(bm, verts=list(bm.verts), dist=1e-5)
+            bmesh.ops.dissolve_degenerate(bm, dist=1e-5, edges=list(bm.edges))
+            cleaned += junk
+
+        # 개구부 안쪽과 **실제로 겹치는** 면이 없으면 자를 것도 지울 것도 없다.
+        # 이미 뚫린 뒤에는 면들이 경계에 딱 맞물려 있어 여기서 걸러진다.
+        eps = 1e-4
+        need = False
+        for f in bm.faces:
+            ws = [mw @ v.co for v in f.verts]
+            if (min(w.x for w in ws) < x1 - eps and max(w.x for w in ws) > x0 + eps
+                    and min(w.y for w in ws) < y1 - eps and max(w.y for w in ws) > y0 + eps
+                    and min(w.z for w in ws) < z1 and max(w.z for w in ws) > z0):
+                need = True
+                break
+        if not need:
+            if junk:
+                bm.to_mesh(o.data)
+                o.data.update()
+            bm.free()
+            continue
 
         # ⚠ 면 중심으로만 판정하면 **긴 리브가 하나도 안 지워진다.**
         # 천장 티바는 56 m 를 가로지르는 상자 하나라 중심이 구멍 밖에 있다.
@@ -88,7 +118,7 @@ def punch(coll_name, x0, y0, x1, y1, z0, z1):
             hit_objs += 1
             removed += len(doomed)
         bm.free()
-    return hit_objs, removed
+    return hit_objs, removed, cleaned
 
 
 def orphans():
@@ -109,15 +139,17 @@ def orphans():
 
 
 def build():
-    total_o = total_f = 0
+    total_o = total_f = total_c = 0
     for spec in OPENINGS:
-        o, f = punch(*spec)
+        o, f, c = punch(*spec)
         total_o += o
         total_f += f
+        total_c += c
         print(f"  {spec[0]} 개구부 x{spec[1]}~{spec[3]} y{spec[2]}~{spec[4]}: "
-              f"오브젝트 {o}개에서 면 {f}개 제거")
+              f"오브젝트 {o}개에서 면 {f}개 제거 · 영면적 {c}개 정리")
     n = orphans()
-    print(f"[hq_punch_openings] 면 {total_f}개 제거 · 폐기된 패스 잔재 {n}개 정리")
+    print(f"[hq_punch_openings] 면 {total_f}개 제거 · 영면적 {total_c}개 정리 · "
+          f"폐기된 패스 잔재 {n}개 정리")
 
 
 build()

@@ -76,8 +76,10 @@ def pids():
     # 화면(y 6.0~6.6) 바로 앞에 얇게 깐다. 글자는 그보다 더 앞이라 안 가린다.
     for cx in (92.0, 124.0, 156.0, 188.0):
         for y, d in ((6.60, +1), (6.00, -1)):
-            band.box(cx - 0.78, y + d * 0.004, -16.60,
-                     cx + 0.78, y + d * 0.010, -16.34)
+            # 띠·케이스·문안 모두 `PIDS_*` 절대 좌표에서 나온다. 예전처럼
+            # 한쪽만 상대 이동시키면 둘이 갈라져 띠가 공중에 남는다.
+            band.box(cx - 0.78, y + d * 0.004, PIDS_BAND_Z[0],
+                     cx + 0.78, y + d * 0.010, PIDS_BAND_Z[1])
     ob = band.build(zone_collection("Z5_PLATFORM"))
     print(f"  전광판 {n}개 문안 '{PIDS_TEXT}' {PIDS_SIZE} m · 바탕 띠 "
           f"{len(ob.data.polygons) if ob else 0}면")
@@ -634,6 +636,316 @@ def hide_rail_center():
     print("  하강 계단 중앙 난간 익스포트 제외")
 
 
+# ── 13. 화살표 방향 ─────────────────────────────────────────────
+# `build_details` 는 ORDER 밖이라 원본을 고쳐도 blend 에 안 닿는다. 실제 수리는 여기다.
+#
+# 바닥 유도 사인 글자는 rotZ −90° 로 누워 있어 **읽는 방향이 −y · 글자 위가 +x** 다.
+# 그래서 화면 문자와 월드 방향의 대응이 이렇게 된다.
+#
+#     →  −y(남)   ←  +y(북)   ↑  +x(동)   ↓  −x(서)
+#
+# 다섯 개가 전부 "→" 였는데 그건 남쪽을 가리키는 것이라 하나도 안 맞았다.
+# 목적지는 출구 계단 x 2~14.6 · y 25.4~30.6, 개찰구 x 56~, 화장실 x 36~51 · y 25~30 이다.
+#
+# `Z3_exitband` 의 "←" 는 양면에 같은 문안이 걸리는데 좌우는 보는 사람 기준이라
+# 한쪽은 반드시 틀린다. 개찰구 위 띠는 "여기가 나가는 곳"이면 충분하므로 뺀다.
+FLOOR_Z = -5.988
+ARROW_TEXTS = [
+    ("Z2_decal_txt0", "1 · 3 출구  ←", (10.0, 15.0, FLOOR_Z), 0.20, "Z2_CONCOURSE",
+     (0.0, 0.0, -math.pi / 2)),
+    ("Z2_decal_txt1", "1 · 3 출구  ↓", (24.0, 15.0, FLOOR_Z), 0.20, "Z2_CONCOURSE",
+     (0.0, 0.0, -math.pi / 2)),
+    ("Z2_decal_txt2", "승강장  Platform  ↑", (38.0, 15.0, FLOOR_Z), 0.20, "Z2_CONCOURSE",
+     (0.0, 0.0, -math.pi / 2)),
+    ("Z2_decal_txt3", "승강장  Platform  ↑", (50.0, 15.0, FLOOR_Z), 0.20, "Z2_CONCOURSE",
+     (0.0, 0.0, -math.pi / 2)),
+    ("Z2_decal_txt4", "화장실  Restroom  ↑", (17.0, 24.0, FLOOR_Z), 0.20, "Z2_CONCOURSE",
+     (0.0, 0.0, -math.pi / 2)),
+]
+EXIT_BAND_CX = 62.6
+
+
+def _font_text(name, body, loc, size, coll_name, rot, matname):
+    """FONT 오브젝트로 다시 만든다. 익스포터가 커브를 메시로 바꿔 주므로
+    `build_details.text` 처럼 미리 구울 필요가 없고, 문안을 나중에 또 고칠 수 있다."""
+    old = bpy.data.objects.get(name)
+    if old is not None:
+        bpy.data.objects.remove(old, do_unlink=True)
+    cu = bpy.data.curves.new(name, type="FONT")
+    cu.body = body
+    cu.font = bpy.data.fonts.get(FONT) or cu.font
+    cu.size = size
+    cu.align_x = "CENTER"
+    cu.align_y = "CENTER"
+    cu.extrude = 0.002
+    cu.resolution_u = 1
+    m = bpy.data.materials.get(matname)
+    if m is not None:
+        cu.materials.append(m)
+    ob = bpy.data.objects.new(name, cu)
+    ob.location = loc
+    ob.rotation_euler = rot
+    zone_collection(coll_name).objects.link(ob)
+
+
+def sign_arrows():
+    for name, body, loc, size, coll, rot in ARROW_TEXTS:
+        _font_text(name, body, loc, size, coll, rot, "TXT_WHITE")
+    n = 0
+    for i, cy in enumerate((8.0, 16.0, 24.0)):
+        for s, sfx in ((-1, "W"), (1, "E")):
+            _font_text(f"Z3_exitband{i}{sfx}", "나가는 곳  Exit",
+                       (EXIT_BAND_CX + s * 0.135, cy, -3.32), 0.20, "Z3_GATES",
+                       (math.pi / 2, 0.0, math.pi / 2 * (3 if s < 0 else 1)), "TXT_DARK")
+            n += 1
+    print(f"  바닥 유도 사인 {len(ARROW_TEXTS)}개 방향 교정 · 출구 띠 {n}개 화살표 제거")
+
+
+# ── 14. Z4 통로 벽 광고·걸레받이가 **중복**이다 ───────────────────
+# `build_details.z4_wall_ads` 가 북쪽 내면을 9.60 으로 두고 있었다. 그건 하강부 난간
+# y 이고 통로는 y 2~12 라(부록 A · 충돌 `Z4-UPPER`), 광고가 벽보다 2.4 m 앞
+# 허공에 떠 있었다(디렉터 지적).
+#
+# 그런데 12.00 으로 옮겨 보니 **같은 자리에 광고가 두 벌**이 됐다 —
+# `hq_walls.WALLS` 가 이미 Z4wS(y 2.00) · Z4wN(y 12.00) 에 걸레받이 · 광고 · 띠를
+# 전부 만들고 있었고, 그쪽이 프레임 네 변에 포스터 3종으로 더 정교하다.
+# 위치가 달라서 겹치지 않았을 뿐 처음부터 중복이었던 것이다.
+# → 옮기는 게 아니라 **걷어낸다.** 원본 쪽도 무력화해 뒀다.
+AD_BANDS = ((1.90, 2.25), (9.40, 9.75), (11.80, 12.15))
+AD_Z = (-6.05, -3.50)
+AD_MATS = ("Z4_DET_SIGN_DARK", "Z4_DET_AD_PANEL", "Z4_DET_AD_PANEL2",
+           "Z4_DET_AD_PANEL3", "Z4_DET_ST_TRIM")
+
+
+def corridor_ads_drop():
+    gone = 0
+    for name in AD_MATS:
+        ob = bpy.data.objects.get(name)
+        if ob is None or ob.type != "MESH":
+            continue
+        bm, comps = _islands(ob)
+        doomed = []
+        for _bm, verts, bb in comps:
+            if not any(lo <= bb[1] and bb[4] <= hi for lo, hi in AD_BANDS):
+                continue
+            if not (AD_Z[0] <= bb[2] and bb[5] <= AD_Z[1]):
+                continue
+            doomed.append(verts)
+        if doomed:
+            bmesh.ops.delete(bm, geom=[v for vs in doomed for v in vs], context="VERTS")
+            bm.to_mesh(ob.data)
+            ob.data.update()
+            gone += len(doomed)
+        bm.free()
+    print(f"  통로 벽 중복 부재 {gone}개 제거 (hq_walls 가 담당)")
+
+
+# ── 15. 승강장 전광판이 천장에 가린다 ────────────────────────────
+# `Z5_pids_*` 는 그레이박스 원본이라 만드는 패스가 없다. 케이스가 z −16.78~−16.15 로
+# 천장(−15.50)에 바짝 붙어 있고, 천장 마감 덕트가 −16.05 까지 내려온다.
+# 그래서 비스듬히 올려다보면 마감층이 전광판 앞을 지나 글자 윗획을 먹는다.
+# 매다는 봉도 −15.66 에서 끝나 천장에 0.16 m 못 닿아 있었다.
+# → 케이스 계열을 내리고 봉을 천장까지 늘인다.
+# ⚠⚠ **상대 이동은 여기서 절대 쓰지 않는다.** 이전 판은 `w.z -= PIDS_DROP` 이라
+#    빌드를 돌릴 때마다 0.55 m 씩 또 내려갔다. 세 번 돌리자 케이스가 1.65 m
+#    가라앉아 눈높이를 막았고(디렉터 지적: "신도림 방면이 너무 아래에 있어"),
+#    `pids()` 의 발광 띠만 제자리에 남아 **공중에 뜬 판**이 됐다.
+#    ORDER 패스는 몇 번을 돌려도 같은 결과여야 한다 — 전부 절대 z 로 못 박는다.
+PIDS_BOT = -17.65                # 케이스 밑변 = 승강장 바닥(−20) 위 2.35 m
+PIDS_SCREEN_INSET = 0.07         # 화면은 케이스 안쪽으로
+PIDS_BAND_Z = (-17.50, -17.18)   # 문안 뒤 발광 띠
+PIDS_CEIL = -15.50
+
+
+def _place_z(ob, bottom):
+    """오브젝트를 **자기 높이는 유지한 채** 밑변이 `bottom` 에 오도록 옮긴다."""
+    inv = ob.matrix_world.inverted()
+    ws = [ob.matrix_world @ v.co for v in ob.data.vertices]
+    dz = bottom - min(w.z for w in ws)
+    if abs(dz) < 1e-6:
+        return 0.0
+    for v, w in zip(ob.data.vertices, ws):
+        w.z += dz
+        v.co = inv @ w
+    ob.data.update()
+    return dz
+
+
+def pids_place():
+    case = bpy.data.objects.get("Z5_pids_case")
+    _place_z(case, PIDS_BOT) if case and case.type == "MESH" else None
+    top = PIDS_BOT
+    if case is not None:
+        ws = [case.matrix_world @ v.co for v in case.data.vertices]
+        top = max(w.z for w in ws)
+        mid = (PIDS_BOT + top) / 2
+
+    scr = bpy.data.objects.get("Z5_pids_screen")
+    if scr is not None and scr.type == "MESH":
+        _place_z(scr, PIDS_BOT + PIDS_SCREEN_INSET)
+
+    # 봉은 **늘인다** — 아래는 케이스 윗변, 위는 천장이다
+    rod = bpy.data.objects.get("Z5_pids_rod")
+    if rod is not None and rod.type == "MESH":
+        ws = [rod.matrix_world @ v.co for v in rod.data.vertices]
+        lo, hi = min(w.z for w in ws), max(w.z for w in ws)
+        inv = rod.matrix_world.inverted()
+        for v, w in zip(rod.data.vertices, ws):
+            t = (w.z - lo) / (hi - lo) if hi > lo else 0.0
+            w.z = top + t * (PIDS_CEIL - top)
+            v.co = inv @ w
+        rod.data.update()
+
+    n = 0
+    for o in bpy.data.objects:
+        if not (o.name.startswith("Z5_pids_txt_") and o.type == "FONT"):
+            continue
+        ws = [o.matrix_world @ Vector(c) for c in o.bound_box]
+        o.location.z += mid - (min(w.z for w in ws) + max(w.z for w in ws)) / 2
+        n += 1
+    print(f"  전광판 밑변 z {PIDS_BOT}(바닥 위 {PIDS_BOT + 20.0:.2f} m) · "
+          f"봉 {top:.2f}→{PIDS_CEIL} · 문안 {n}개")
+
+
+# ── 16. 하강 소핏이 승강장 위로 7.5 m 흘러내린다 ──────────────────
+# 지적: "120.3, 11.7, −20 — 여기 천장이 왜 내려와 있어?"
+#
+# 실측하면 떠 있는 게 아니라 **경사 램프**였다. y 0.95~9.60 띠에서
+#
+#     x 120.5  z −17.28   ← 하강 소핏 바닥
+#     x 124.0  z −16.52
+#     x 128.0  z −15.50   ← 승강장 천장과 합류
+#
+# 즉 소핏이 계단을 다 지난 뒤에도 7.5 m 를 더 기어올라 승강장 천장에 붙는다.
+# 실사 승강장에 그런 램프는 없다. 계단 개구부 가장자리에서 천장이 **수직으로**
+# 꺾이고(마구리), 그 너머는 평천장이다. 램프는 8.5 m 폭짜리 민짜 쐐기라
+# 우물천장 두 장 사이에서 "천장이 무너져 내리는" 것으로 읽힌다.
+#
+# `hq_descent` 는 이미 같은 교훈을 X1=120.4 로 새겨 뒀다(승강장 안에 마감이
+# 들어가 우선석을 가로막았던 건). 정작 바닥 슬래브와 `build_ceiling.sloped_ribs`
+# (x1=127.0)가 안 따라왔다. 둘 다 ORDER 밖이라 여기서 자른다.
+DESC_CUT_X = 121.00              # `hq_punch_openings` 의 Z5 천장 개구 동쪽 끝
+DESC_TRIM = ("Z4_desc_ceil", "Z4_desc_ribs")
+DESC_BAND_Y = (0.94, 9.61)
+FASCIA_X = (120.92, 121.12)
+FASCIA_Z = (-17.18, -15.48)      # 절단면 밑변 −17.16 ~ 승강장 천장 밑면 −15.50
+
+
+def descent_soffit_stop():
+    cut = 0
+    for name in DESC_TRIM:
+        o = bpy.data.objects.get(name)
+        if o is None or o.type != "MESH":
+            continue
+        inv = o.matrix_world.inverted()
+        # 평면은 오브젝트 로컬 좌표로 줘야 한다
+        co = inv @ Vector((DESC_CUT_X, 0.0, 0.0))
+        no = (inv.to_3x3().transposed() @ Vector((1.0, 0.0, 0.0))).normalized()
+        bm = bmesh.new()
+        bm.from_mesh(o.data)
+        before = len(bm.verts)
+        bmesh.ops.bisect_plane(bm, geom=list(bm.verts) + list(bm.edges) + list(bm.faces),
+                               plane_co=co, plane_no=no, clear_outer=True)
+        if len(bm.verts) != before:
+            # 이미 잘린 다음 회차에는 절대 돌리면 안 된다 — 다른 정당한 열린
+            # 경계까지 메워 버린다. 실제로 잘라낸 회차에만 마구리를 메운다.
+            try:
+                bmesh.ops.holes_fill(bm, edges=list(bm.edges), sides=0)
+            except Exception:
+                pass              # 못 메워도 마구리 박스가 덮는다
+            cut += 1
+        bm.to_mesh(o.data)
+        o.data.update()
+        bm.free()
+
+    # 잘린 끝을 수직 마구리로 막는다. 재질은 소핏 것을 그대로 써서
+    # 병합 맵·발광 목록 등록을 새로 안 만든다(같은 함정에 세 번 물렸다).
+    src = bpy.data.objects.get("Z4_desc_ceil")
+    m = src.data.materials[0] if src and src.data.materials else None
+    if m is not None:
+        b = Batch("Z4_hq_desc_fascia", m)
+        b.box(FASCIA_X[0], DESC_BAND_Y[0], FASCIA_Z[0],
+              FASCIA_X[1], DESC_BAND_Y[1], FASCIA_Z[1])
+        b.build(zone_collection("Z4_DESCENT"))
+    print(f"  하강 소핏 {cut}개를 x {DESC_CUT_X} 에서 절단 · 마구리 마감")
+
+
+# ── 17. 승강장 역명판이 너무 크다 ────────────────────────────────
+# 지적: "안내판 박스가 너무 커."
+#
+# 실측 5.20 × 1.72 m, 밑변이 바닥에서 **1.68 m**. 실사 매달림 역명판은
+# 3.2 × 0.95 안팎이고 밑변은 2.4~2.5 m 다 — 폭이 1.6배, 높이가 1.8배인 데다
+# 통로 위 유효고까지 못 맞춘다. 판 안에서도 글자 위쪽 여백만 0.52 m 로
+# 혼자 비어 있었다(아래 여백은 0.15 m).
+#
+# 글자는 안 줄인다. 한글 자고 0.35 m 는 실사(0.30~0.35)와 같아서, 문제는
+# 글자가 아니라 **글자를 감싼 판**이다. 판만 줄이고 글자 뭉치는 통째로 올린다.
+SIGN_W, SIGN_H = 3.40, 1.30
+SIGN_TOP = -16.30                # 밑변 −17.60 = 바닥(−20) 위 2.40 m
+SIGN_ROD_DX, SIGN_ROD_TOP = 1.40, -15.30
+SIGN_KR_MARGIN = 0.15            # 판 윗변 ~ 한글 윗변
+
+
+def _bounds(o):
+    ws = [o.matrix_world @ Vector(c) for c in o.bound_box]
+    return (min(w.x for w in ws), max(w.x for w in ws),
+            min(w.z for w in ws), max(w.z for w in ws))
+
+
+def hanging_name_signs():
+    n = 0
+    for k in range(8):
+        plate = bpy.data.objects.get(f"Z5_hang_plate{k}")
+        if plate is None or plate.type != "MESH":
+            continue
+        x0, x1, z0, z1 = _bounds(plate)
+        cx = (x0 + x1) / 2
+        sx = SIGN_W / (x1 - x0)
+        sz = SIGN_H / (z1 - z0)
+        # 글자 뭉치는 한글 윗변이 판 윗변에서 SIGN_KR_MARGIN 아래 오도록 올린다.
+        kr = bpy.data.objects.get(f"Z5_hang_kr{k}_1")
+        lift = 0.0
+        if kr is not None:
+            lift = (SIGN_TOP - SIGN_KR_MARGIN) - _bounds(kr)[3]
+
+        for nm in (f"Z5_hang_plate{k}", f"Z5_hang_band{k}"):
+            o = bpy.data.objects.get(nm)
+            if o is None or o.type != "MESH":
+                continue
+            inv = o.matrix_world.inverted()
+            keep = nm.endswith(f"band{k}")
+            for v in o.data.vertices:
+                w = o.matrix_world @ v.co
+                w.x = cx + (w.x - cx) * sx
+                # 판은 새 상자에 맞춰 다시 재고, 띠는 글자와 같이 올린다
+                w.z = (w.z + lift) if keep else (SIGN_TOP - (z1 - w.z) * sz)
+                v.co = inv @ w
+            o.data.update()
+
+        for pre in ("kr", "en", "dir"):
+            for side in (-1, 1):
+                o = bpy.data.objects.get(f"Z5_hang_{pre}{k}_{side}")
+                if o is not None:
+                    o.location.z += lift
+
+        for rod in [o for o in bpy.data.objects
+                    if o.name.startswith(f"Z5_hang_rod{k}_") and o.type == "MESH"]:
+            rx0, rx1, _, _ = _bounds(rod)
+            side = 1 if (rx0 + rx1) / 2 > cx else -1
+            tx = cx + side * SIGN_ROD_DX
+            inv = rod.matrix_world.inverted()
+            hw = (rx1 - rx0) / 2
+            for v in rod.data.vertices:
+                w = rod.matrix_world @ v.co
+                w.x = tx + (1 if w.x > (rx0 + rx1) / 2 else -1) * hw
+                w.z = SIGN_TOP if w.z < (SIGN_TOP + SIGN_ROD_TOP) / 2 else SIGN_ROD_TOP
+                v.co = inv @ w
+            rod.data.update()
+        n += 1
+    print(f"  역명판 {n}개 → {SIGN_W}×{SIGN_H} m · 밑변 바닥 위 "
+          f"{SIGN_TOP - SIGN_H + 20.0:.2f} m")
+
+
 def build():
     pids()
     awnings()
@@ -649,6 +961,11 @@ def build():
     pull_signs()
     frame_clear_glass()
     hide_rail_center()
+    sign_arrows()
+    corridor_ads_drop()
+    pids_place()
+    descent_soffit_stop()
+    hanging_name_signs()
     print("[hq_fixups] 완료")
 
 

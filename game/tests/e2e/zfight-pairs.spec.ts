@@ -28,6 +28,11 @@ const SPOTS: readonly Spot[] = [
   { name: 'z4-descent', x: 94.5, y: 6.7, z: -6, yaw: -1.8, pitch: 0 },
 ]
 
+// 계측기지 성능 테스트가 아니다. 소프트웨어 래스터(기본 config)에서는 지상 가로를
+// 세운 뒤 한 바퀴 도는 데 1분이 걸려 60초 기본 한도에 걸렸다 — 단독으로 돌리면
+// 통과하는데 전체 스위트에서만 죽는 것이 그 신호였다. `tour.spec` 과 같은 처방이다.
+test.setTimeout(240_000)
+
 test('겹침 간격 실측', async ({ page }) => {
   await page.goto('/?freeplay&seed=42')
   await page.waitForFunction(() => !!window.__game?.stationStats(), null, { timeout: 90_000 })

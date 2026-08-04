@@ -10,6 +10,7 @@ import { resolveSeed } from './core/rng'
 import { CAMERA, FPV, MAX_FRAME_MS, MAX_STEPS_PER_FRAME, STEP_MS } from './data/tuning'
 import { GATES, GATE_BODY, GATE_LAMP_Z } from './data/world'
 import { createCameraRig } from './render/camera-rig'
+import { buildTraffic, type Traffic } from './render/cars'
 import { createGuideArrows } from './render/guide-arrows'
 import { loadPlayerRig, type PlayerRig } from './render/player-rig'
 import { createStage } from './render/scene'
@@ -45,6 +46,9 @@ stage.scene.add(world.root)
 /** 유도블록 위를 흐르는 방향 화살표. GLB가 아니라 코드가 만든다 — 매 프레임 움직인다. */
 const guideArrows = createGuideArrows()
 stage.scene.add(guideArrows.mesh)
+
+/** 지상 교통. 배경이라 시뮬 상태에 안 들어가고 렌더 쪽에서 경과 시간으로 굴린다. */
+let traffic: Traffic | null = null
 
 /** 시점 전환 — 1인칭이 기본. 3인칭 쿼터뷰는 V로 확인용 전환. */
 const applyView = (): void => {
@@ -143,6 +147,13 @@ const frame = (now: number): void => {
   station?.sync(state, dtSec, lightIsGreen(state), lightRemainSec(state))
   // 흐름은 **경과 시간** 기준이다. dt 누적으로 굴리면 프레임 흔들림이 그대로 위상 지터가 된다
   guideArrows.update(now / 1000, renderPos)
+  // 보행 신호가 녹색이면 횡단보도를 지나는 이면도로 차가 선다(`cars.ts` 교차로 규약)
+  if (traffic) {
+    // 지하에서는 통째로 끈다. 안 그러면 승강장에서도 차 8콜 · 38 k 삼각형이 얹힌다
+    // (실측: 차를 넣자 Z2~Z5 가 전부 같이 늘었다 — 존 밖인데 계속 그리고 있었다).
+    traffic.group.visible = renderPos.z > -3
+    traffic.update(dtSec, lightIsGreen(state), lightRemainSec(state))
+  }
   player?.sync(state, dtSec, renderPos)
   hud.sync(state, sample.locked && cameraRig.mode() === 'fp')
   screens.sync(state)
@@ -188,6 +199,16 @@ const boot = async (): Promise<void> => {
     stage.scene.add(player.root)
   } else {
     console.error('[player] GLB 로드 실패', playerResult.reason)
+  }
+
+  // 차는 **기동 경로에서 뺀다.** 배경이라 늦게 나타나도 무방한데, 로딩을 여기에 묶으면
+  // 첫 프레임 부하가 커져 포인터 락 직후 입력 큐가 적체된다 —
+  // 실측: 락 직후 300 ms 구간의 시선 이월이 0.0198 → 0.295 rad 로 뛰었다.
+  // 못 불러와도 게임은 그대로 돈다.
+  if (!new URLSearchParams(location.search).has('notraffic')) {
+    void buildTraffic(`${BASE}models/cars/`)
+      .then((t) => { traffic = t; stage.scene.add(t.group) })
+      .catch((e) => console.error('[traffic] 차량 GLB 로드 실패 — 차 없이 진행합니다', e))
   }
 
   applyView()

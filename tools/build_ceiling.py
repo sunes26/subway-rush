@@ -227,7 +227,10 @@ def main():
          lights=[(3.0, seg), (9.0, seg)],
          vents_at=[(x, 6.0) for x in range(84, 206, 12) if not 110 < x < 122])
 
-    sloped_ribs("Z4_desc_ribs", "Z4_DESCENT", "Z4_desc_ceil", 96.4, 127.0, 1.1, 9.4)
+    # x1 은 **계단이 끝나는 곳**까지다. 127.0 은 승강장 천장 개구(x 121)를
+    # 6 m 넘어서라 리브가 승강장 위 경사 램프에 얹혔다 — `hq_descent.X1` 이
+    # 같은 이유로 이미 120.4 로 내려와 있었는데 여기만 안 따라왔다.
+    sloped_ribs("Z4_desc_ribs", "Z4_DESCENT", "Z4_desc_ceil", 96.4, 121.0, 1.1, 9.4)
 
 
 main()

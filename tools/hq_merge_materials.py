@@ -59,6 +59,7 @@ MERGE: dict[str, str] = {
     "HQ_SHOP_PILASTER": "ST_WALL",
     "HQ_SHOP_INTWALL": "ST_WALL",
     "HQ_ENTST_PANEL": "ST_WALL",
+    "BLD_PARAPET": "BLD_WALL_A",
     "HQ_MAP_FACE": "MAP_FACE",
 
     # ── 사인 글자 (SELF_LIT — 발광 띠 위 흰 글자가 회색이 되면 안 읽힌다) ──
@@ -74,6 +75,9 @@ MERGE: dict[str, str] = {
     "HQ_FLOOR_GRATE": "COL_SKIRT",
     "HQ_COL_SEAM": "COL_SKIRT",
     "HQ_ENTST_RIB": "COL_SKIRT",
+    "BLD_ROOF": "BLD_BASE",
+    "SW_PAVER_S": "SW_PAVER",
+    "SW_CURB_S": "SW_PAVER",
     "HQ_PLANT_POT": "COL_SKIRT",
 
     # ── 스테인리스 ────────────────────────────────────────────
@@ -84,6 +88,7 @@ MERGE: dict[str, str] = {
     "HQ_FLOOR_HATCH": "ENTR_STEEL",
     "HQ_SIGNBANK_ROD": "ENTR_STEEL",
     "HQ_SPRINKLER": "ENTR_STEEL",
+    "BLD_AC": "ENTR_STEEL",
     "HQ_SHOP_SHELF": "SH_SHELF",
     "HQ_SHOP_FRAME": "SH_SHELF",
 
@@ -92,6 +97,7 @@ MERGE: dict[str, str] = {
     "HQ_PSD_DARK": "SIGN_DARK",
     "HQ_GATE_DARK": "SIGN_DARK",
     "HQ_SIGN_BODY": "SIGN_DARK",
+    "TL_CASE": "SIGN_DARK",
     "HQ_SIGNBANK_BODY": "SIGN_DARK",
     "HQ_SPEAKER": "SIGN_DARK",
     "HQ_AD_FRAME": "SIGN_DARK",

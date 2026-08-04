@@ -92,7 +92,9 @@ const place = async (page: Page, s: Shot): Promise<{ x: number; y: number; z: nu
 // 촬영 시간은 **지점 수 × 렌더 시간**이지 품질 신호가 아니다. 기본 60초는
 // 지점이 26개가 되고 GLB 가 13 MB 를 넘긴 시점에 소프트웨어 래스터에서 터졌다
 // (21번째 지점에서 끊겼다). 프레임 시간을 지키는 건 `feel.spec` 이지 여기가 아니다.
-test.setTimeout(240_000)
+// 소프트웨어 래스터에서 지상 가로·차량이 붙으며 240 초를 넘겼다 —
+// `report.spec` · `zfight-pairs` 와 같은 이유다(단독은 통과, 전체 스위트에서만 죽는다).
+test.setTimeout(420_000)
 
 test('맵 순회 촬영', async ({ page }) => {
   const errors: string[] = []

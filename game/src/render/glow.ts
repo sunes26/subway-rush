@@ -93,7 +93,13 @@ export const GLOW_GAIN: Readonly<Record<string, number>> = {
  *  2. 흰 글자 둘레에 가산광을 깔면 획 사이가 메워져 **읽기 어려워진다.**
  *     이 게임에서 사인 가독성은 룩보다 우선이다.
  */
-export const GLOW_EXCLUDE = new Set(['TXT_WHITE'])
+export const GLOW_EXCLUDE = new Set([
+  'TXT_WHITE',
+  // 가로 상가 간판. 발광이지만 **판이 크고 가로로 길다** — 글로우를 붙이면
+  // 건물 저층부 전체가 흐릿하게 번져 초점이 안 맞은 것처럼 보인다(디렉터 지적).
+  // 조명기구처럼 작고 밝은 것에만 글로우가 값을 한다.
+  'BLD_SIGN_0', 'BLD_SIGN_1', 'BLD_SIGN_2', 'BLD_SIGN_3', 'BLD_SIGN_4',
+])
 
 // ─────────────────────────── 판 만들기 ───────────────────────────
 

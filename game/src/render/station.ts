@@ -116,7 +116,7 @@ const MATERIAL_TINT: Record<string, number> = {
  * **들어오는 열차가 안 보인다** — 안전문 너머를 보는 건 이 게임에서 정보다.
  */
 const GLASS_MATERIALS = new Set([
-  'PSD_GLASS', 'ST_GLASS', 'ESC_GLASS', 'BLD_GLASS', 'VM_GLASS', 'TR_WINDOW',
+  'PSD_GLASS', 'ST_GLASS', 'ESC_GLASS', 'BLD_GLASS', 'BLD_GLASS_HQ', 'VM_GLASS', 'TR_WINDOW',
 ])
 
 /**
@@ -209,12 +209,20 @@ const depthLayerOf = (name: string): number =>
 const SELF_LIT_MATERIALS = new Set([
   'FIXTURE', 'AD_PANEL', 'AD_PANEL2', 'AD_PANEL3', 'VM_LIGHT', 'CHG_SCR', 'ESC_COMB',
   'LED_AMBER', 'SH_GREEN', 'SH_RED',
+  // 가로 상가 간판. Blender 에서 발광인데 여기 없으면 툰으로 칠해져 **꺼진 판**이 된다
+  // (계단통 조명에서 이미 한 번 물린 함정이다 — 새 발광 재질은 반드시 여기에 올린다).
+  'BLD_SIGN_0', 'BLD_SIGN_1', 'BLD_SIGN_2', 'BLD_SIGN_3', 'BLD_SIGN_4',
   // 바닥 유도 사인 판. Blender 에서 발광 2.5 인데 여기 없어서 툰으로 칠해졌고,
   // 짙은 남색(0.02,0.12,0.35)이 어두운 단계로 떨어져 **바닥에 검은 구멍**처럼 보였다.
   'SIGN_INFO',
   // 사인 글자. 발광 띠 위에 툰 셰이딩된 흰 글자를 얹으면 회색이 되어 안 읽힌다.
   // 안내 사인은 읽히는 게 존재 이유다.
   'TXT_WHITE',
+  // 승강장 전광판 **문안**. 툰으로 칠하면 안 된다 — 7 m 만 떨어져도 주황 글자가
+  // 검게 죽어 케이스가 통짜 검은 상자로 보였다. 발광 재질 누락은 이걸로 네 번째다.
+  // ⚠ 바탕 띠(`HQ_PIDS_BAND`)는 **일부러 뺀다.** 같이 발광시키면 띠의 번짐이
+  //   글자를 덮어 주황 덩어리가 된다. 실사 전광판도 어두운 바탕에 밝은 글자다.
+  'HQ_PIDS_TXT',
 ])
 
 /**
@@ -532,10 +540,13 @@ export const loadStation = async (
   const flaps: Flap[] = []
   const signs: SignFace[] = []
   const lamps: SignFace[] = []
-  let tlRed: MeshBasicMaterial | null = null
-  let tlGreen: MeshBasicMaterial | null = null
-  let tlRedGlow: GlowRange = [0, 0]
-  let tlGreenGlow: GlowRange = [0, 0]
+  // 신호등은 **여러 기**다. 횡단보도 양단에 보행등이 서고 차도에 차량등이 따로 선다.
+  // 예전엔 `let tlRed`(하나)라 마지막으로 로드된 등만 색이 바뀌었다 —
+  // 등을 늘리는 순간 나머지는 계속 빨간불로 굳는다.
+  const tlReds: MeshBasicMaterial[] = []
+  const tlGreens: MeshBasicMaterial[] = []
+  const tlRedGlows: GlowRange[] = []
+  const tlGreenGlows: GlowRange[] = []
   const tlCount: Object3D[] = []
 
   /** 글로우 판 목록 — 맵 전체를 한 메시로 굽는다(드로우 콜 3개). glow.ts 주석 참고. */
@@ -638,11 +649,11 @@ export const loadStation = async (
         continue
       }
       if (matName === 'TL_RED') {
-        tlRed = emissiveOf(node, 0xe5484d)
-        tlRedGlow = addDynGlow(node, 0xe5484d, 1.5)
+        tlReds.push(emissiveOf(node, 0xe5484d))
+        tlRedGlows.push(addDynGlow(node, 0xe5484d, 1.5))
       } else if (matName === 'TL_GRN') {
-        tlGreen = emissiveOf(node, 0x00a84d)
-        tlGreenGlow = addDynGlow(node, 0x00a84d, 1.5)
+        tlGreens.push(emissiveOf(node, 0x00a84d))
+        tlGreenGlows.push(addDynGlow(node, 0x00a84d, 1.5))
       } else if (matName === 'TL_COUNT') tlCount.push(node)
     }
 
@@ -813,8 +824,8 @@ export const loadStation = async (
         for (const lp of lamps) {
           paintGlow(lp.glow, s.gates.workingIds.includes(lp.gate) ? green : red, 1.6)
         }
-        paintGlow(tlRedGlow, greenLight ? dark : red, 1.5)
-        paintGlow(tlGreenGlow, greenLight ? green : dark, 1.5)
+        for (const g of tlRedGlows) paintGlow(g, greenLight ? dark : red, 1.5)
+        for (const g of tlGreenGlows) paintGlow(g, greenLight ? green : dark, 1.5)
         glowDynamic.flush()
       }
 
@@ -840,8 +851,8 @@ export const loadStation = async (
       if (trainBank.right) trainBank.right.position.x = slide
 
       // ── 신호등
-      if (tlRed) tlRed.color.copy(greenLight ? dark : red)
-      if (tlGreen) tlGreen.color.copy(greenLight ? green : dark)
+      for (const m of tlReds) m.color.copy(greenLight ? dark : red)
+      for (const m of tlGreens) m.color.copy(greenLight ? green : dark)
       const k = Math.max(0.05, Math.min(1, lightRemainSec / (greenLight ? 12 : 18)))
       for (const c of tlCount) c.scale.y = k
     },
