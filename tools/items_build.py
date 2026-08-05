@@ -738,31 +738,31 @@ ITEMS["ITM01_Backscratcher"] = _hyo
 # 레퍼런스 사진에서 **색 배치**만 가져왔다. 로고·상표·글자는 쓰지 않는다.
 
 # --- 양갱 (정답) — 금박 필름을 한쪽만 벗긴 개별 포장. 다섯 중 가장 납작하다.
-M_YG_FILM = new_mat("ITM_YanggaengFilm", "C6A24E", 0.42)   # 금박
-M_YG_FILM_L = new_mat("ITM_YanggaengFilmLit", "E0C078", 0.40)  # 금박 광택면
-M_YG_PAT = new_mat("ITM_YanggaengPattern", "9C7A31", 0.46)  # 문양·접힘 자국
-M_YG_BEIGE = new_mat("ITM_YanggaengBeige", "E4D3A6", 0.56)  # 베이지 인쇄 구역
+M_YG_FILM = new_mat("ITM_YanggaengFilm", "C6A24E", 0.50)   # 금박 (필름 0.50)
+M_YG_FILM_L = new_mat("ITM_YanggaengFilmLit", "E0C078", 0.48)  # 금박 광택면
+M_YG_PAT = new_mat("ITM_YanggaengPattern", "9C7A31", 0.50)  # 문양·접힘 자국
+M_YG_BEIGE = new_mat("ITM_YanggaengBeige", "E4D3A6", 0.50)  # 베이지 인쇄 구역
 M_YG_BODY = new_mat("ITM_YanggaengBody", "35190F", 0.64)   # 드러난 양갱 (팥 흑갈색)
 
 # --- 바나나우유 — 원뿔로 벌어지다 중간에 턱이 있는 단지형. 뚜껑은 진초록.
-M_BM = new_mat("ITM_MilkBody", "F8ECB4", 0.56)            # 바나나 크림 몸통
-M_BM_LIT = new_mat("ITM_MilkLit", "FFF6CE", 0.58)         # 밝은 면
-M_BM_CAP = new_mat("ITM_MilkCap", "2E4A2A", 0.44)         # 진초록 뚜껑
-M_BM_GRN = new_mat("ITM_MilkAccent", "4E7A3A", 0.50)      # 초록 포인트·꼭지
-M_BM_BAN = new_mat("ITM_MilkBanana", "EFBE2E", 0.52)      # 바나나 아이콘
+M_BM = new_mat("ITM_MilkBody", "F8ECB4", 0.42)            # 바나나 크림 몸통 (플라스틱 0.42)
+M_BM_LIT = new_mat("ITM_MilkLit", "FFF6CE", 0.42)         # 밝은 면
+M_BM_CAP = new_mat("ITM_MilkCap", "2E4A2A", 0.42)         # 진초록 뚜껑 (플라스틱 0.42)
+M_BM_GRN = new_mat("ITM_MilkAccent", "4E7A3A", 0.42)      # 초록 포인트·꼭지
+M_BM_BAN = new_mat("ITM_MilkBanana", "EFBE2E", 0.42)      # 바나나 아이콘
 
 # --- 초콜릿 — 은박을 아래만 감은 '먹기 직전' 상태. 블록 2×3.
 M_CH = new_mat("ITM_ChocoBlock", "4E2E22", 0.58)          # 진한 초콜릿
 M_CH_LIT = new_mat("ITM_ChocoBlockLit", "6B4231", 0.56)   # 조각 옆면
-M_CH_FOIL = new_mat("ITM_ChocoFoil", "C2C8CD", 0.30)      # 은박 (금속감)
-M_CH_FOIL_D = new_mat("ITM_ChocoFoilShade", "8E969D", 0.34)  # 은박 접힘면
+M_CH_FOIL = new_mat("ITM_ChocoFoil", "C2C8CD", 0.30)      # 은박 (금속 0.30)
+M_CH_FOIL_D = new_mat("ITM_ChocoFoilShade", "8E969D", 0.30)  # 은박 접힘면
 
 # --- 탄산음료 — 초록 캔에 흰↔초록 대각 필드 분할 + 별 포인트.
-M_SD = new_mat("ITM_SodaBody", "3EA832", 0.42)            # 사이다 그린
+M_SD = new_mat("ITM_SodaBody", "3EA832", 0.42)            # 사이다 그린 (플라스틱 0.42)
 M_SD_LIT = new_mat("ITM_SodaLit", "5CC24C", 0.40)         # 밝은 초록
-M_SD_WHT = new_mat("ITM_SodaField", "F2F7EE", 0.56)       # 흰 필드
-M_SD_MET = new_mat("ITM_SodaMetal", "B3BCC0", 0.30)       # 상하 림·탭
-M_SD_GUN = new_mat("ITM_SodaGunmetal", "6E7A80", 0.34)    # 탭 구멍
+M_SD_WHT = new_mat("ITM_SodaField", "F2F7EE", 0.42)       # 흰 필드
+M_SD_MET = new_mat("ITM_SodaMetal", "B3BCC0", 0.30)       # 상하 림·탭 (금속 0.30)
+M_SD_GUN = new_mat("ITM_SodaGunmetal", "6E7A80", 0.30)    # 탭 구멍
 
 # --- 새우깡 — 상단 금색 띠 + 오렌지 필드 + 하단 크림 조각 더미.
 M_SN = new_mat("ITM_SnackBag", "F0742C", 0.62)            # 오렌지 필드
@@ -1190,26 +1190,31 @@ def _ribbon(pt, hw, n=7):
 # 실물은 필름이 바를 감싸므로 포장부가 조금 더 굵고, 드러난 속은 그보다 얇다.
 # 전체 두께도 11 → 8mm 로 낮춰 '두꺼운 플라스틱 케이스' 인상을 지운다.
 YG_L, YG_H, YG_D = 0.090, 0.019, 0.008
-YG_CUT = 0.0342                      # 필름이 끝나는 x. 오른쪽 12% 만 드러난다
-# 속 양갱 — 필름보다 0.4mm 씩 얇다. 이 차이가 '감싸인 것'을 만든다.
-_p = [plate("yg_body", YG_L, YG_H - 0.0011, 0.0020, YG_D - 0.0008, M_YG_BODY,
+YG_CUT = 0.0348                      # 필름이 끝나는 x. 오른쪽 11% 만 드러난다
+# 필름 벽 두께 0.25mm — 이전 0.55mm 의 절반 이하다. **벽이 두꺼울수록 필름 끝의
+# 턱이 커지고, 그 턱 하나가 '금색 케이스 뒤에 갈색 블록을 붙인 것'으로 읽히게
+# 만든다.** 얇을수록 속과 겉이 이어져 보인다.
+_p = [plate("yg_body", YG_L, YG_H - 0.0005, 0.0018, YG_D - 0.0005, M_YG_BODY,
             seg=3)]
 bevel(_p[0], 0.0007, 3)              # 젤리 바라 모서리가 부드럽다
-# 금박 필름 — **모서리 반경 1.2mm · 베벨 1단.** 앞선 판은 반경 2.8mm 에 베벨을
-# 두 단 먹여, 얇게 만들어도 사출로 찍은 플라스틱 셸처럼 보였다. 필름은 두께가
-# 아니라 **면이 평평하고 모서리가 날카롭다**는 사실로 읽힌다.
-_FW = (YG_L / 2.0 + 0.0008) + YG_CUT
+# 금박 필름 — 모서리 반경 1.2mm · 얕은 베벨. 반경이 크고 베벨이 깊으면 얇게
+# 만들어도 사출로 찍은 셸로 보인다. 필름은 두께가 아니라 **면이 평평하고
+# 모서리가 날카롭다**는 사실로 읽힌다.
+_FW = (YG_L / 2.0 + 0.0005) + YG_CUT
 _p.append(plate("yg_film", _FW, YG_H, 0.0012, YG_D, M_YG_FILM, seg=3,
                 cx=YG_CUT - _FW / 2.0, edge_mat=M_YG_FILM_L))
 bevel(_p[-1], 0.0003, 2)
-# 접힌 끝 — 넓고 아주 얇은 판(0.5mm, 몸통의 6%). 좁고 두꺼우면 캡·기계 부품이다.
-_FX = -(YG_L / 2.0 + 0.0008)
-_p.append(plate("yg_seal", 0.0094, YG_H * 0.54, 0.0006, 0.0005, M_YG_FILM,
-                seg=1, cx=_FX - 0.0045, edge_mat=M_YG_FILM_L))
-# 인쇄 — 베이지 띠 하나만. 폭을 32 → 20% 로 줄이고 위로 올렸다. 넓고 가운데
-# 있으면 인쇄가 아니라 **파인 홈**으로 읽힌다. 점무늬는 전부 뺐다.
-_p.append(decal("yg_beige", _rr(_FW - 0.0022, YG_H * 0.20, 0.0006, 1,
-                                cx=YG_CUT - _FW / 2.0, cz=0.0044),
+# 접힌 밀봉 끝 — 넓고 0.35mm 로 얇게. 두 겹으로 나눠 바깥쪽을 더 얇게 하면
+# 눌러 접은 필름처럼 보인다. 좁고 두꺼우면 캡·기계 부품이다.
+_FX = -(YG_L / 2.0 + 0.0005)
+_p.append(plate("yg_seal", 0.0072, YG_H * 0.62, 0.0006, 0.00035, M_YG_FILM,
+                seg=1, cx=_FX - 0.0034, edge_mat=M_YG_FILM_L))
+_p.append(plate("yg_seal2", 0.0050, YG_H * 0.40, 0.0005, 0.00020, M_YG_FILM,
+                seg=2, cx=_FX - 0.0082, edge_mat=M_YG_FILM_L))
+# 인쇄 — **왼쪽 절반의 베이지 판 하나.** 길이를 가로지르는 가는 띠는 인쇄가
+# 아니라 파인 홈으로 읽혔다. 구역을 나누는 넓은 색면이라야 인쇄로 보인다.
+_p.append(decal("yg_beige", _rr(_FW * 0.44, YG_H * 0.68, 0.0016, 3,
+                                cx=YG_CUT - _FW / 2.0 - _FW * 0.22),
                 flat_place(-YG_D / 2.0), M_YG_BEIGE))
 for _o in _p:
     shade(_o, False)
@@ -1277,7 +1282,7 @@ for _r in range(CH_ROW):
     for _c in range(CH_COL):
         _cx = -CH_W / 2.0 + 0.0030 + _CW / 2.0 + (_CW + 0.0022) * _c
         _cz = -CH_H / 2.0 + 0.0025 + _CHH / 2.0 + (_CHH + 0.0022) * _r
-        _b = plate("ch_blk%d%d" % (_r, _c), _CW, _CHH, 0.0016, CH_D + 0.0028,
+        _b = plate("ch_blk%d%d" % (_r, _c), _CW, _CHH, 0.0016, CH_D + 0.0016,
                    M_CH, seg=1, cx=_cx, cz=_cz, edge_mat=M_CH_LIT)
         bevel(_b, 0.0006, 1)         # 약한 베벨 — 각지면 장난감 블록이다
         _p.append(_b)
@@ -1287,26 +1292,31 @@ CH_FH = 0.0200
 # 서로 어긋난 회색 덩어리들이 됐고, 깨진 얼음·돌 파편처럼 보였다. 매끈한 판
 # 하나를 깔고, 윗변에만 **덧붙이는 조각 셋**으로 불규칙을 준다. 덧붙이는 쪽은
 # 본판과 겹치므로 조각 사이에 틈이 생길 수 없다.
-CH_FD = CH_D + 0.0046                # 조각(CH_D+0.0028)보다 깊게 — 관통 방지
-_p.append(plate("ch_foil", CH_W + 0.0022, CH_FH, 0.0016, CH_FD,
+# 포일이 판 밖으로 나가는 두께를 2.3 → 1.2mm 로 줄였다(−48%). 조각의 돌출도
+# 함께 낮춰(1.4 → 0.8mm) 포일이 조각보다 0.4mm 만 앞선다 — 이 좁은 차이가
+# '감싼 하나의 포장'을 만든다. 벌어져 있으면 회색 받침대 위에 얹은 것이 된다.
+CH_FD = CH_D + 0.0024
+_p.append(plate("ch_foil", CH_W + 0.0012, CH_FH, 0.0014, CH_FD,
                 M_CH_FOIL, seg=2, cz=-CH_H / 2.0 + CH_FH / 2.0,
                 edge_mat=M_CH_FOIL_D))
 bevel(_p[-1], 0.0005, 1)
 for _i, (_gx, _gw, _gh) in enumerate(((-0.0300, 0.0330, 0.0020),
                                       (-0.0010, 0.0280, 0.0034),
                                       (0.0290, 0.0300, 0.0013))):
-    _p.append(plate("ch_foilTop%d" % _i, _gw, 0.0090 + _gh, 0.0014, CH_FD,
+    _p.append(plate("ch_foilTop%d" % _i, _gw, 0.0090 + _gh, 0.0012, CH_FD,
                     M_CH_FOIL, seg=1, cx=_gx,
                     cz=-CH_H / 2.0 + CH_FH - 0.0045 + _gh / 2.0,
                     edge_mat=M_CH_FOIL_D))
 # 뒷면 덮개 — 포일이 판 뒤로도 얇게 올라간다. 앞만 감싸면 받침으로 보인다.
-_p.append(plate("ch_foil_back", CH_W + 0.0022, CH_FH + 0.0090, 0.0016, 0.0009,
+_p.append(plate("ch_foil_back", CH_W + 0.0012, CH_FH + 0.0090, 0.0014, 0.0007,
                 M_CH_FOIL_D, seg=2, cz=-CH_H / 2.0 + (CH_FH + 0.0090) / 2.0,
                 y=CH_FD / 2.0))
 # 접힘면 둘 — 넓고 얕게. 셋 이상 고르게 늘어놓으면 반복 무늬가 된다.
-for _i, (_fx, _fw) in enumerate(((-0.0252, 0.0212), (0.0206, 0.0164))):
-    _p.append(slab("ch_fold%d" % _i, (_fx, 0.0, -CH_H / 2.0 + CH_FH / 2.0),
-                   (_fw, CH_FD + 0.0008, CH_FH * 0.72), M_CH_FOIL_D))
+for _i, (_fx, _fw, _fz, _fh) in enumerate((
+        (-0.0286, 0.0106, -0.0012, 0.86), (0.0164, 0.0084, 0.0016, 0.64))):
+    _p.append(slab("ch_fold%d" % _i,
+                   (_fx, 0.0, -CH_H / 2.0 + CH_FH / 2.0 + _fz),
+                   (_fw, CH_FD + 0.0008, CH_FH * _fh), M_CH_FOIL_D))
 for _o in _p:
     shade(_o, False)
 ITEMS["ITM12_Chocolate"] = ground(finish("ITM12_Chocolate", _p))
@@ -1359,14 +1369,14 @@ ITEMS["ITM12_Soda"] = ground(finish("ITM12_Soda", _p))
 # 레이아웃을 실물처럼 3단으로 되돌린다 — **상단 금색 띠 / 오렌지 필드에 큰
 # 붉은 새우 / 옐로 바닥에 쌓인 스낵 조각**. 조각은 길고 얇은 초승달이 아니라
 # **짧고 통통한 곡선 스틱**이라야 과자로 보인다(앞선 판은 물결 무늬였다).
-SN_W, SN_H, SN_D = 0.070, 0.098, 0.0390
-SN_FMIN, SN_PW, SN_PH, SN_TAPER = 0.27, 0.58, 0.48, 0.012
+SN_W, SN_H, SN_D = 0.070, 0.098, 0.0420
+SN_FMIN, SN_PW, SN_PH, SN_TAPER = 0.31, 0.58, 0.48, 0.012
 
 
 def SN_ZONE(u, v):
     """상단 금색 띠(2) / 오렌지 필드(0) / 하단 옐로(3). 경계를 살짝 기울여
     자로 그은 직선처럼 보이지 않게 한다."""
-    if v > 0.80 + 0.03 * u:
+    if v > 0.80:
         return 2
     return 3 if v < -0.26 - 0.05 * u else 0
 
@@ -1423,26 +1433,26 @@ for _i, _mt in enumerate((-0.36, -0.02, 0.32)):
                                                     _m1[0] - _m0[0]))),
                     _sn_place, M_SN_DK, layer=2, step=0.0040))
 _hx, _hz = _shr_pt(-1.0)
-_p.append(decal("sn_shr_head", _rr(0.0132, 0.0099, 0.0044, 2,
-                                   cx=_hx - 0.0013, cz=_hz + 0.0020, rot=26.0),
+_p.append(decal("sn_shr_head", _rr(0.0128, 0.0092, 0.0040, 2,
+                                   cx=_hx - 0.0013, cz=_hz + 0.0019, rot=26.0),
                 _sn_place, M_SN_SHR, layer=1, step=0.0060))
 _tx, _tz = _shr_pt(1.0)
 _ta0, _ta1 = _shr_pt(0.92), _shr_pt(1.0)
 _tdx, _tdz = _ta1[0] - _ta0[0], _ta1[1] - _ta0[1]
 _tn = math.hypot(_tdx, _tdz) or 1.0
 _tdx, _tdz = _tdx / _tn, _tdz / _tn
-_tlo, _tup = _edges(lambda t, L=0.0064: (_tx + _tdx * L * (t + 1.0),
+_tlo, _tup = _edges(lambda t, L=0.0060: (_tx + _tdx * L * (t + 1.0),
                                          _tz + _tdz * L * (t + 1.0)),
-                    lambda t: 0.0018 + 0.0056 * (t + 1.0) / 2.0, 5)
+                    lambda t: 0.0014 + 0.0054 * (t + 1.0) / 2.0, 5)
 _p.append(decal_strip("sn_shr_tail", _tlo, _tup, _sn_place, M_SN_SHR,
-                      layer=1, step=0.0060, cross=1))
+                      layer=1, step=0.0050, cross=2))
 # 스낵 조각 — 열 개를 흩었더니 국수 가락·뼈다귀로 읽혔다. **넷만 크게** 두고
 # 각각에 얕은 세로 홈 셋을 넣는다. 새우맛 스낵의 정체는 굽은 막대가 아니라
 # 그 위의 골이라, 홈이 없으면 무엇이든 될 수 있는 곡선일 뿐이다.
 for _i, (_cx, _cz, _cl, _cw, _cd) in enumerate((
-        (-0.0132, -0.0128, 0.0081, 0.0078, -30.0),
-        (0.0004, -0.0178, 0.0086, 0.0084, 6.0),
-        (0.0136, -0.0226, 0.0083, 0.0080, 40.0))):
+        (-0.0138, -0.0156, 0.0106, 0.0102, -28.0),
+        (0.0002, -0.0212, 0.0112, 0.0110, 6.0),
+        (0.0128, -0.0286, 0.0104, 0.0100, 36.0))):
     _cc, _cs = math.cos(math.radians(_cd)), math.sin(math.radians(_cd))
 
     def _put(x, z, cc=_cc, cs=_cs, ox=_cx, oz=_cz):
@@ -1455,7 +1465,7 @@ for _i, (_cx, _cz, _cl, _cw, _cd) in enumerate((
                           [_put(x, z) for x, z in _clo],
                           [_put(x, z) for x, z in _cup],
                           _sn_place, M_SN_PC, layer=1, step=0.0055, cross=1))
-    for _k, _gt in enumerate((-0.30, 0.30)):
+    for _k, _gt in enumerate((-0.44, 0.0, 0.44)):
         _gx, _gz = _gt * _cl, 0.0030 * (_gt * _gt - 0.5)
         _p.append(decal("sn_pcg%d%d" % (_i, _k),
                         _rr(0.0007, _cw * 0.70, 0.00030, 1,
