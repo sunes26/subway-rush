@@ -380,13 +380,18 @@ export const SOLIDS: readonly Solid[] = [
   solid('OBJ-04-STALL', at(-40, 32, 3.0, 1.4), 0, 1.9, 'kiosk'),       // 인도 좌판 · 신규 치수
   solid('OBJ-02-LIGHT', at(-32.6, 22.6, 0.4, 0.4), 0, 4.2, 'sign'),    // 신호등 폴
   solid('ITM-05-BENCH', at(-12, 32, 2.2, 0.7), 0, 0.9, 'bench'),
-  // 인도 남/북 경계 (차도·상가 차단)
-  solid('Z1-CURB-S', [-64, 21.8, 2, 22.0], 0, 0.9, 'wall'),
   // 상가는 북쪽 배경이라 높이를 살려 둔다 — 카메라가 북서에 서므로 시야를 막지 않는다
   solid('Z1-SHOPS', [-64, 34.0, 2, 34.4], 0, 4.5, 'wall'),
-  // 이면도로 — 횡단보도 밖은 항상 막힘
-  solid('Z1-SIDEROAD-S', [CROSSWALK.xMin, 22.0, CROSSWALK.xMax, CROSSWALK.yMin], 0, 1.1, 'wall'),
-  solid('Z1-SIDEROAD-N', [CROSSWALK.xMin, CROSSWALK.yMax, CROSSWALK.xMax, 34.0], 0, 1.1, 'wall'),
+  /**
+   * ⚠ 차도 연석(`Z1-CURB-S`)과 이면도로 벽(`Z1-SIDEROAD-S/N`)은 **일부러 없앴다.**
+   *
+   * 디렉터 지시 — 적신호에도 자유롭게 건너고, 옆 차도에도 내려설 수 있어야 한다.
+   * 차도 바닥은 이미 `Z1-ROAD` 슬랩(y 16~22)이라 벽만 걷으면 걸어 들어간다.
+   * 막는 대신 **차에 치이면 스폰으로 되돌아간다**(`systems/roadHazard`).
+   *
+   * 남쪽 한계는 y 16 이다 — 그 너머 인도(y 12.6~16)는 슬랩이 없어 `isWalkable` 이
+   * 막는다. 건너편 건물이 거기서 시작하므로 그 선이 곧 반대편 연석이다.
+   */
   // 서쪽 맵 끝 — 인도 슬랩이 x=−64에서 끝나므로 충돌벽은 불필요하다(isWalkable이 막는다).
   // 벽을 세우면 스폰 시 카메라가 그 바깥에 놓여 화면이 통째로 가려진다.
   parapet('Z1-END-W', [-64.4, 16, -64.0, 34], 0, 4.5),
@@ -406,9 +411,14 @@ export const SOLIDS: readonly Solid[] = [
 
   // ───────────── Z2 (B1) ─────────────
   ...Z2_COLUMNS,
-  solid('OBJ-06-VENDA', at(11, 5, 1.4, 0.9), FLOOR.B1, 2.0, 'machine'),
-  solid('OBJ-07-VENDB', at(22, 5, 1.4, 0.9), FLOOR.B1, 2.0, 'machine'),
-  solid('OBJ-08-VENDC', at(52, 3, 1.4, 0.9), FLOOR.B1, 2.0, 'machine'),
+  // 자판기는 점포 파일런(칸 사이 0.40 m 띠) 앞에 등을 붙인다 — 개구부는
+  // 칸 중심 ±0.80 이라 파일런 중심(13.03 · 21.63 · 25.93)이면 문과 안 겹친다.
+  // 예전 (11,5)·(22,5) 는 편의점 문 한복판과 통로 한가운데였고,
+  // (52,3) 은 `Z2_OBJ28_hoard` 가벽 안에 파묻혀 보이지도 않았다.
+  // ⚠ `tools/hq_fixups.VEND_TARGET` 과 **같이** 고쳐야 한다. 그림과 충돌이 갈라진다.
+  solid('OBJ-06-VENDA', at(13.03, 4.15, 1.4, 0.9), FLOOR.B1, 2.0, 'machine'),
+  solid('OBJ-07-VENDB', at(21.63, 4.15, 1.4, 0.9), FLOOR.B1, 2.0, 'machine'),
+  solid('OBJ-08-VENDC', at(25.93, 4.15, 1.4, 0.9), FLOOR.B1, 2.0, 'machine'),
   solid('OBJ-10-CHARGE', at(10, 21, 1.2, 0.7), FLOOR.B1, 1.6, 'machine'),
   solid('OBJ-15-BOARD', at(26, 16, 1.0, 1.0), FLOOR.B1, 2.8, 'sign'),
   solid('ACT-02-BENCH', at(42, 15, 2.4, 0.8), FLOOR.B1, 0.9, 'bench'),

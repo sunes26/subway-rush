@@ -26,6 +26,7 @@ import {
 } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import type { CarBox } from '../systems/roadHazard'
 import { makeToonRamp } from './toon'
 
 const KINDS = [
@@ -93,8 +94,20 @@ export type Traffic = Readonly<{
   group: Group
   /** `lightIsGreen`(보행 녹색) · 남은 초와 dt 를 받아 한 프레임 굴린다. */
   update(dtSec: number, walkGreen: boolean, remainSec: number): void
+  /**
+   * 현재 차체들의 월드 축정렬 상자. 매 프레임 **같은 배열을 갱신해** 돌려준다 —
+   * 프레임마다 새로 만들면 GC 가 60 Hz 로 돈다.
+   */
+  bodies(): readonly CarBox[]
   dispose(): void
 }>
+
+/**
+ * 판정 치수(반폭 · 반길이, m). 모델 실치수(1.88 × 4.46)보다 조금 작게 잡는다 —
+ * 스치기만 해도 처음으로 돌아가면 억울하다.
+ */
+const HIT_W = 0.85
+const HIT_L = 2.10
 
 const laneLen = (l: Lane): number =>
   Math.hypot(l.to[0] - l.from[0], l.to[1] - l.from[1])
@@ -183,6 +196,9 @@ export const buildTraffic = async (basePath = 'models/cars/'): Promise<Traffic> 
     return { im, members }
   })
 
+  /** 판정 상자 — 대수가 고정이라 한 번 만들고 값만 갈아 끼운다. */
+  const boxes = cars.map(() => ({ x: 0, y: 0, hx: 0, hy: 0 }))
+
   const mat4 = new Matrix4()
   const quat = new Quaternion()
   const pos = new Vector3()
@@ -229,6 +245,17 @@ export const buildTraffic = async (basePath = 'models/cars/'): Promise<Traffic> 
       if (c.s > len) c.s -= len
     }
 
+    // 판정 상자 갱신 — 차선 방향에 따라 길이축이 x 인지 y 인지가 갈린다
+    cars.forEach((c, i) => {
+      const [dx, dy] = c.dir
+      const alongY = Math.abs(dy) > Math.abs(dx)
+      const b = boxes[i]!
+      b.x = c.lane.from[0] + dx * c.s
+      b.y = c.lane.from[1] + dy * c.s
+      b.hx = alongY ? HIT_W : HIT_L
+      b.hy = alongY ? HIT_L : HIT_W
+    })
+
     // 인스턴스 매트릭스 갱신
     for (const g of groups) {
       if (!g) continue
@@ -251,6 +278,7 @@ export const buildTraffic = async (basePath = 'models/cars/'): Promise<Traffic> 
   return {
     group,
     update,
+    bodies: () => boxes,
     dispose: () => {
       for (const g of groups) g?.im.geometry.dispose()
       material.dispose()

@@ -76,10 +76,12 @@ const CSS = `
 #cross i:nth-child(3){top:7px;left:0;height:2px;width:5px}
 #cross i:nth-child(4){top:7px;right:0;height:2px;width:5px}
 
-/* 횡단보도 신호 — 적신호 차단벽은 **보이지 않는다.**
-   신호등 폴은 횡단보도 남쪽 끝(y 22.6)에 하나뿐이라 북쪽으로 건너는 플레이어의
-   시야 밖이다. 그래서 "간헐적으로 앞이 막힌다"가 원인 불명의 버그로 읽혔다.
-   막는 주체와 남은 시간을 화면에 띄워 **기다리면 열린다**는 것을 알린다. */
+/* 횡단보도 신호.
+   예전에는 적신호에 보이지 않는 벽이 서서 "간헐적으로 앞이 막힌다"가 원인 불명의
+   버그로 읽혔고, 이 표시는 그 벽의 정체를 밝히는 물건이었다.
+   지금은 벽이 없다 — 적신호에도 건널 수 있고 대신 **차에 치이면 처음으로 돌아간다.**
+   그래서 문안도 명령("정지")이 아니라 경고로 바꿨다. 신호등 폴은 횡단보도 남쪽 끝
+   (y 22.6)에 하나뿐이라 북쪽으로 건너는 동안에는 시야 밖이므로 표시가 더 필요하다. */
 #sig{position:absolute;left:50%;top:63%;transform:translateX(-50%);
   font-family:var(--mono);font-size:13px;letter-spacing:.1em;display:none;
   padding:7px 15px;border-radius:5px;background:rgba(8,8,10,.78);
@@ -197,11 +199,11 @@ export const createHud = (mount: HTMLElement): Hud => {
       const co = `<b>x</b> ${p.x.toFixed(1)}  <b>y</b> ${p.y.toFixed(1)}  <b>z</b> ${p.z.toFixed(1)}`
       if (co !== lastCoord) { coordEl.innerHTML = co; lastCoord = co }
 
-      // 횡단보도 신호 — 보이지 않는 차단벽의 정체를 밝힌다. 위 `#sig` 주석 참조.
+      // 횡단보도 신호 — 위 `#sig` 주석 참조. 적신호는 금지가 아니라 위험 경고다.
       // 남은 시간은 올림해서 "0초"가 화면에 뜨는 구간을 없앤다.
       const green = lightIsGreen(s)
       const sigMsg = nearCrossing(p.x, p.y, p.z) && s.phase === 'playing'
-        ? `${green ? '보행 신호' : '정지 · 적신호'}  ${Math.ceil(lightRemainSec(s))}초`
+        ? `${green ? '보행 신호' : '적신호 · 차 주의'}  ${Math.ceil(lightRemainSec(s))}초`
         : ''
       if (sigMsg !== lastSig) {
         sig.textContent = sigMsg

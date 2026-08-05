@@ -142,3 +142,4 @@ export type Action =
   | { t: 'PHASE'; phase: Phase }
   | { t: 'END'; endingId: EndingId }
   | { t: 'FX'; kind: Fx['kind']; text: string; lifeMs: number; value: number }
+  | { t: 'RESPAWN' }

@@ -211,6 +211,32 @@ export const reducer = (s: GameState, a: Action): GameState => {
 
     case 'FX':
       return pushFx(s, { kind: a.kind, text: a.text, lifeMs: a.lifeMs, value: a.value })
+
+    /**
+     * 차에 치였다 — 스폰으로 되돌린다.
+     *
+     * 시간은 깎지 않는다. 스폰(−58, 24)에서 횡단보도까지 26 m 를 다시 걷는 것 자체가
+     * 대가라 페널티를 겹치면 두 번 벌주는 꼴이다.
+     * 속도·점프 상태까지 같이 비운다 — 위치만 옮기면 관성이 남아 되돌아온 자리에서
+     * 그대로 미끄러진다.
+     */
+    case 'RESPAWN':
+      return {
+        ...s,
+        zone: 'Z1',
+        player: {
+          ...s.player,
+          pos: { x: SPAWN.x, y: SPAWN.y, z: SPAWN.z },
+          vel: { x: 0, y: 0 },
+          vz: 0,
+          grounded: true,
+          airborneMs: 0,
+          jumpBufferMs: 0,
+          rampId: null,
+          moving: false,
+          sprinting: false,
+        },
+      }
   }
 }
 

@@ -7,8 +7,8 @@
 import { Frustum, Matrix4, Raycaster, Vector2, Vector3 } from 'three'
 import { createInput, EMPTY_INPUT, type InputFrame } from './core/input'
 import { resolveSeed } from './core/rng'
-import { CAMERA, FPV, MAX_FRAME_MS, MAX_STEPS_PER_FRAME, STEP_MS } from './data/tuning'
-import { GATES, GATE_BODY, GATE_LAMP_Z } from './data/world'
+import { CAMERA, FPV, MAX_FRAME_MS, MAX_STEPS_PER_FRAME, MOVE, STEP_MS } from './data/tuning'
+import { FLOOR, GATES, GATE_BODY, GATE_LAMP_Z } from './data/world'
 import { createCameraRig } from './render/camera-rig'
 import { buildTraffic, type Traffic } from './render/cars'
 import { createGuideArrows } from './render/guide-arrows'
@@ -16,8 +16,9 @@ import { loadPlayerRig, type PlayerRig } from './render/player-rig'
 import { createStage } from './render/scene'
 import { loadStation, type Station } from './render/station'
 import { buildWorld } from './render/world-builder'
-import { initialState } from './state/reducer'
+import { applyAll, initialState } from './state/reducer'
 import type { GameState } from './state/types'
+import { carHits } from './systems/roadHazard'
 import { lightIsGreen, lightRemainSec, rebuildDynamics, tick } from './systems/tick'
 import { createDebug } from './ui/debug'
 import { createHud } from './ui/hud'
@@ -78,6 +79,9 @@ let state: GameState = initialState(resolveSeed(location.search), FREEPLAY)
 let player: PlayerRig | null = null
 let station: Station | null = null
 let shakeUntil = 0
+/** 차에 치인 뒤 재판정을 막는 쿨다운(ms). 0 이면 판정 가능. */
+let hitCooldownMs = 0
+const HIT_COOLDOWN_MS = 1200
 
 stage.resize()
 
@@ -153,6 +157,30 @@ const frame = (now: number): void => {
     // (실측: 차를 넣자 Z2~Z5 가 전부 같이 늘었다 — 존 밖인데 계속 그리고 있었다).
     traffic.group.visible = renderPos.z > -3
     traffic.update(dtSec, lightIsGreen(state), lightRemainSec(state))
+    /**
+     * 차에 치이면 스폰으로. 적신호 차단벽을 걷어낸 대신 들어온 규칙이다.
+     *
+     * 판정을 **렌더 쪽에서** 하는 이유: 차는 열차와 달리 앞차·신호를 보고 매 프레임
+     * 적분하는 물건이라 시간의 순수 함수가 아니다. 시뮬로 끌어오려면 차량 전체를
+     * 다시 짜야 하고, 그 대가로 얻는 것은 결정성뿐인데 차는 채점에 안 들어간다.
+     * 대신 겹침 계산은 `systems/roadHazard` 로 빼 순수 함수로 두고 단위 테스트로 덮었다.
+     *
+     * `sinceHit` 쿨다운이 없으면 스폰 직후 같은 프레임 판정이 다시 걸릴 수 있다.
+     */
+    hitCooldownMs = Math.max(0, hitCooldownMs - dt)
+    if (
+      state.phase === 'playing' && hitCooldownMs === 0 &&
+      Math.abs(state.player.pos.z - FLOOR.L0) < 1.2 &&
+      carHits(traffic.bodies(), state.player.pos.x, state.player.pos.y, MOVE.radius)
+    ) {
+      state = applyAll(state, [
+        { t: 'RESPAWN' },
+        { t: 'FX', kind: 'toast', text: '차에 치였다 — 처음 위치로', lifeMs: 2200, value: 0 },
+        { t: 'FX', kind: 'shake', text: '', lifeMs: 420, value: 1 },
+      ])
+      prevPos = state.player.pos
+      hitCooldownMs = HIT_COOLDOWN_MS
+    }
   }
   player?.sync(state, dtSec, renderPos)
   hud.sync(state, sample.locked && cameraRig.mode() === 'fp')

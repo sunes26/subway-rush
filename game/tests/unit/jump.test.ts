@@ -84,15 +84,29 @@ describe('점프 — 레벨을 깨지 않는다', () => {
     expect(s.player.pos.x).toBeLessThan(PAID_AREA_X)
   })
 
-  it('적신호 차단(1.1m)을 뛰어넘을 수 없다', () => {
-    // 신호등 위상을 적색 구간으로 고정
+  /**
+   * 예전에는 여기서 "적신호 차단(1.1m)을 뛰어넘을 수 없다"를 쟀다.
+   * 그 벽은 없어졌다 — 디렉터 지시로 적신호에도 건널 수 있고, 대신 차가 위험이다.
+   * 그래서 반대를 잰다: 신호와 무관하게 넘어가진다는 것.
+   */
+  it('적신호에도 횡단보도를 넘어간다 — 차단벽이 없다', () => {
     let s = { ...put(start(), CROSSWALK.xMin - 1.2, 27.5, FLOOR.L0), lightMs: 20_000 }
     for (let i = 0; i < 60 * 6; i++) {
       s = tick(s, STEP, { input: { ...EMPTY_INPUT, moveY: 1, jump: true }, cameraYaw: 0 })
-      // 적색 유지 (주기 30s · 녹 12s → 12~30s 구간)
-      s = { ...s, lightMs: 20_000 }
+      s = { ...s, lightMs: 20_000 }   // 적색 유지 (주기 30s · 녹 12s → 12~30s 구간)
     }
-    expect(s.player.pos.x, '적신호를 뛰어넘었다').toBeLessThan(CROSSWALK.xMin)
+    expect(s.player.pos.x, '적신호에 막혔다').toBeGreaterThan(CROSSWALK.xMax)
+  })
+
+  it('차도로 뛰어도 남쪽 슬랩 끝(y 16)을 못 넘는다', () => {
+    // 연석을 걷었으니 차도까지는 내려선다. 그 너머 건너편 인도는 슬랩이 없어야 막힌다 —
+    // 점프는 수평 이동을 늘리므로 걸어서 막히는 것과 따로 확인한다.
+    let s = put(start(), -40, 24.0, FLOOR.L0)
+    for (let i = 0; i < 60 * 8; i++) {
+      s = tick(s, STEP, { input: { ...EMPTY_INPUT, moveY: 1, jump: true }, cameraYaw: -Math.PI / 2 })
+    }
+    expect(s.player.pos.y, '차도에 못 내려갔다').toBeLessThan(22.0)
+    expect(s.player.pos.y, '건너편 인도로 넘어갔다').toBeGreaterThan(16.0 - 0.01)
   })
 
   it('점프해도 맵 밖으로 못 나간다', () => {

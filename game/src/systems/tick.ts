@@ -8,7 +8,7 @@
 import type { InputFrame } from '../core/input'
 import { EMPTY_INPUT } from '../core/input'
 import { resolveEnding } from '../data/endings'
-import { CROSSWALK, FLOOR, TRAFFIC_LIGHT, zoneAt, type Solid } from '../data/world'
+import { TRAFFIC_LIGHT, zoneAt } from '../data/world'
 import { applyAll } from '../state/reducer'
 import type { Action, GameState } from '../state/types'
 import { setDynamicSolids } from './collision'
@@ -24,21 +24,16 @@ export const lightIsGreen = (s: GameState): boolean => s.lightMs < TRAFFIC_LIGHT
 export const lightRemainSec = (s: GameState): number =>
   (lightIsGreen(s) ? TRAFFIC_LIGHT.greenMs - s.lightMs : TRAFFIC_LIGHT.cycleMs - s.lightMs) / 1000
 
-/** 적신호 동안 횡단보도를 막는 보이지 않는 벽. Z1의 유일한 진짜 판단(MAP §3.3). */
-const crossingBlock = (s: GameState): Solid[] =>
-  lightIsGreen(s)
-    ? []
-    : [{
-        id: 'LIGHT-BLOCK',
-        rect: [CROSSWALK.xMin - 0.3, CROSSWALK.yMin, CROSSWALK.xMin + 0.1, CROSSWALK.yMax],
-        z0: FLOOR.L0,
-        h: 2.4,
-        look: 'wall',
-      }]
-
-/** 이번 스텝의 동적 충돌체를 확정한다. 순서: 게이트 플랩 · PSD 가동문 · 신호 차단 */
+/**
+ * 이번 스텝의 동적 충돌체를 확정한다. 순서: 게이트 플랩 · PSD 가동문.
+ *
+ * 예전에는 여기에 적신호 차단벽(`LIGHT-BLOCK`)이 하나 더 있었다. 지금은 **없다** —
+ * 디렉터 지시로 적신호에도 건널 수 있다. 대신 차가 진짜 위험이 됐다:
+ * 차체에 닿으면 `RESPAWN` 으로 스폰에 되돌아간다(`main.ts` 의 `roadHazard` 판정).
+ * 벽으로 막던 것을 규칙이 아니라 **결과**로 바꾼 것이다.
+ */
 export const rebuildDynamics = (s: GameState): void => {
-  setDynamicSolids([...gateFlaps(s), ...psdDoors(s), ...crossingBlock(s)])
+  setDynamicSolids([...gateFlaps(s), ...psdDoors(s)])
 }
 
 export const tick = (state: GameState, dtMs: number, ctx: TickCtx): GameState => {

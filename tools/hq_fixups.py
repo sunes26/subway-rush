@@ -946,6 +946,54 @@ def hanging_name_signs():
           f"{SIGN_TOP - SIGN_H + 20.0:.2f} m")
 
 
+# ── 18. 자판기가 점포 입구를 막는다 ─────────────────────────────
+# 지적: "편의점 앞에 자판기가 입구를 막고 있어. 다른 상점에서도."
+#
+# 실측하면 셋 다 자리가 틀렸다.
+#
+#   vendA (11.00, 5.00) — 편의점(S0) 개구부가 x 10.08~11.68 인데 **한복판**이다.
+#   vendB (22.00, 5.00) — 파사드(y 3.60)에서 1.0 m 떠 나와 통로 한가운데 서 있다.
+#   vendC (52.00, 3.00) — `Z2_OBJ28_hoard`(x 44~56 · y 0~7 · 12면 닫힌 상자)
+#                          **안에 파묻혀 있다.** 게임에서 아예 안 보인다.
+#
+# 실사 지하철 상가의 자판기는 **벽(기둥)에 등을 붙이고 문을 피해** 선다.
+# 점포는 4.30 m 피치라 칸과 칸 사이에 폭 0.40 m 짜리 파일런 띠가 있다 —
+# 거기 중심을 잡으면 어느 문(칸 중심 ±0.80)에도 안 걸린다.
+#
+#   파일런 중심  13.03 · 17.33 · 21.63 · 25.93
+#   개구부       10.08~11.68 · 14.38~15.98 · 18.68~20.28 · 22.98~24.58 · 27.28~28.88
+#
+# 자판기 폭이 1.02 라 ±0.51. 위 셋 어디에 놔도 개구부와 0.84 m 이상 뜬다.
+#
+# ⚠ 상대 이동 금지(PIDS 에서 물린 함정). 목표를 절대 좌표로 두고 매번 재계산한다.
+VEND_BACK_Y = 3.72               # 파일런이 y 3.70 까지 나와 있다 — 그 앞에 붙인다
+VEND_TARGET = {
+    "Z2_OBJ06_vendA": 13.03,     # 편의점 ↔ 빵집
+    "Z2_OBJ07_vendB": 21.63,     # 카페 ↔ 화장품
+    "Z2_OBJ08_vendC": 25.93,     # 화장품 ↔ 분식 (가벽 속에서 꺼내 온다)
+}
+
+
+def vending_machines():
+    moved = 0
+    for prefix, cx in VEND_TARGET.items():
+        parts = [o for o in bpy.data.objects
+                 if o.name.startswith(prefix) and o.type == "MESH" and o.data.polygons]
+        if not parts:
+            continue
+        pts = [o.matrix_world @ Vector(c) for o in parts for c in o.bound_box]
+        cur_cx = (min(p.x for p in pts) + max(p.x for p in pts)) / 2
+        dx = cx - cur_cx
+        dy = VEND_BACK_Y - min(p.y for p in pts)
+        if abs(dx) < 1e-4 and abs(dy) < 1e-4:
+            continue
+        for o in parts:
+            o.matrix_world.translation.x += dx
+            o.matrix_world.translation.y += dy
+        moved += 1
+    print(f"  자판기 {moved}대를 파일런 앞(y {VEND_BACK_Y})으로 — 개구부 밖")
+
+
 def build():
     pids()
     awnings()
@@ -966,6 +1014,7 @@ def build():
     pids_place()
     descent_soffit_stop()
     hanging_name_signs()
+    vending_machines()
     print("[hq_fixups] 완료")
 
 

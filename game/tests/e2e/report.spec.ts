@@ -95,6 +95,12 @@ const SHOTS: readonly Shot[] = [
   { name: 'i43-pids', pos: { x: 150.0, y: 11.0, z: -20 }, yaw: -0.66, pitch: 0.26, note: 'PIDS 가 천장에 안 잘리고 문안이 읽히는가' },
   // 하강 소핏 절단 · 역명판 축소
   { name: 'i44-desc-stop', pos: { x: 124.0, y: 6.0, z: -20 }, yaw: Math.PI, pitch: 0.45, note: '승강장 위 경사 램프가 없고 개구부 끝에서 수직으로 꺾이는가' },
+  // 자판기 — 점포 개구부(칸 중심 ±0.80)를 비켜 파일런 앞에 서 있는가
+  { name: 'i46-vend-cvs', pos: { x: 10.88, y: 8.0, z: B1 }, yaw: -Math.PI / 2, pitch: 0.02, note: '편의점 문이 뚫려 있고 자판기가 옆 기둥에 붙었는가' },
+  { name: 'i47-vend-row', pos: { x: 19.0, y: 9.5, z: B1 }, yaw: -1.15, pitch: 0.02, note: '점포 열 사선 — 자판기 3대가 파일런에 붙었는가' },
+  // 차도 개방 — 적신호에도 건너고 차도에도 내려선다(치이면 스폰)
+  { name: 'i48-on-road', pos: { x: -40.0, y: 19.0, z: 0 }, yaw: 0, pitch: 0.04, note: '차도 한복판에 설 수 있는가 · 차가 달려오는가' },
+  { name: 'i49-cross-red', pos: { x: -32.0, y: 27.5, z: 0 }, yaw: 0, pitch: 0.04, note: '횡단보도 위 — 적신호에도 막히지 않는가' },
   { name: 'i45-name-sign', pos: { x: 132.0, y: 11.5, z: -20 }, yaw: -Math.PI / 2, pitch: 0.42, note: '역명판 3.4×1.3 m · 밑변 바닥 위 2.4 m' },
 ]
 
@@ -124,7 +130,9 @@ const place = async (page: Page, s: Shot): Promise<{ x: number; y: number; z: nu
 // tour.spec 과 같은 이유로 넉넉히 준다 — 촬영은 계측기지 성능 테스트가 아니다.
 // 촬영 지점이 35곳으로 늘고 차량까지 로드하면서 소프트웨어 래스터에서 240 초를 넘겼다
 // (단독 실행은 2.1 분인데 전체 스위트에서만 죽는 것이 그 신호였다).
-test.setTimeout(420_000)
+// 지점이 49곳이 되고 `road.spec` 의 실시간 대기(45초)가 붙으면서 420 초에서도
+// 한 번 넘겼다 — 단독은 2.6 분인데 전체에서만 죽는 같은 신호라 다시 올린다.
+test.setTimeout(540_000)
 
 test('지적 사항 검증 촬영', async ({ page }) => {
   const errors: string[] = []
