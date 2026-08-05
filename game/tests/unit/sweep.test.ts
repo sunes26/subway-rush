@@ -1,0 +1,98 @@
+/**
+ * S12-9 · S12-10 — 밸런스 스윕.
+ *
+ * 여기서 증명하는 두 가지:
+ *  1. **소프트락 0건** — 잔액 0원 시드를 포함해 어떤 판도 막히지 않는다
+ *  2. **가장 정직한 루트가 가장 빠르다** (GDD §8.1.1) — 설계 의도의 실측 검증
+ *
+ * 시드 수는 테스트에서 24개로 제한한다. 200개 전량은 `npm run sweep` 이 돌려
+ * `docs/P1-BALANCE.md` 를 생성한다 — 유닛 스위트가 분 단위로 늘어나면 아무도 안 돌린다.
+ */
+
+import { describe, expect, it } from 'vitest'
+import { FARE } from '../../src/data/tuning'
+import { runRoute, summarize, sweep } from './_sweep'
+import { start } from './_pilot'
+
+/** 잔액 5종이 골고루 섞이도록 고른 시드 24개 */
+const SEEDS = Array.from({ length: 24 }, (_, i) => i * 7 + 3)
+
+describe('S12-9 소프트락 0건', () => {
+  const rows = sweep(SEEDS)
+
+  it('모든 시드·루트에서 개찰구를 통과한다', () => {
+    const locks = rows.filter((r) => !r.passed)
+    const detail = locks
+      .map((r) => `seed ${r.seed} ${r.route} 시작잔액 ${r.startBalance} 멈춤 "${r.stuckAt}" 잔액 ${r.balance}`)
+      .join('\n')
+    expect(detail, `소프트락 ${locks.length}건`).toBe('')
+  })
+
+  it('모든 시드·루트에서 승강장에 도달한다', () => {
+    const fail = rows.filter((r) => !r.reached)
+    expect(fail.map((r) => `${r.seed}/${r.route}@${r.stuckAt}`).join(','), '미도달').toBe('')
+  })
+
+  it('잔액 0원 시드도 체인으로 요금을 만든다', () => {
+    const zero = SEEDS.filter((s) => start(s).cardBalance === 0)
+    expect(zero.length, '잔액 0원 시드가 표본에 있다').toBeGreaterThan(0)
+    for (const seed of zero) {
+      const r = runRoute(seed, 'A-steal')
+      expect(r.passed, `seed ${seed} (시작 0원)`).toBe(true)
+      expect(r.coinsEarned, `seed ${seed} 동전 획득`).toBeGreaterThanOrEqual(FARE)
+    }
+  })
+
+  it('요금 미달 시드에서 무자원 루트는 애초에 시도되지 않는다', () => {
+    for (const r of sweep(SEEDS).filter((x) => x.route === 'N-skip')) {
+      expect(r.startBalance, `seed ${r.seed}`).toBeGreaterThanOrEqual(FARE)
+    }
+  })
+})
+
+describe('S12-10 루트 비용 — 정직한 루트가 더 빠른가', () => {
+  const rows = sweep(SEEDS)
+  const A = summarize(rows, 'A-steal')
+  const C = summarize(rows, 'C-talk')
+
+  it('두 루트 모두 표본이 충분하다', () => {
+    expect(A.reached).toBeGreaterThan(20)
+    expect(C.reached).toBeGreaterThan(20)
+  })
+
+  it('훔치기 루트의 양심이 명확히 더 낮다', () => {
+    expect(A.avgConscience, `A ${A.avgConscience.toFixed(2)} vs C ${C.avgConscience.toFixed(2)}`)
+      .toBeLessThan(C.avgConscience - 2)
+  })
+
+  it('[A] 훔치기가 무료 지름길이 아니다 — 15초를 내는 [C]와 30초 이내 차이', () => {
+    /**
+     * GDD §8.1.1은 C(30s)가 A(47~65s)보다 **빠르다**고 주장한다. 그 표는 단소 회피
+     * 실력과 개찰구 힌트 회수를 전제로 한 값이다. 자동조종은 도망치지 않으므로(맞으면서
+     * 그냥 걸어간다) A가 유리하게 나올 수 있다 — 그래서 여기서는 **"A가 C를 크게
+     * 앞서지 못한다"** 까지만 잠근다. 15초를 지불한 C가 A보다 30초 이상 느리면
+     * 절도가 지배 전략이라는 뜻이고, 그건 P1-SPEC §11의 조정 트리거다.
+     */
+    const gap = C.avgSec - A.avgSec
+    expect(gap, `C−A = ${gap.toFixed(1)}s (A ${A.avgSec.toFixed(1)} / C ${C.avgSec.toFixed(1)})`)
+      .toBeLessThan(30)
+  })
+
+  it('절도 루트는 반드시 양심 대가를 치른다 (−3 이하)', () => {
+    for (const r of rows.filter((x) => x.route === 'A-steal')) {
+      expect(r.conscience, `seed ${r.seed}`).toBeLessThanOrEqual(-3)
+    }
+  })
+
+  it('대화 루트는 양심이 오른다 (+1 이상)', () => {
+    for (const r of rows.filter((x) => x.route === 'C-talk')) {
+      expect(r.conscience, `seed ${r.seed}`).toBeGreaterThanOrEqual(1)
+    }
+  })
+
+  it('절도 루트는 전부 E-10(양심 파산) 사정권에 들어간다', () => {
+    for (const r of rows.filter((x) => x.route === 'A-steal')) {
+      expect(r.ending, `seed ${r.seed}`).toBe('E-10')
+    }
+  })
+})

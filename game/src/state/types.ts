@@ -1,5 +1,8 @@
 import type { Vec2, Vec3 } from '../core/math'
+import type { InteractKind } from '../data/interactables'
 import type { ZoneId } from '../data/world'
+
+export type { InteractKind }
 
 export type { ZoneId }
 
@@ -16,8 +19,16 @@ export type ItemId =
   | 'I-01' | 'I-02' | 'I-04' | 'I-05' | 'I-06' | 'I-07' | 'I-08'
   | 'I-09' | 'I-10' | 'I-11' | 'I-12' | 'I-13' | 'I-14' | 'I-15'
 
-/** P1 예약 */
-export type FlagId = 'GRANDPA_ANGRY' | 'WALLET_RETURNED' | 'GRANDPA_HELPED' | 'SEAT_YIELDED'
+export type FlagId =
+  | 'GRANDPA_ANGRY'      // 절도 — O-14 발동원
+  // 붕어빵 or 대화 완주. **P1에서는 읽는 곳이 없다** — E-12(히든 굿엔딩)의 조건 중
+  // 하나이므로 P2에서 소비된다. 지금 지우면 그때 절도/선행 구분을 다시 만들어야 한다.
+  | 'GRANDPA_HELPED'
+  | 'HINT_GRANDPA'       // 대화 완주 보상 — 안내 LED가 고장 게이트를 지목한다
+  | 'MASK_ON'            // 마스크 착용 (O-04 저항 +50%)
+  | 'CHASE_DONE'         // 추격이 한 번 끝났다 — 재발동 금지
+  | 'WALLET_RETURNED'    // P2 예약
+  | 'SEAT_YIELDED'       // P2 예약
 
 export type GateState = 'idle' | 'tagging' | 'open' | 'reject'
 
@@ -88,6 +99,102 @@ export type Fx = Readonly<{
   value: number
 }>
 
+/**
+ * 상호작용 상태 (P1).
+ *
+ * 타겟팅 결과를 **상태에 쓴다** — 렌더가 매 프레임 다시 계산하지 않게 하려는 것이 절반이고,
+ * 헤드리스 테스트가 "지금 무엇을 조준 중인가"를 단정할 수 있게 하려는 것이 나머지 절반이다.
+ */
+export type ActState = Readonly<{
+  /** 현재 대상 id — 없으면 null */
+  targetId: string | null
+  /** 조준(레이 등가)인가. false면 근접 폴백 → 아웃라인이 얇다 */
+  aimed: boolean
+  /** 진행 중 상호작용 */
+  busyId: string | null
+  busyKind: InteractKind | null
+  busyTotalMs: number
+  busyLeftMs: number
+  /** 사유 텍스트 — 남은 수명이 0이면 표시하지 않는다 */
+  denyText: string
+  denyMs: number
+  /** 소진된 대상 id (습득 완료·자판기 성공·비켜세움 등) */
+  consumed: readonly string[]
+  /** 선택 UI가 열린 대상 (P1은 할아버지 전용) */
+  dialogId: string | null
+}>
+
+/** 바닥에 떨어진 아이템 — 슬롯 교체 시 생긴다. 되돌아가 주울 수 있다 */
+export type Drop = Readonly<{ id: string; item: ItemId; x: number; y: number; z: number }>
+
+/** 자판기 긁기 QTE (P1) */
+export type QteState = Readonly<{
+  active: boolean
+  vendorId: string | null
+  /** 성공한 스트로크 0..3 */
+  strokes: number
+  /** 현재 진행 방향. 0 = 아직 미정 */
+  dir: -1 | 0 | 1
+  /** 방향 유지 중 누적 이동량(px) */
+  travel: number
+  /** 다음 판정창까지 남은 시간(ms). 음수면 창을 지났다 */
+  beatMs: number
+  misses: number
+  elapsedMs: number
+}>
+
+/**
+ * O-14 단소 추격 (P1).
+ *
+ * P0에는 `active/remainingMs/hitCount/swingCooldownMs` 네 개만 있었고 **위치가 없었다** —
+ * 추격이 구현되지 않은 진짜 이유가 그것이다. 쫓아오는 물건은 좌표가 있어야 한다.
+ */
+export type ChasePhase =
+  | 'idle'     // 벤치에 앉아 있다
+  | 'draw'     // 발도 0.6s — 이 동안엔 안 때린다
+  | 'chase'    // 추격
+  | 'swing'    // 스윙 동작 0.32s (제자리)
+  | 'seize'    // 5대 도달 — 완전 정지 2s 후 효자손 회수
+  | 'return'   // 벤치로 돌아간다 (게임은 계속된다)
+
+export type ChaseState = Readonly<{
+  /** draw~swing 구간인가. 렌더·판정의 단일 스위치 */
+  active: boolean
+  phase: ChasePhase
+  /** 현재 phase 경과(ms) */
+  phaseMs: number
+  /** 30s 카운트다운 잔여 */
+  remainingMs: number
+  hitCount: number
+  swingCooldownMs: number
+  pos: Vec2
+  /** 바라보는 방향 rad (+x 기준 CCW) */
+  facing: number
+  /** 실이동이 없는 상태의 누적(ms) — 끼임 탈출 판정 */
+  stuckMs: number
+}>
+
+/**
+ * O-04 역류 (P1). 웨이브 자체는 `surgeAt(elapsedMs, seed)` 로 파생되므로 상태가 없다 —
+ * 여기 남는 건 **한 번만 일어나야 하는 일**뿐이다.
+ */
+export type SurgeState = Readonly<{
+  /** 이번 웨이브에서 이미 넘어졌는가 — 연속 넘어짐 방지 */
+  fell: boolean
+  /** 넘어져 못 움직이는 남은 시간(ms) */
+  stallMs: number
+}>
+
+/** 채점 보조 집계 — 엔딩 조건식이 읽는다 */
+export type TallyState = Readonly<{
+  /** 자판기·바닥에서 얻은 누적 동전액 (E-14 조건) */
+  coinsEarned: number
+  /** 사용한 아이템 **종류** (스타일 축) */
+  itemsUsed: readonly ItemId[]
+  /** 발견한 시크릿 id (지식 축) — 중복 카운트 방지용으로 집합 성격 */
+  secrets: readonly string[]
+}>
+
 export type GameState = Readonly<{
   phase: Phase
   seed: number
@@ -119,11 +226,19 @@ export type GameState = Readonly<{
   fx: readonly Fx[]
   nextFxId: number
 
-  // ── P1 예약 (P0 미사용, 초기값 고정) ──
+  /** 3슬롯 고정. 교통카드·동전은 슬롯 미점유 (GDD §5.2) */
   inventory: readonly (ItemId | null)[]
   scores: Readonly<{ conscience: number; style: number; knowledge: number }>
-  chase: Readonly<{ active: boolean; remainingMs: number; hitCount: number; swingCooldownMs: number }>
+  chase: ChaseState
   flags: readonly FlagId[]
+
+  // ── P1 신설 ──
+  act: ActState
+  drops: readonly Drop[]
+  nextDropId: number
+  qte: QteState
+  surge: SurgeState
+  tally: TallyState
 }>
 
 export type Action =
@@ -143,3 +258,36 @@ export type Action =
   | { t: 'END'; endingId: EndingId }
   | { t: 'FX'; kind: Fx['kind']; text: string; lifeMs: number; value: number }
   | { t: 'RESPAWN' }
+
+  // ── P1 상호작용 ──
+  | { t: 'ACT_TARGET'; id: string | null; aimed: boolean }
+  | { t: 'ACT_BEGIN'; id: string; kind: InteractKind; totalMs: number }
+  | { t: 'ACT_CANCEL' }
+  | { t: 'ACT_DENY'; text: string }
+  | { t: 'ACT_CONSUME'; id: string }
+  | { t: 'DIALOG'; id: string | null }
+  /** slot < 0 이면 빈 칸 자동 선택. 가득 차면 slot 0 을 바닥에 떨군다 */
+  | { t: 'PICKUP'; item: ItemId; slot: number; dropId: string | null }
+  | { t: 'ITEM_SPEND'; slot: number }
+  | { t: 'ITEM_USED'; item: ItemId }
+  | { t: 'BALANCE'; delta: number; label: string }
+  | { t: 'CONSCIENCE'; delta: number }
+  | { t: 'SECRET'; id: string }
+  | { t: 'FLAG'; id: FlagId; on: boolean }
+
+  // ── P1 QTE ──
+  | { t: 'QTE_BEGIN'; vendorId: string }
+  | { t: 'QTE_INPUT'; dir: -1 | 0 | 1; travel: number }
+  | { t: 'QTE_STROKE'; hit: boolean }
+  | { t: 'QTE_END'; success: boolean }
+
+  // ── P1 단소 추격 (O-14) ──
+  | { t: 'CHASE_START'; x: number; y: number }
+  | { t: 'CHASE_MOVE'; x: number; y: number; facing: number; stuckMs: number }
+  | { t: 'CHASE_PHASE'; phase: ChasePhase }
+  | { t: 'CHASE_HIT' }
+  /** 해제. `seize` 면 효자손을 회수당한다 */
+  | { t: 'CHASE_END'; reason: 'gate' | 'timeout' | 'returned' | 'seize' }
+
+  // ── P1 인파 (O-04) ──
+  | { t: 'SURGE_FALL' }

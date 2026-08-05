@@ -75,7 +75,14 @@ export const createScreens = (mount: HTMLElement): Screens => {
     const e = resolveEnding(s)
     const win = e.tone === 'success'
     el.className = `on ${win ? 'win' : 'lose'}`
-    const hint = win ? '' : `<div class="hint">${pickHint(s.seed)}</div>`
+    // 엔딩 고유 힌트가 있으면 그것을 쓴다. 없으면 시드 기반 공용 풀.
+    // (P0에서는 `e.hint` 를 선언만 하고 아무도 안 읽었다 — E-10처럼 원인이 명확한
+    //  실패에 "램프를 봐라" 가 나오면 힌트가 아니라 헛소리가 된다)
+    const hint = win ? '' : `<div class="hint">${e.hint ?? pickHint(s.seed)}</div>`
+    // 4축 채점 결과. 양심만 숫자 대신 부호로 보여준다 (GDD §7.2 — 숫자 미표시 원칙 유지)
+    const c = s.scores.conscience
+    const consMark = c > 0 ? `+${'●'.repeat(Math.min(5, c))}` : c < 0 ? `−${'●'.repeat(Math.min(5, -c))}` : '·'
+
     return `
       <div class="card">
         <div class="kicker">${e.id}</div>
@@ -86,6 +93,12 @@ export const createScreens = (mount: HTMLElement): Screens => {
           <span>잔여 ${formatClock(Math.max(0, s.timeLeftMs))}</span>
           <span>게이트 시도 ${s.gates.attempts}회</span>
           <span>잔액 ${s.cardBalance.toLocaleString('ko-KR')}원</span>
+        </div>
+        <div class="stats">
+          <span>양심 ${consMark}</span>
+          <span>스타일 ${s.scores.style}</span>
+          <span>시크릿 ${s.scores.knowledge}/12</span>
+          <span>동전 ${s.tally.coinsEarned.toLocaleString('ko-KR')}원</span>
           <span>SEED ${s.seed}</span>
         </div>
         <div class="cta">R 을 눌러 다시</div>
@@ -96,7 +109,10 @@ export const createScreens = (mount: HTMLElement): Screens => {
     hideLoading() { loading.style.display = 'none' },
     setLoading(text: string) { loading.textContent = text },
     sync(s) {
-      const key = `${s.phase}:${s.endingId ?? ''}:${s.seed}`
+      // 엔딩 화면에 채점 결과를 찍으므로 메모 키에 그 값도 넣는다.
+      // 안 넣으면 첫 렌더 시점의 점수가 굳어 버린다 (phase:endingId:seed 만으로는 못 잡는다)
+      const key = `${s.phase}:${s.endingId ?? ''}:${s.seed}:` +
+        `${s.scores.conscience},${s.scores.style},${s.scores.knowledge},${s.tally.coinsEarned}`
       if (key === lastKey) return
       lastKey = key
       if (s.phase === 'title') {

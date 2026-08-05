@@ -6,7 +6,8 @@
  */
 
 import { formatClock } from '../core/math'
-import { FARE, TIMER_STAGES } from '../data/tuning'
+import { itemDef } from '../data/items'
+import { FARE, SLOTS, TIMER_STAGES } from '../data/tuning'
 import { ledText } from '../systems/gates'
 import { lightIsGreen, lightRemainSec } from '../systems/tick'
 import { CROSSWALK, FLOOR, ZONE_NAMES } from '../data/world'
@@ -64,6 +65,27 @@ const CSS = `
 #vig{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .4s;
   background:radial-gradient(ellipse at center,transparent 42%,rgba(140,10,14,.62) 100%)}
 #shake{position:absolute;inset:0;pointer-events:none}
+
+/* 인벤 3슬롯 — GDD §5.2. 아이콘 에셋 대신 글리프 한 자로 끝낸다.
+   3분 게임에서 아이콘 4개를 만들 시간은 다른 데 쓰는 게 낫고,
+   슬롯 압박 자체가 정보라 "무엇이 몇 번에 있나"만 읽히면 충분하다 */
+#hud .inv{display:flex;gap:6px}
+#hud .slot{position:relative;width:38px;height:38px;border-radius:6px;
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);
+  display:flex;align-items:center;justify-content:center;font-size:18px;line-height:1}
+#hud .slot.has{border-color:rgba(255,200,61,.5);background:rgba(255,200,61,.09)}
+#hud .slot.worn{border-color:rgba(0,168,77,.6);background:rgba(0,168,77,.12)}
+#hud .slot b{position:absolute;top:1px;left:3px;font-family:var(--mono);font-size:8px;opacity:.45}
+
+/* 양심 게이지 — GDD §7.2 "은은하게, 숫자 미표시".
+   상시 강조하면 도덕 점수판이 되고, 그러면 플레이어가 게임을 하는 게 아니라
+   채점을 의식한다. 값이 바뀐 순간에만 0.6s 밝아진다 */
+#cons{position:absolute;left:50%;bottom:78px;transform:translateX(-50%);width:120px;height:4px;
+  border-radius:3px;background:rgba(255,255,255,.1);pointer-events:none;opacity:.3;
+  transition:opacity .5s}
+#cons.lit{opacity:.95}
+#cons i{position:absolute;top:0;bottom:0;border-radius:3px;transition:left .3s,width .3s}
+#cons u{position:absolute;left:50%;top:-3px;width:1px;height:10px;background:rgba(255,255,255,.3)}
 
 /* 1인칭 조준점 — 상호작용 대상이 화면 어디를 기준으로 판정되는지 알려준다 */
 #cross{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
@@ -142,11 +164,14 @@ export const createHud = (mount: HTMLElement): Hud => {
     <div id="cross"><i></i><i></i><i></i><i></i></div>
     <div id="sig"></div>
     <div id="lockhint">화면을 클릭하면 시점이 잠깁니다 · ESC 해제</div>
+    <div id="cons"><i id="cons-i"></i><u></u></div>
     <div class="foot">
       <div class="cell"><div class="k">Zone</div><div class="v" id="hud-zone">—</div></div>
       <div class="cell"><div class="k">교통카드 잔액</div><div class="v" id="hud-bal">—</div></div>
       <div class="cell"><div class="k">스태미너 · Shift</div>
         <div class="stam" id="hud-stam"><i id="hud-stam-i" style="width:100%"></i></div></div>
+      <div class="cell"><div class="k">소지품 · 1 2 3</div>
+        <div class="inv" id="hud-inv"></div></div>
     </div>`
   mount.appendChild(el)
 
@@ -164,7 +189,21 @@ export const createHud = (mount: HTMLElement): Hud => {
   const cross = $('cross')
   const sig = $('sig')
   const lockHint = $('lockhint')
+  const invEl = $('hud-inv')
+  const consEl = $('cons')
+  const consFill = $('cons-i')
   let firstPerson = true
+
+  // 슬롯 노드는 처음 한 번만 만든다 — 매 프레임 innerHTML을 쓰면 60fps로 파서를 돌린다
+  const slots = Array.from({ length: SLOTS }, (_, i) => {
+    const d = document.createElement('div')
+    d.className = 'slot'
+    d.innerHTML = `<b>${i + 1}</b><span></span>`
+    invEl.appendChild(d)
+    return { box: d, glyph: d.querySelector('span') as HTMLElement, last: '' }
+  })
+  let lastCons = -99
+  let consLitUntil = 0
 
   let lastLed = ''
   let lastTime = ''
@@ -229,6 +268,35 @@ export const createHud = (mount: HTMLElement): Hud => {
       }
 
       vig.style.opacity = s.timeLeftMs <= TIMER_STAGES.hot && s.phase === 'playing' ? '1' : '0'
+
+      // ── 인벤 3슬롯. 마스크는 착용 중이면 테두리가 녹색으로 바뀐다(슬롯은 유지)
+      for (let i = 0; i < slots.length; i++) {
+        const slot = slots[i]
+        if (!slot) continue
+        const item = s.inventory[i] ?? null
+        const worn = item === 'I-06' && s.flags.includes('MASK_ON')
+        const key = `${item ?? ''}|${worn ? 'w' : ''}`
+        if (key === slot.last) continue
+        slot.glyph.textContent = item ? itemDef(item).glyph : ''
+        slot.box.title = item ? itemDef(item).name : ''
+        slot.box.className = item ? (worn ? 'slot has worn' : 'slot has') : 'slot'
+        slot.last = key
+      }
+
+      // ── 양심 게이지. 0을 중심으로 좌(적)·우(녹)로 자란다. **숫자는 없다**
+      const c = s.scores.conscience
+      if (c !== lastCons) {
+        const half = Math.min(1, Math.abs(c) / 5) * 50
+        consFill.style.left = c < 0 ? `${50 - half}%` : '50%'
+        consFill.style.width = `${half}%`
+        consFill.style.background = c < 0 ? 'var(--crit)' : 'var(--line2)'
+        // 처음 값(0)에는 반짝이지 않는다 — 아무 일도 없었는데 시선을 끌 이유가 없다
+        if (lastCons !== -99) consLitUntil = performance.now() + 600
+        lastCons = c
+      }
+      const lit = performance.now() < consLitUntil
+      const consCls = lit ? 'lit' : ''
+      if (consEl.className !== consCls) consEl.className = consCls
 
       // 피드백 — 새 항목만 추가, 만료된 것만 제거
       const live = new Set(s.fx.map((f) => f.id))

@@ -11,9 +11,13 @@ import { resolveEnding } from '../data/endings'
 import { TRAFFIC_LIGHT, zoneAt } from '../data/world'
 import { applyAll } from '../state/reducer'
 import type { Action, GameState } from '../state/types'
+import { chaseSolids, chaseSystem } from './chase'
+import { crowdSolids, crowdSystem } from './crowd'
 import { setDynamicSolids } from './collision'
 import { gateFlaps, gateKnockback, gatesSystem } from './gates'
+import { interactSystem } from './interact'
 import { movementSystem } from './movement'
+import { qteSystem } from './qte'
 import { psdDoors, trainAt, trainSystem } from './train'
 
 export type TickCtx = Readonly<{ input: InputFrame; cameraYaw: number }>
@@ -33,7 +37,7 @@ export const lightRemainSec = (s: GameState): number =>
  * 벽으로 막던 것을 규칙이 아니라 **결과**로 바꾼 것이다.
  */
 export const rebuildDynamics = (s: GameState): void => {
-  setDynamicSolids([...gateFlaps(s), ...psdDoors(s)])
+  setDynamicSolids([...gateFlaps(s), ...psdDoors(s), ...chaseSolids(s), ...crowdSolids(s)])
 }
 
 export const tick = (state: GameState, dtMs: number, ctx: TickCtx): GameState => {
@@ -61,6 +65,28 @@ export const tick = (state: GameState, dtMs: number, ctx: TickCtx): GameState =>
     ...movementSystem(s, { dtMs, input: ctx.input, cameraYaw: ctx.cameraYaw }),
   ]
   s = applyAll(s, actions)
+
+  /**
+   * 추격은 **이동 뒤**다. 앞이면 플레이어가 이미 도망친 위치를 못 보고 한 프레임 늦게 때린다
+   * (16.7ms × 걷기 5m/s = 8cm — 타격 반경 1.2m에서 티가 난다).
+   */
+  s = applyAll(s, chaseSystem(s, { dtMs }))
+
+  /**
+   * 인파 — 역류의 밀어내기는 `MOVE` 전량 재발행이라 반드시 이동 **뒤**여야 한다
+   * (`gateKnockback` 과 같은 수법·같은 이유).
+   */
+  s = applyAll(s, crowdSystem(s, { dtMs, prev: before }))
+
+  /**
+   * 상호작용 → QTE 순서다.
+   *
+   * `interact` 가 `E` 를 읽어 QTE를 켜고, **같은 틱에** `qte` 가 첫 델타를 먹는다.
+   * 반대로 두면 시작 프레임의 마우스 입력이 통째로 버려진다.
+   * 둘 다 이동보다 뒤인 것도 이유가 있다 — 타겟팅은 이번 틱의 **최종 위치**에서 해야 한다.
+   */
+  s = applyAll(s, interactSystem(s, { dtMs, input: ctx.input, cameraYaw: ctx.cameraYaw }))
+  s = applyAll(s, qteSystem(s, { dtMs, input: ctx.input }))
 
   const gateActions = gatesSystem(s)
   s = applyAll(s, gateActions)

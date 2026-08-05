@@ -5,14 +5,17 @@
  */
 
 import { Frustum, Matrix4, Raycaster, Vector2, Vector3 } from 'three'
+import { createSfx } from './audio/sfx'
 import { createInput, EMPTY_INPUT, type InputFrame } from './core/input'
 import { resolveSeed } from './core/rng'
 import { CAMERA, FPV, MAX_FRAME_MS, MAX_STEPS_PER_FRAME, MOVE, STEP_MS } from './data/tuning'
 import { FLOOR, GATES, GATE_BODY, GATE_LAMP_Z } from './data/world'
+import { loadActors, type Actors } from './render/actors'
 import { createCameraRig } from './render/camera-rig'
 import { buildTraffic, type Traffic } from './render/cars'
 import { createGuideArrows } from './render/guide-arrows'
 import { loadPlayerRig, type PlayerRig } from './render/player-rig'
+import { loadProps, type Props } from './render/props'
 import { createStage } from './render/scene'
 import { loadStation, type Station } from './render/station'
 import { buildWorld } from './render/world-builder'
@@ -21,6 +24,7 @@ import type { GameState } from './state/types'
 import { carHits } from './systems/roadHazard'
 import { lightIsGreen, lightRemainSec, rebuildDynamics, tick } from './systems/tick'
 import { createDebug } from './ui/debug'
+import { createDialog } from './ui/dialog'
 import { createHud } from './ui/hud'
 import { createScreens } from './ui/screens'
 
@@ -62,7 +66,15 @@ const applyView = (): void => {
   stage.camera.updateProjectionMatrix()
 }
 
+/**
+ * 절차 생성 SFX. 시뮬은 이걸 모른다 — **상태 변화를 렌더 루프가 읽어** 재생한다.
+ * 그래서 헤드리스 테스트가 오디오 없이 그대로 돌고, 오디오가 실패해도 게임이 돈다.
+ */
+const sfx = createSfx()
+
 const hud = createHud(uiRoot)
+/** 상호작용 오버레이 — 프롬프트·진행링·사유·대화·QTE. HUD와 분리한 이유는 ui/dialog.ts 헤더 참고 */
+const dialog = createDialog(uiRoot)
 const screens = createScreens(uiRoot)
 const debug = createDebug(uiRoot, stage.renderer)
 
@@ -78,6 +90,10 @@ const FREEPLAY = ((q) => q.has('freeplay') || q.has('notimer'))(
 let state: GameState = initialState(resolveSeed(location.search), FREEPLAY)
 let player: PlayerRig | null = null
 let station: Station | null = null
+/** P1 — 습득 프롭 + 골드 아웃라인 */
+let props: Props | null = null
+/** P1 — 할아버지(GP) · 캐리어 승객(CP) */
+let actors: Actors | null = null
 let shakeUntil = 0
 /** 차에 치인 뒤 재판정을 막는 쿨다운(ms). 0 이면 판정 가능. */
 let hitCooldownMs = 0
@@ -92,7 +108,26 @@ const restart = (): void => {
   rebuildDynamics(state)
 }
 
+/** 소리 트리거 감지용 이전 값 — 상태의 **변화**를 보고 재생한다 */
+let prevGateState = state.gates.state
+let prevCoins = state.tally.coinsEarned
+let prevHits = state.chase.hitCount
+let prevTrainState = state.train.state
+
+const playSfxFor = (s: GameState): void => {
+  if (s.gates.state === 'open' && prevGateState !== 'open') sfx.gate()
+  if (s.tally.coinsEarned > prevCoins) sfx.coin()
+  if (s.chase.hitCount > prevHits) sfx.danso()
+  if (s.train.state === 'closing' && prevTrainState !== 'closing') sfx.doorWarn()
+  prevGateState = s.gates.state
+  prevCoins = s.tally.coinsEarned
+  prevHits = s.chase.hitCount
+  prevTrainState = s.train.state
+}
+
 const handleMeta = (f: InputFrame): void => {
+  // 첫 입력에서 오디오 컨텍스트를 깬다 — 브라우저 자동재생 정책
+  if (f.pressStart || f.pressInteract || f.pressRestart) sfx.unlock()
   if (f.pressDebug) debug.toggle()
   if (f.pressToggleView) { cameraRig.toggleMode(); applyView() }
   if (state.phase === 'title' && f.pressStart) state = { ...state, phase: 'playing' }
@@ -122,10 +157,20 @@ const frame = (now: number): void => {
   const sample = input.sample()
   handleMeta(sample)
 
+  /**
+   * 시뮬에 넘길 시선 방향.
+   *
+   * `cameraRig.yaw()` 는 **직전 프레임** `update()` 에서 계산된 값이다. 1인칭에서는
+   * 그 값이 곧 `input.lookYaw` 이므로 이번 프레임 입력을 그대로 쓰면 한 프레임 빠르다 —
+   * 상호작용 조준이 시선과 같은 프레임에 반응한다(예전엔 1프레임 늦어 E2E가 흔들렸다).
+   * 3인칭은 오빗이 섞이므로 릭의 값을 쓴다.
+   */
+  const simYaw = cameraRig.mode() === 'fp' ? sample.lookYaw : cameraRig.yaw()
+
   let steps = 0
   while (acc >= STEP_MS && steps < MAX_STEPS_PER_FRAME) {
     prevPos = state.player.pos
-    state = tick(state, STEP_MS, { input: sample, cameraYaw: cameraRig.yaw() })
+    state = tick(state, STEP_MS, { input: sample, cameraYaw: simYaw })
     acc -= STEP_MS
     steps++
   }
@@ -183,7 +228,12 @@ const frame = (now: number): void => {
     }
   }
   player?.sync(state, dtSec, renderPos)
+  // P1 렌더는 상태를 **읽기만** 한다 — 판정은 전부 systems/ 에 있다
+  props?.sync(state, dtSec, now / 1000)
+  actors?.sync(state, dtSec)
+  playSfxFor(state)
   hud.sync(state, sample.locked && cameraRig.mode() === 'fp')
+  dialog.sync(state)
   screens.sync(state)
   debug.sync(state)
 
@@ -205,9 +255,11 @@ const frame = (now: number): void => {
 // ─────────────────── 기동 ───────────────────
 
 const boot = async (): Promise<void> => {
-  const [stationResult, playerResult] = await Promise.allSettled([
+  const [stationResult, playerResult, propsResult, actorsResult] = await Promise.allSettled([
     loadStation(BASE, stage.camera, (d, t) => screens.setLoading(`역사 로딩 ${d} / ${t}`)),
     loadPlayerRig(`${BASE}models/mc_character_rigged.glb`, false),
+    loadProps(BASE),
+    loadActors(BASE),
   ])
 
   if (stationResult.status === 'fulfilled') {
@@ -227,6 +279,20 @@ const boot = async (): Promise<void> => {
     stage.scene.add(player.root)
   } else {
     console.error('[player] GLB 로드 실패', playerResult.reason)
+  }
+
+  // 프롭·NPC 는 실패해도 게임이 끝까지 돈다 — 판정은 시뮬에 있고 이건 그림이다
+  if (propsResult.status === 'fulfilled') {
+    props = propsResult.value
+    stage.scene.add(props.root)
+  } else {
+    console.error('[props] items.glb 로드 실패 — 아이템이 안 보입니다', propsResult.reason)
+  }
+  if (actorsResult.status === 'fulfilled') {
+    actors = actorsResult.value
+    stage.scene.add(actors.root)
+  } else {
+    console.error('[actors] NPC GLB 로드 실패 — 할아버지·승객 없이 진행합니다', actorsResult.reason)
   }
 
   // 차는 **기동 경로에서 뺀다.** 배경이라 늦게 나타나도 무방한데, 로딩을 여기에 묶으면
@@ -256,6 +322,8 @@ declare global {
       input(f: Partial<InputFrame>): void
       minFps(): number
       stationStats(): { merged: number; dynamic: number } | null
+      /** 오디오 컨텍스트가 실제로 살아 있는가 (E2E) */
+      sfxReady(): boolean
       /** 1인칭 시선을 강제한다 (E2E용 — 포인터 락 없이 시점 검증) */
       look(yaw: number, pitch?: number): void
       /** 지금 화면 안에 들어온 게이트 표지 수 (0~6) */
@@ -338,6 +406,7 @@ window.__game = {
   input: (f) => { forcedInput = Object.keys(f).length ? f : null },
   minFps: () => debug.minFps(),
   stationStats: () => station?.stats ?? null,
+  sfxReady: () => sfx.ready(),
 }
 
 export { EMPTY_INPUT }

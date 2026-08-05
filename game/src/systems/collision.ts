@@ -135,7 +135,8 @@ export type MoveResult = Readonly<{ x: number; y: number; hitX: boolean; hitY: b
  */
 export const resolveMove = (
   fromX: number, fromY: number, toX: number, toY: number, z: number,
-  radius = MOVE.radius,
+  // 리터럴 타입(0.32)으로 좁혀지면 다른 반경을 넘길 수 없다 — NPC 몸통(0.34)이 그 사례다
+  radius: number = MOVE.radius,
 ): MoveResult => {
   const span = Math.max(Math.abs(toX - fromX), Math.abs(toY - fromY)) + radius + 1
   const near = queryNear((fromX + toX) / 2, (fromY + toY) / 2, span)
@@ -162,7 +163,7 @@ export const resolveMove = (
 }
 
 /** 밀어내기 — 동적 충돌체(닫히는 문 등)에 낀 경우 탈출시킨다. */
-export const depenetrate = (x: number, y: number, z: number, radius = MOVE.radius): { x: number; y: number } => {
+export const depenetrate = (x: number, y: number, z: number, radius: number = MOVE.radius): { x: number; y: number } => {
   const near = queryNear(x, y, radius + 1)
   let px = x
   let py = y

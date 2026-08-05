@@ -7,11 +7,74 @@
 
 import { clamp, formatClock } from '../core/math'
 import { makeRng } from '../core/rng'
-import { FARE, GATE, P0_BALANCE_POOL, TOTAL_TIME_MS } from '../data/tuning'
+import { itemDef } from '../data/items'
+import { BALANCE_POOL, CHASE, FARE, GATE, INTERACT, QTE, SLOTS, SURGE, TOTAL_TIME_MS }
+  from '../data/tuning'
+import { GRANDPA_ID } from '../data/interactables'
 import { GATES, SPAWN, TRAFFIC_LIGHT, zoneAt } from '../data/world'
-import type { Action, GameState, Fx } from './types'
+import type { Action, ActState, ChaseState, GameState, Fx, ItemId, QteState, SurgeState, TallyState }
+  from './types'
 
 const MAX_FX = 12
+
+/** GDD §6.1 — 양심 범위 −5 ~ +5. 리듀서에서 못 벗어나게 묶는다 */
+const CONSCIENCE_MIN = -5
+const CONSCIENCE_MAX = 5
+
+const EMPTY_ACT: ActState = {
+  targetId: null,
+  aimed: false,
+  busyId: null,
+  busyKind: null,
+  busyTotalMs: 0,
+  busyLeftMs: 0,
+  denyText: '',
+  denyMs: 0,
+  consumed: [],
+  dialogId: null,
+}
+
+const EMPTY_QTE: QteState = {
+  active: false,
+  vendorId: null,
+  strokes: 0,
+  dir: 0,
+  travel: 0,
+  beatMs: 0,
+  misses: 0,
+  elapsedMs: 0,
+}
+
+const EMPTY_CHASE: ChaseState = {
+  active: false,
+  phase: 'idle',
+  phaseMs: 0,
+  remainingMs: 0,
+  hitCount: 0,
+  swingCooldownMs: 0,
+  pos: { x: 0, y: 0 },
+  facing: 0,
+  stuckMs: 0,
+}
+
+const EMPTY_SURGE: SurgeState = { fell: false, stallMs: 0 }
+
+const EMPTY_TALLY: TallyState = { coinsEarned: 0, itemsUsed: [], secrets: [] }
+
+/** 진행 중 상호작용만 비운다 — `consumed`·`dialogId` 는 건드리지 않는다 */
+const clearBusy = (a: ActState): ActState =>
+  ({ ...a, busyId: null, busyKind: null, busyTotalMs: 0, busyLeftMs: 0 })
+
+/**
+ * 슬롯 결정. 빈 칸이 있으면 그 칸, 없으면 0번.
+ * 0번을 쓰는 이유: "가장 오래 들고 있던 것"이 아니라 **항상 같은 칸**이어야
+ * 플레이어가 무엇이 밀려나는지 예측할 수 있다. 3슬롯에서 LRU는 과잉이다.
+ */
+const chooseSlot = (inv: readonly (ItemId | null)[], want: number): number => {
+  if (want >= 0 && want < SLOTS) return want
+  const empty = inv.findIndex((v) => v === null)
+  return empty >= 0 ? empty : 0
+}
 
 /** 시드에서 이번 판의 개찰구·잔액·LED를 결정한다. 램프 색은 이 결과의 직접 투영이다. */
 export const rollSeed = (seed: number) => {
@@ -19,7 +82,7 @@ export const rollSeed = (seed: number) => {
   const ids = GATES.map((g) => g.id)
   const count = rng.chance(GATE.twoWorkingChance) ? 2 : 1
   const workingIds = rng.shuffle(ids).slice(0, count).sort((a, b) => a - b)
-  const cardBalance = rng.pick(P0_BALANCE_POOL)
+  const cardBalance = rng.pick(BALANCE_POOL)
   const ledHint = rng.chance(GATE.ledHintChance)
   const broken = ids.filter((id) => !workingIds.includes(id))
   const ledBrokenId = ledHint && broken.length > 0 ? rng.pick(broken) : null
@@ -71,10 +134,16 @@ export const initialState = (seed: number, freeplay = false): GameState => {
     endingId: null,
     fx: [],
     nextFxId: 1,
-    inventory: [null, null, null],
+    inventory: Array.from({ length: SLOTS }, () => null),
     scores: { conscience: 0, style: 0, knowledge: 0 },
-    chase: { active: false, remainingMs: 0, hitCount: 0, swingCooldownMs: 0 },
+    chase: EMPTY_CHASE,
     flags: [],
+    act: EMPTY_ACT,
+    drops: [],
+    nextDropId: 1,
+    qte: EMPTY_QTE,
+    surge: EMPTY_SURGE,
+    tally: EMPTY_TALLY,
   }
 }
 
@@ -114,6 +183,35 @@ export const reducer = (s: GameState, a: Action): GameState => {
           timerMs: Math.max(0, gates.timerMs - a.dtMs),
           cooldownMs: Math.max(0, gates.cooldownMs - a.dtMs),
         },
+        // 상호작용·QTE 시계도 여기 하나에서만 흐른다. 시스템이 따로 감산하면
+        // 프레임당 두 번 줄어드는 사고가 나고, 그게 P0에서 가장 잡기 어려운 종류의 버그였다.
+        act: {
+          ...s.act,
+          busyLeftMs: Math.max(0, s.act.busyLeftMs - a.dtMs),
+          denyMs: Math.max(0, s.act.denyMs - a.dtMs),
+        },
+        qte: s.qte.active
+          ? { ...s.qte, elapsedMs: s.qte.elapsedMs + a.dtMs, beatMs: s.qte.beatMs - a.dtMs }
+          : s.qte,
+        chase: {
+          ...s.chase,
+          phaseMs: s.chase.phaseMs + a.dtMs,
+          remainingMs: s.chase.active ? Math.max(0, s.chase.remainingMs - a.dtMs) : s.chase.remainingMs,
+          swingCooldownMs: Math.max(0, s.chase.swingCooldownMs - a.dtMs),
+        },
+        /**
+         * 감속 회복 — GDD §4.1 "+5%/s (비피격 시)". **도망치면 풀린다.**
+         * 회수 연출(`seize`) 중에는 회복하지 않는다 — 2초 완전 정지가 그 구간의 내용이다.
+         */
+        player: s.player.speedPenalty > 0 && s.chase.phase !== 'seize'
+          ? {
+              ...s.player,
+              speedPenalty: Math.max(0, s.player.speedPenalty - CHASE.recoverPerSec * a.dtMs / 1000),
+            }
+          : s.player,
+        surge: s.surge.stallMs > 0
+          ? { ...s.surge, stallMs: Math.max(0, s.surge.stallMs - a.dtMs) }
+          : s.surge,
         fx: decayFx(s.fx, a.dtMs),
       }
     }
@@ -220,6 +318,268 @@ export const reducer = (s: GameState, a: Action): GameState => {
      * 속도·점프 상태까지 같이 비운다 — 위치만 옮기면 관성이 남아 되돌아온 자리에서
      * 그대로 미끄러진다.
      */
+    // ─────────────────── P1 상호작용 ───────────────────
+
+    case 'ACT_TARGET':
+      return s.act.targetId === a.id && s.act.aimed === a.aimed
+        ? s
+        : { ...s, act: { ...s.act, targetId: a.id, aimed: a.aimed } }
+
+    case 'ACT_BEGIN':
+      return {
+        ...s,
+        act: {
+          ...s.act,
+          busyId: a.id,
+          busyKind: a.kind,
+          busyTotalMs: a.totalMs,
+          busyLeftMs: a.totalMs,
+          denyMs: 0,
+          denyText: '',
+        },
+      }
+
+    case 'ACT_CANCEL':
+      return s.act.busyId === null ? s : { ...s, act: clearBusy(s.act) }
+
+    /**
+     * 사유 표시. **상태를 아무것도 바꾸지 않는다** — 아이템·시간·양심 전부 불변이다.
+     * GDD §5.1: "아웃라인 1회 깜빡임 + 사유 텍스트". 거부는 벌이 아니라 안내다.
+     */
+    case 'ACT_DENY':
+      return { ...s, act: { ...clearBusy(s.act), denyText: a.text, denyMs: INTERACT.denyMs } }
+
+    case 'ACT_CONSUME':
+      return s.act.consumed.includes(a.id)
+        ? s
+        : { ...s, act: { ...s.act, consumed: [...s.act.consumed, a.id] } }
+
+    case 'DIALOG':
+      return s.act.dialogId === a.id ? s : { ...s, act: { ...s.act, dialogId: a.id } }
+
+    /**
+     * 습득. 슬롯이 가득하면 0번을 **그 자리 바닥에 떨군다** — 사라지면 억울하다(P1-SPEC §3).
+     * `dropId` 가 있으면 바닥에서 주운 것이므로 그 드랍을 지운다.
+     */
+    case 'PICKUP': {
+      const slot = chooseSlot(s.inventory, a.slot)
+      const replaced = s.inventory[slot] ?? null
+      const inventory = s.inventory.map((v, i) => (i === slot ? a.item : v))
+      const p = s.player.pos
+      const kept = a.dropId ? s.drops.filter((d) => d.id !== a.dropId) : s.drops
+      const drops = replaced
+        ? [...kept, { id: `drop-${s.nextDropId}`, item: replaced, x: p.x, y: p.y, z: p.z }]
+        : kept
+      return pushFx(
+        {
+          ...s,
+          inventory,
+          drops,
+          nextDropId: replaced ? s.nextDropId + 1 : s.nextDropId,
+          act: clearBusy(s.act),
+        },
+        { kind: 'toast', text: `${itemDef(a.item).name} 획득`, lifeMs: 1400, value: 0 },
+      )
+    }
+
+    /** 소모품 사용 — 슬롯을 비운다. 지속형(마스크)은 이 액션을 안 쓴다 */
+    case 'ITEM_SPEND':
+      return {
+        ...s,
+        inventory: s.inventory.map((v, i) => (i === a.slot ? null : v)),
+      }
+
+    /** 스타일 축 — **종류** 수다. 같은 아이템을 두 번 써도 1로 센다 */
+    case 'ITEM_USED':
+      return s.tally.itemsUsed.includes(a.item)
+        ? s
+        : {
+            ...s,
+            tally: { ...s.tally, itemsUsed: [...s.tally.itemsUsed, a.item] },
+            scores: { ...s.scores, style: s.scores.style + 1 },
+          }
+
+    /**
+     * 잔액 가감. 동전은 여기로 직접 흡수된다 (GDD §9.3 `pickUpCoin`).
+     * 획득분만 `coinsEarned` 에 누적한다 — E-14 조건이 "번 돈"이라 지출은 안 뺀다.
+     */
+    case 'BALANCE': {
+      const gained = a.delta > 0 ? a.delta : 0
+      return pushFx(
+        {
+          ...s,
+          cardBalance: Math.max(0, s.cardBalance + a.delta),
+          tally: { ...s.tally, coinsEarned: s.tally.coinsEarned + gained },
+        },
+        {
+          kind: 'balance',
+          text: `${a.delta > 0 ? '+' : ''}${a.delta.toLocaleString('ko-KR')}원 ${a.label}`,
+          lifeMs: 1600,
+          value: a.delta,
+        },
+      )
+    }
+
+    case 'CONSCIENCE':
+      return {
+        ...s,
+        scores: {
+          ...s.scores,
+          conscience: clamp(s.scores.conscience + a.delta, CONSCIENCE_MIN, CONSCIENCE_MAX),
+        },
+      }
+
+    /** 지식 축 — 같은 시크릿을 다시 찾아도 안 오른다 */
+    case 'SECRET':
+      return s.tally.secrets.includes(a.id)
+        ? s
+        : {
+            ...s,
+            tally: { ...s.tally, secrets: [...s.tally.secrets, a.id] },
+            scores: { ...s.scores, knowledge: s.scores.knowledge + 1 },
+          }
+
+    case 'FLAG': {
+      const has = s.flags.includes(a.id)
+      if (has === a.on) return s
+      return { ...s, flags: a.on ? [...s.flags, a.id] : s.flags.filter((f) => f !== a.id) }
+    }
+
+    // ─────────────────── P1 QTE ───────────────────
+
+    case 'QTE_BEGIN':
+      return {
+        ...s,
+        act: clearBusy(s.act),
+        qte: { ...EMPTY_QTE, active: true, vendorId: a.vendorId, beatMs: QTE.beatMs },
+      }
+
+    /** 프레임 입력 누적 — 방향과 누적 이동량. 판정은 시스템이 한다 */
+    case 'QTE_INPUT':
+      return s.qte.active ? { ...s, qte: { ...s.qte, dir: a.dir, travel: a.travel } } : s
+
+    /** 스트로크 1회 판정. 성공이면 다음 박자로 창을 리셋한다 */
+    case 'QTE_STROKE':
+      return {
+        ...s,
+        qte: {
+          ...s.qte,
+          strokes: a.hit ? s.qte.strokes + 1 : s.qte.strokes,
+          misses: a.hit ? s.qte.misses : s.qte.misses + 1,
+          travel: 0,
+          beatMs: QTE.beatMs,
+        },
+      }
+
+    case 'QTE_END':
+      return { ...s, qte: EMPTY_QTE }
+
+    // ─────────────────── P1 단소 추격 (O-14) ───────────────────
+
+    case 'CHASE_START':
+      return {
+        ...s,
+        chase: {
+          active: true,
+          phase: 'draw',
+          phaseMs: 0,
+          remainingMs: CHASE.durationMs,
+          hitCount: 0,
+          swingCooldownMs: 0,
+          pos: { x: a.x, y: a.y },
+          facing: s.chase.facing,
+          stuckMs: 0,
+        },
+      }
+
+    case 'CHASE_MOVE':
+      return {
+        ...s,
+        chase: { ...s.chase, pos: { x: a.x, y: a.y }, facing: a.facing, stuckMs: a.stuckMs },
+      }
+
+    /** 회수 연출(`seize`)에 들어가는 순간 플레이어는 완전 정지한다 — GDD §4.1 "완전 정지 2초" */
+    case 'CHASE_PHASE':
+      return s.chase.phase === a.phase
+        ? s
+        : {
+            ...s,
+            player: a.phase === 'seize' ? { ...s.player, speedPenalty: 1 } : s.player,
+            chase: { ...s.chase, phase: a.phase, phaseMs: 0 },
+          }
+
+    /**
+     * 피격 — GDD §4.1 그대로. 감속 누적 · 양심 −1 · 쿨다운.
+     * ⚠ `speedPenalty` 상한을 여기서 묶는다. 1.0을 넘으면 `movement.ts` 의
+     *   `speed * (1 - speedPenalty)` 가 **음수**가 되어 조작이 반대로 된다.
+     */
+    case 'CHASE_HIT':
+      return {
+        ...s,
+        player: {
+          ...s.player,
+          speedPenalty: clamp(s.player.speedPenalty + CHASE.hitPenalty, 0, 1),
+        },
+        chase: {
+          ...s.chase,
+          hitCount: s.chase.hitCount + 1,
+          swingCooldownMs: CHASE.swingCooldownMs,
+          phase: 'swing',
+          phaseMs: 0,
+        },
+        scores: {
+          ...s.scores,
+          conscience: clamp(s.scores.conscience - 1, CONSCIENCE_MIN, CONSCIENCE_MAX),
+        },
+      }
+
+    /**
+     * 해제. **회수당해도 게임은 계속된다** (GDD §6.2) — 벌은 주되 문은 닫지 않는다.
+     * 3분 게임에서 방해요소 하나로 즉사시키면 재도전 의욕이 꺾인다.
+     */
+    case 'CHASE_END': {
+      const seized = a.reason === 'seize'
+      const returned = a.reason === 'returned'
+      const hyo = s.inventory.findIndex((v) => v === 'I-01')
+      return {
+        ...s,
+        // 회수·반납이면 효자손이 사라진다. 잔액 충전 수단을 잃는 것이 실질 페널티다
+        inventory: (seized || returned) && hyo >= 0
+          ? s.inventory.map((v, i) => (i === hyo ? null : v))
+          : s.inventory,
+        /**
+         * ★ 효자손을 잃었으면 할아버지를 **다시 만날 수 있다.**
+         *
+         * GDD §6.2: *"벌은 주되 문은 닫지 않는다."* 잔액 0원 시드(15%)에서 효자손을
+         * 회수당하면 P1에는 다른 충전 수단이 없어 **진짜로 막힌다** — 스윕에서 2건 나왔다.
+         * 그래서 `consumed` 에서 할아버지를 빼 정직한 루트(붕어빵·대화)로 재도전하게 둔다.
+         * 훔치기 분기는 `CHASE_DONE` 이 막는다(`grandpaBranches`) — 그는 이제 경계한다.
+         */
+        act: seized || returned
+          ? { ...s.act, consumed: s.act.consumed.filter((id) => id !== GRANDPA_ID) }
+          : s.act,
+        player: seized ? { ...s.player, speedPenalty: 0 } : s.player,
+        chase: { ...s.chase, active: false, phase: 'return', phaseMs: 0, swingCooldownMs: 0 },
+        scores: {
+          ...s.scores,
+          conscience: clamp(
+            s.scores.conscience + (seized ? -2 : returned ? 1 : 0),
+            CONSCIENCE_MIN, CONSCIENCE_MAX,
+          ),
+        },
+        flags: s.flags.includes('CHASE_DONE') ? s.flags : [...s.flags, 'CHASE_DONE'],
+      }
+    }
+
+    /** 역류에 넘어졌다 — 1.2초 정지. 아이템 드랍은 O-05(P2)의 몫이고 여기서는 시간만 잃는다 */
+    case 'SURGE_FALL':
+      return s.surge.fell
+        ? s
+        : {
+            ...s,
+            surge: { fell: true, stallMs: SURGE.stallMs },
+          }
+
     case 'RESPAWN':
       return {
         ...s,

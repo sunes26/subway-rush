@@ -15,6 +15,10 @@ declare global {
       toggleView(): void
       camTrace(): number[]
       setInterp(on: boolean): void
+      /** P1 — 오디오 컨텍스트 생존 여부 */
+      sfxReady(): boolean
+      /** 화면 중앙 레이 — 아웃라인 셸이 판정을 오염시키는지 확인용 */
+      pick(ndcX?: number, ndcY?: number): { name: string; dist: number; point: [number, number, number] }[]
     }
   }
 }

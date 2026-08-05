@@ -100,6 +100,9 @@ export const createCameraRig = (camera: PerspectiveCamera, occluders?: Object3D)
   let bobLevel = 0
   let fov = FPV.fovDeg
   const eye = new Vector3()
+  /** QTE 중 얼려 둔 시선. null 이면 QTE 밖이다 */
+  let qteYaw: number | null = null
+  let qtePitch = 0
 
   const presetFor = (z: ZoneId): CamPreset => {
     const p = PRESETS[z]
@@ -120,7 +123,21 @@ export const createCameraRig = (camera: PerspectiveCamera, occluders?: Object3D)
       if (mode === 'fp') {
         const p = state.player
         const pos = renderPos ?? p.pos
-        effYaw = input.lookYaw
+        /**
+         * QTE 중에는 시선을 **얼린다.**
+         *
+         * 자판기를 긁는 마우스 좌우 왕복이 그대로 시선 회전이 되면 화면이 요동친다.
+         * 포인터 락을 푸는 대안은 더 나쁘다 — QTE가 끝난 뒤 다시 클릭해야 시선이 돌아오고,
+         * 3분 게임에서 그건 최악의 UX다. 락은 유지하고 **적용만** 건너뛴다 (P1-TECH §3.2).
+         * `qteYaw` 를 QTE 시작 시점에 걸어 두고 그 값을 계속 쓴다.
+         */
+        if (state.qte.active) {
+          if (qteYaw === null) { qteYaw = input.lookYaw; qtePitch = input.lookPitch }
+        } else {
+          qteYaw = null
+        }
+        effYaw = qteYaw ?? input.lookYaw
+        const pitch = state.qte.active ? qtePitch : input.lookPitch
 
         // 헤드밥 — 실제 이동 속도에 비례. 서 있으면 0으로 감쇠한다.
         const speed = Math.hypot(p.vel.x, p.vel.y)
@@ -129,8 +146,16 @@ export const createCameraRig = (camera: PerspectiveCamera, occluders?: Object3D)
         // 위상은 **시간** 기준으로 굴린다. 속도로 굴리면 프레임 dt 흔들림이 그대로 위상 지터가 된다.
         const hz = FPV.bobHzBase + FPV.bobHzPerSpeed * speed
         bobPhase += dtSec * hz * Math.PI * 2
-        const bobY = Math.sin(bobPhase) * FPV.bobAmp * bobLevel
-        const bobX = Math.sin(bobPhase * 0.5) * FPV.bobSway * bobLevel
+        /**
+         * 단소에 맞아 감속되면 **몸이 무거워진다** (P1 S13 · W A S D 축).
+         *
+         * 숫자로 "−20%"를 띄우는 대신 걸음이 무겁게 느껴지게 한다 — GDD §4.1의
+         * 톤 가드레일이 데미지 수치 표시를 금지하므로, 피격의 크기는 **감각으로만** 전달된다.
+         * 진폭만 키우고 주기는 건드리지 않는다: 주기를 늦추면 조작 지연으로 오해된다.
+         */
+        const heavy = 1 + FPV.bobPenaltyGain * p.speedPenalty
+        const bobY = Math.sin(bobPhase) * FPV.bobAmp * bobLevel * heavy
+        const bobX = Math.sin(bobPhase * 0.5) * FPV.bobSway * bobLevel * heavy
 
         // 시선 기준 우측 벡터로 좌우 흔들림을 준다
         const rightX = Math.sin(effYaw)
@@ -142,7 +167,7 @@ export const createCameraRig = (camera: PerspectiveCamera, occluders?: Object3D)
         )
         camera.position.copy(eye)
         camera.rotation.order = 'YXZ'
-        camera.rotation.set(input.lookPitch, effYaw - Math.PI / 2, 0)
+        camera.rotation.set(pitch, effYaw - Math.PI / 2, 0)
         // 달릴 때 살짝 넓어지는 화각 — 속도감의 대부분이 여기서 나온다
         const wantFov = FPV.fovDeg + (p.sprinting ? FPV.sprintFov : 0)
         if (Math.abs(fov - wantFov) > 0.01) {

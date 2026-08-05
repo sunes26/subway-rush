@@ -102,10 +102,18 @@ describe('S3-1 타이머', () => {
 // ────────────────────────── S4 개찰구 ──────────────────────────
 
 /** 게이트 앞에 세우고 태그가 끝날 때까지 동쪽으로 민다. */
-const tryGate = (seed: number, gateId: number, steps = 200): GameState => {
+/**
+ * 게이트 단독 검증용 — **잔액을 요금 이상으로 강제한다.**
+ *
+ * P0에서는 `BALANCE_POOL` 이 `[1600, 2200]` 이라 강제가 필요 없었다. P1에서 GDD §8.3
+ * 원본으로 원복하면서 **60% 시드가 요금 미달**이 됐다(그게 효자손 체인의 존재 이유다).
+ * 이 테스트가 재려는 것은 개찰구 상태 기계지 잔액 경제가 아니므로 여기서만 고정한다.
+ * 잔액 부족 경로는 바로 아래 `S4-6 잔액 부족` 케이스가 따로 덮는다.
+ */
+const tryGate = (seed: number, gateId: number, steps = 200, balance = 2200): GameState => {
   const g = GATES.find((x) => x.id === gateId)
   if (!g) throw new Error('bad gate')
-  let s = put(start(seed), 58.6, g.y, FLOOR.B1)
+  let s = put({ ...start(seed), cardBalance: balance }, 58.6, g.y, FLOOR.B1)
   s = run(s, hold({ moveY: 1 }, steps))   // yaw=0 → +x
   return s
 }
@@ -191,9 +199,9 @@ describe('S4 개찰구', () => {
     const seed = 11
     const roll = rollSeed(seed)
     const ok = roll.workingIds[0] as number
-    const s = tryGate(seed, ok, 260)
+    const s = tryGate(seed, ok, 260, 2200)
     expect(s.gates.passed).toBe(true)
-    expect(s.cardBalance).toBe(roll.cardBalance - FARE)
+    expect(s.cardBalance).toBe(2200 - FARE)
   })
 
   it('S4-6 잔액 부족이면 정상 게이트도 통과하지 못한다', () => {
@@ -221,10 +229,28 @@ describe('S4 개찰구', () => {
     expect(rate).toBeLessThan(0.65)
   })
 
-  it('P0 초기 잔액은 항상 요금 이상이다 (충전 수단이 없으므로)', () => {
+  /**
+   * S9-10 — P0의 "잔액은 항상 요금 이상" 테스트를 **대체한다.**
+   *
+   * P0은 충전 수단이 없어 풀을 `[1600, 2200]` 으로 좁혀 뒀다. P1에서 자판기 3대가
+   * 들어왔으므로 GDD §8.3 원본으로 원복했다. 여기서 재는 것은 **"60% 시드에서
+   * 효자손 체인이 강제된다"** 는 설계 의도 그 자체다 — 이 수치가 무너지면
+   * 프로젝트의 얼굴인 체인이 60%가 아니라 0%의 플레이어에게만 보인다.
+   */
+  it('S9-10 초기 잔액이 요금 미달인 시드가 60%다 (효자손 체인 강제 비율)', () => {
+    let short = 0
     for (let seed = 0; seed < 2000; seed++) {
-      expect(rollSeed(seed).cardBalance).toBeGreaterThanOrEqual(FARE)
+      if (rollSeed(seed).cardBalance < FARE) short++
     }
+    const rate = short / 2000
+    expect(rate, `미달 비율 ${(rate * 100).toFixed(1)}%`).toBeGreaterThan(0.55)
+    expect(rate, `미달 비율 ${(rate * 100).toFixed(1)}%`).toBeLessThan(0.65)
+  })
+
+  it('S9-10 잔액 풀이 GDD §8.3 원본 5종이다', () => {
+    const seen = new Set<number>()
+    for (let seed = 0; seed < 2000; seed++) seen.add(rollSeed(seed).cardBalance)
+    expect([...seen].sort((a, b) => a - b)).toEqual([0, 900, 1250, 1600, 2200])
   })
 })
 
@@ -293,7 +319,13 @@ describe('S5-5~8 탑승 판정', () => {
   })
 
   it('S5-1 에스컬레이터는 입력 없이도 B2로 내려간다', () => {
-    let s = put(start(), 95.9, 2.2, FLOOR.B1)
+    /**
+     * P1에서 O-03 캐리어 승객(`CROWD-CP`)이 이 진입부를 막는다 — 그게 설계다.
+     * 이 테스트가 재는 것은 **이송 속도**이므로 이미 비켜선 상태에서 잰다.
+     * 막힘 자체는 `crowd.test.ts` (S11-1)가 따로 증명한다.
+     */
+    const cleared = start()
+    let s = put({ ...cleared, act: { ...cleared.act, consumed: ['ACT-CP'] } }, 95.9, 2.2, FLOOR.B1)
     s = run(s, hold({}, 60 * 25))
     expect(s.player.pos.z).toBeCloseTo(FLOOR.B2, 1)
     expect(s.player.pos.x).toBeGreaterThan(119)
@@ -321,8 +353,13 @@ describe('S5-5~8 탑승 판정', () => {
 // ────────────────────────── S6 엔딩 ──────────────────────────
 
 describe('S6-1 엔딩 판정', () => {
-  it('탑승 → E-01', () => {
-    const s = { ...start(), boarded: true }
+  /**
+   * P1에서 엔딩이 2종 → 6종이 됐다. "탑승"만으로는 더 이상 E-01이 아니다 —
+   * 잔여 30s 이상이면 E-02(여유로운 출근)가 우선순위에서 이긴다.
+   * E-01은 **그 사이 구간**의 엔딩이다. 6종 전체 표는 `ending6.test.ts` 가 덮는다.
+   */
+  it('탑승 + 잔여 1~30초 → E-01', () => {
+    const s = { ...start(), boarded: true, timeLeftMs: 12_000 }
     expect(resolveEnding(s).id).toBe('E-01')
   })
   it('미탑승 → E-06', () => {
@@ -334,7 +371,7 @@ describe('S6-1 엔딩 판정', () => {
     expect(s.phase).toBe('ended')
     expect(s.endingId).toBe('E-06')
   })
-  it('탑승 후 열차가 떠나면 E-01로 끝난다', () => {
+  it('탑승 후 열차가 떠나면 탑승 계열 엔딩으로 끝난다', () => {
     const elapsed = 174_000
     let s = put({ ...start(5), elapsedMs: elapsed, timeLeftMs: TOTAL_TIME_MS - elapsed, train: trainAt(elapsed) },
       DOOR_XS[3] as number, 11.0, FLOOR.B2)
@@ -342,7 +379,8 @@ describe('S6-1 엔딩 판정', () => {
     expect(s.boarded).toBe(true)
     s = run(s, hold({}, 60 * 10))
     expect(s.phase).toBe('ended')
-    expect(s.endingId).toBe('E-01')
+    // t=174s 탑승이면 잔여 6초 → E-01. 경계값이 바뀌면 E-04까지 허용된다
+    expect(['E-01', 'E-04']).toContain(s.endingId)
   })
 })
 

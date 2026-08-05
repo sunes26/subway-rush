@@ -46,7 +46,15 @@ const walk = (s: GameState, leg: Leg): { s: GameState; ok: boolean; sec: number 
 
 /** 스폰 → 승강장 전체 경로. 게이트 y는 시드마다 다르므로 실행 중에 결정한다. */
 const traverse = (seed: number): { state: GameState; log: string[]; failed: string | null } => {
-  let s: GameState = { ...initialState(seed), phase: 'playing' }
+  /**
+   * 잔액을 요금 이상으로 고정한다 — 이 테스트가 재는 것은 **도보 통행성**이다.
+   *
+   * P1에서 잔액 풀이 GDD §8.3 원본으로 돌아가 60% 시드가 요금 미달이 됐다.
+   * 그 시드에서 개찰구를 통과하려면 효자손 체인을 완주해야 하고, 그건
+   * `chain.test.ts`(S9-11)가 따로 증명한다. 여기서 섞으면 "길이 막힌 것"과
+   * "돈이 없는 것"이 같은 실패로 보고돼 원인 추적이 불가능해진다.
+   */
+  let s: GameState = { ...initialState(seed), phase: 'playing', cardBalance: 2200 }
   const log: string[] = []
   const workingY = GATES.find((g) => g.id === s.gates.workingIds[0])?.y ?? 14
 
@@ -101,7 +109,7 @@ describe('A-2 · S6-4 — 처음부터 끝까지 플레이 가능', () => {
     }
   })
 
-  it('E-01 완주 — 승강장 도착 후 문이 열리면 탑승하고 엔딩이 뜬다', () => {
+  it('탑승 완주 — 승강장 도착 후 문이 열리면 탑승하고 성공 엔딩이 뜬다', () => {
     const r = traverse(42)
     expect(r.failed).toBeNull()
     let s = r.state
@@ -118,14 +126,16 @@ describe('A-2 · S6-4 — 처음부터 끝까지 플레이 가능', () => {
       s = tick(s, STEP, { input: seek(s, target.x, target.y), cameraYaw: 0 })
     }
     expect(s.boarded, '탑승 실패').toBe(true)
-    expect(resolveEnding(s).id).toBe('E-01')
+    // P1에서 탑승 계열이 3종(E-02 여유 / E-01 아슬아슬 / E-04 문틈)으로 갈렸다.
+    // 이 테스트가 증명하는 것은 **완주 가능성**이므로 성공 계열이면 된다.
+    expect(resolveEnding(s).tone).toBe('success')
 
     // 열차가 떠나면 엔딩 화면으로 넘어간다
     for (let i = 0; i < 60 * 20 && s.phase !== 'ended'; i++) {
       s = tick(s, STEP, { input: EMPTY_INPUT, cameraYaw: 0 })
     }
     expect(s.phase).toBe('ended')
-    expect(s.endingId).toBe('E-01')
+    expect(['E-01', 'E-02', 'E-04']).toContain(s.endingId)
   })
 
   it('E-06 완주 — 아무것도 안 하면 온화한 실패로 끝난다', () => {

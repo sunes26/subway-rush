@@ -24,7 +24,7 @@ const boot = async (page: Page): Promise<void> => {
 }
 
 const place = async (page: Page, x: number, y: number): Promise<void> => {
-  await page.evaluate(([px, py]) => {
+  await page.evaluate(({ px, py }: { px: number; py: number }) => {
     const g = window.__game!
     g.set({ phase: 'playing' })
     const st = g.state()
@@ -39,7 +39,7 @@ const place = async (page: Page, x: number, y: number): Promise<void> => {
         sprinting: false,
       },
     })
-  }, [x, y])
+  }, { px: x, py: y })
 }
 
 const distFromSpawn = (p: { x: number; y: number }): number =>

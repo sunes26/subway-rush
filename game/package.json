@@ -14,7 +14,9 @@
     "test:e2e": "playwright test",
     "tour": "playwright test tests/e2e/tour.spec.ts",
     "dump:collision": "tsx tools/dump-collision.ts",
-    "verify": "npm run typecheck && npm run test && npm run build"
+    "verify": "npm run typecheck && npm run test && npm run build",
+    "sweep": "tsx tools/sweep.ts",
+    "assets": "node tools/copy-assets.mjs"
   },
   "dependencies": {
     "three": "^0.180.0"

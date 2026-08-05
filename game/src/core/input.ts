@@ -32,6 +32,21 @@ export type InputFrame = Readonly<{
   pressRestart: boolean
   pressDebug: boolean
   pressToggleView: boolean
+
+  // ── P1 ──
+  /**
+   * 상호작용 원샷 (`E` 또는 **락 중** 좌클릭).
+   *
+   * `interact`(홀드)를 그대로 쓰면 60Hz로 상호작용이 재발한다. P0에서 이 필드를
+   * 읽는 곳이 아무 데도 없었던 덕에 드러나지 않았을 뿐이다.
+   */
+  pressInteract: boolean
+  /** 슬롯 원샷 — 0 = 없음, 1~3. 대화·QTE 중에는 선택지 번호로 전용된다 */
+  pressSlot: 0 | 1 | 2 | 3
+  /** 취소 원샷 (`ESC`). ESC는 포인터 락도 같이 푼다 — 의도된 동작이다 */
+  pressCancel: boolean
+  /** 이번 프레임 마우스 x 원본 델타(px) — QTE 전용. 감도·필터를 거치지 않는다 */
+  qteDelta: number
 }>
 
 export const EMPTY_INPUT: InputFrame = {
@@ -39,6 +54,7 @@ export const EMPTY_INPUT: InputFrame = {
   lookYaw: 0, lookPitch: 0, locked: false,
   orbitYaw: 0, orbitPitch: 0, zoom: 1,
   pressStart: false, pressRestart: false, pressDebug: false, pressToggleView: false,
+  pressInteract: false, pressSlot: 0, pressCancel: false, qteDelta: 0,
 }
 
 const SENSITIVITY = FPV.sensitivity
@@ -68,6 +84,11 @@ export const createInput = (target: HTMLElement): InputSource => {
   let lookYaw = 0
   let lookPitch = 0
   let locked = false
+  let pressInteract = false
+  let pressSlot: 0 | 1 | 2 | 3 = 0
+  let pressCancel = false
+  /** 프레임 누적 원본 x 델타 — QTE 전용. 시선 필터(core/look)를 우회한다 */
+  let qteDelta = 0
   /** 시선 델타 필터 상태 — 스킵 원인별 처리는 core/look.ts 참고 */
   let look: LookState = EMPTY_LOOK
 
@@ -82,6 +103,12 @@ export const createInput = (target: HTMLElement): InputSource => {
     if (e.code === 'KeyR') pressRestart = true
     if (e.code === 'F3') { pressDebug = true; e.preventDefault() }
     if (e.code === 'KeyV') pressToggleView = true
+    // P1 — 상호작용·슬롯·취소. `KeyE`/`Digit1~3` 는 브라우저 기본 동작이 없어 preventDefault 불필요
+    if (e.code === 'KeyE') pressInteract = true
+    if (e.code === 'Digit1') pressSlot = 1
+    if (e.code === 'Digit2') pressSlot = 2
+    if (e.code === 'Digit3') pressSlot = 3
+    if (e.code === 'Escape') pressCancel = true
     if (MOVE_KEYS.has(e.code)) e.preventDefault()
   }
   const onKeyUp = (e: KeyboardEvent): void => { held.delete(e.code) }
@@ -111,6 +138,9 @@ export const createInput = (target: HTMLElement): InputSource => {
   const onPointerDown = (e: PointerEvent): void => {
     // 좌클릭 = 포인터 락 요청. 1인칭 시선의 유일한 진입점이다.
     if (e.button === 0 && document.pointerLockElement !== target) requestLock()
+    // **락이 이미 걸린 뒤의** 좌클릭은 상호작용이다 (GDD §7.1 "E / 좌클릭").
+    // 락 진입 클릭과 겹치지 않는다 — 진입은 위 분기가 먹는다.
+    else if (e.button === 0) pressInteract = true
     if (e.button === 2) { dragging = true; target.setPointerCapture(e.pointerId) }
   }
   const onPointerUp = (e: PointerEvent): void => {
@@ -132,6 +162,9 @@ export const createInput = (target: HTMLElement): InputSource => {
    */
   const onMouseMove = (e: MouseEvent): void => {
     if (!locked) return
+    // QTE 는 원본 델타를 쓴다. 시선 필터는 스파이크를 다음 프레임으로 이월하는데,
+    // 긁기 판정에는 그 이월이 곧 "방향이 늦게 뒤집히는" 오판이 된다.
+    qteDelta += e.movementX
     look = pushLook(look, -e.movementX, -e.movementY, e.timeStamp)
   }
 
@@ -183,11 +216,16 @@ export const createInput = (target: HTMLElement): InputSource => {
         lookYaw, lookPitch, locked,
         orbitYaw, orbitPitch, zoom,
         pressStart, pressRestart, pressDebug, pressToggleView,
+        pressInteract, pressSlot, pressCancel, qteDelta,
       }
       pressStart = false
       pressRestart = false
       pressDebug = false
       pressToggleView = false
+      pressInteract = false
+      pressSlot = 0
+      pressCancel = false
+      qteDelta = 0
       return frame
     },
     dispose(): void {
