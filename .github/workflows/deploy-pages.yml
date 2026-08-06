@@ -1,0 +1,49 @@
+name: Deploy Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 배포는 한 번에 하나만. 진행 중인 배포는 절대 취소하지 않는다 —
+# 96초 간격 연속 push로 in-flight 배포가 취소되면서 Pages 배포 큐가
+# 몇 시간 물린 적이 있다(2026-08-06). 뒤이은 push는 큐에서 기다린다.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 레포 전체(436파일 167.9MB)가 아니라 사이트 구동에 필요한 것만 올린다.
+      # assets/ render/ game/public/ 은 원본·렌더·중복이라 제외한다.
+      # 페이로드가 100MB를 넘으면 배포가 10분 타임아웃에 걸린다.
+      - name: Stage publishable files
+        run: |
+          mkdir -p _site/game
+          cp index.html _site/
+          cp .nojekyll _site/
+          cp -r game/dist _site/game/dist
+
+      - name: Report payload size
+        run: |
+          echo "files: $(find _site -type f | wc -l)"
+          echo "size : $(du -sh _site | cut -f1)"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
