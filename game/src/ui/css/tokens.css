@@ -1,0 +1,18 @@
+/*
+ * 디자인 토큰 — 색 · 폰트. **모든 UI의 단일 원천.**
+ *
+ * 예전엔 `index.html` 의 인라인 <style> 안에 있었다. UI 킷 페이지가 생기면서
+ * 같은 값을 두 곳에 적어야 했고, 그건 색을 고칠 때마다 한쪽을 잊는 구조다.
+ * 이제 게임(`index.html`)과 킷(`uikit.html`)이 이 파일을 **link** 로 같이 읽는다.
+ *
+ * 노선색은 서울교통공사 실제 값을 인용한다 (GDD §7.3).
+ *   2호선 그린 #00A84D · 1호선 블루 #0052A4
+ * 골드(#FFC83D)는 상호작용 아웃라인과 같은 값이다 (GDD §5.1) —
+ * 3D 쪽은 `data/tuning.ts PALETTE.gold` 가 들고 있으므로 **두 값을 같이 고쳐야 한다.**
+ */
+:root{
+  --led:#F5F5F0; --warn:#FFC83D; --hot:#FF8A3D; --crit:#E5484D;
+  --line2:#00A84D; --line1:#0052A4; --gold:#FFC83D; --ink:#0B0B0A;
+  --mono:ui-monospace,"Cascadia Mono","SF Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;
+}

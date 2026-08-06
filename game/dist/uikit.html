@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>지하철 러쉬 — UI 킷</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🎛</text></svg>">
+<!--
+  ★ 게임과 **같은 토큰 파일**을 읽는다. 색을 여기서 고치면 게임도 바뀐다.
+     UI 스타일(hud/dialog/screens.css)은 각 UI 모듈이 ?inline 으로 들고 오므로
+     이 페이지가 따로 link 하지 않는다 — 주입 경로까지 게임과 동일하게 유지한다.
+-->
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#0C0C10;color:var(--led);
+    font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  body{display:grid;grid-template-columns:270px 1fr;height:100vh;overflow:hidden}
+
+  /* ── 좌측: 상태 목록 ── */
+  #side{border-right:1px solid rgba(255,255,255,.1);overflow-y:auto;padding:14px 0 40px;
+    background:#0A0A0E}
+  #side h1{font-size:13px;letter-spacing:.14em;text-transform:uppercase;opacity:.5;
+    margin:0 16px 4px;font-weight:600}
+  #side .sub{font-size:11px;opacity:.38;margin:0 16px 14px;line-height:1.5}
+  /* 그룹 라벨은 스크롤 중에도 붙어 있어야 지금 어느 묶음을 보는지 알 수 있다 */
+  #side .grp{position:sticky;top:0;z-index:1;background:#0A0A0E;padding:6px 0 4px;
+    font-family:var(--mono);font-size:10px;letter-spacing:.18em;opacity:.55;
+    margin:14px 16px 4px;text-transform:uppercase}
+  #side button{display:block;width:calc(100% - 16px);margin:2px 8px;padding:7px 10px;
+    text-align:left;font:inherit;font-size:13px;color:inherit;background:transparent;
+    border:1px solid transparent;border-radius:6px;cursor:pointer;line-height:1.35}
+  #side button:hover{background:rgba(255,255,255,.05)}
+  #side button.on{background:rgba(255,200,61,.13);border-color:rgba(255,200,61,.42)}
+  #side button small{display:block;font-family:var(--mono);font-size:10px;opacity:.45;margin-top:2px}
+
+  /* ── 우측: 무대 ── */
+  #main{display:flex;flex-direction:column;min-width:0;overflow:hidden}
+  #bar{display:flex;align-items:center;gap:10px;padding:10px 16px;
+    border-bottom:1px solid rgba(255,255,255,.1);flex-wrap:wrap}
+  #bar .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.16em;opacity:.42;
+    text-transform:uppercase;margin-right:2px}
+  #bar button{font:inherit;font-size:12px;color:inherit;background:rgba(255,255,255,.06);
+    border:1px solid rgba(255,255,255,.12);border-radius:5px;padding:5px 10px;cursor:pointer}
+  #bar button.on{background:rgba(255,200,61,.16);border-color:rgba(255,200,61,.45)}
+  #bar .gap{width:14px}
+  /* 노트는 남는 폭만 쓰고 두 줄까지 접힌다 — margin-left:auto 만 주면 오른쪽에서 잘린다 */
+  #bar .note{margin-left:auto;font-family:var(--mono);font-size:11px;opacity:.42;
+    max-width:46ch;text-align:right;line-height:1.45;flex:0 1 auto}
+
+  #wrap{flex:1;display:grid;place-items:center;padding:22px;overflow:auto;min-height:0}
+  /*
+    무대는 게임과 **같은 논리 해상도(1280×720)** 다. UI 는 px 로 배치돼 있어서
+    무대 크기가 다르면 여기서 잘 보이던 간격이 게임에서 달라진다.
+    화면이 작으면 scale 로 줄인다 — 레이아웃이 아니라 배율만 바뀐다.
+  */
+  #stage{position:relative;width:1280px;height:720px;flex:none;overflow:hidden;
+    border-radius:10px;border:1px solid rgba(255,255,255,.13);
+    background:#07070A center/cover no-repeat;transform-origin:center}
+  #stage.grid{background-image:
+    linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);
+    background-size:40px 40px,40px 40px}
+  /* 게임의 #ui 와 같은 역할 — 포인터를 먹지 않는 오버레이 층 */
+  #stage-ui{position:absolute;inset:0;pointer-events:none}
+  #hint{font-family:var(--mono);font-size:11px;opacity:.35;padding:0 16px 12px;line-height:1.6}
+</style>
+  <script type="module" crossorigin src="./assets/uikit-x2rYQRJN.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/hud-BKcfD2FU.js">
+  <link rel="stylesheet" crossorigin href="./assets/hud-BuXZj8lH.css">
+</head>
+<body>
+  <div id="side">
+    <h1>UI 킷</h1>
+    <p class="sub">게임의 실제 UI 코드를 그대로 구동한다.<br>
+      스타일은 <b>같은 CSS 파일</b>을 읽으므로 여기서 고치면 게임도 바뀐다.</p>
+    <div id="list"></div>
+  </div>
+  <div id="main">
+    <div id="bar">
+      <span class="lbl">배경</span>
+      <button data-bg="dark">어둡게</button>
+      <button data-bg="grid">그리드</button>
+      <button data-bg="concourse">대합실</button>
+      <button data-bg="vending">자판기</button>
+      <button data-bg="chase">추격</button>
+      <span class="gap"></span>
+      <span class="lbl">배율</span>
+      <button data-zoom="1">100%</button>
+      <button data-zoom="0.75">75%</button>
+      <button data-zoom="fit">맞춤</button>
+      <span class="gap"></span>
+      <button id="btn-play">애니 정지</button>
+      <span class="note" id="note"></span>
+    </div>
+    <div id="wrap">
+      <div id="stage"><div id="stage-ui"></div></div>
+    </div>
+    <div id="hint">CSS 를 고치면 저장하는 순간 이 화면과 게임에 함께 반영된다 ·
+      상태를 고르면 그 순간의 UI 가 실제 코드로 그려진다</div>
+  </div>
+</body>
+</html>

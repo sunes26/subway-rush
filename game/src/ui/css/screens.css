@@ -1,0 +1,31 @@
+/*
+ * 화면 스타일 — 타이틀 · 로딩 · 엔딩.
+ *
+ * ★ 단일 원천. 게임(`ui/screens.ts`)과 UI 킷(`/uikit.html`)이 같은 파일을 읽는다.
+ */
+#screen{position:absolute;inset:0;display:none;place-items:center;text-align:center;
+  background:radial-gradient(ellipse at 50% 40%,rgba(12,12,16,.86),rgba(4,4,6,.97));
+  backdrop-filter:blur(3px);pointer-events:auto;animation:fade .6s ease both}
+#screen.on{display:grid}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+#screen .card{max-width:640px;padding:0 32px}
+#screen .kicker{font-family:var(--mono);font-size:10px;letter-spacing:.42em;
+  text-transform:uppercase;color:#FFB020;margin-bottom:18px}
+#screen h1{font-size:clamp(34px,7vw,64px);line-height:1;margin:0 0 6px;
+  font-weight:800;letter-spacing:-.045em}
+#screen .sub{font-size:14px;opacity:.6;margin-bottom:30px;letter-spacing:.01em}
+#screen .line{font-size:22px;font-weight:600;margin:22px 0 10px;letter-spacing:-.01em}
+#screen .hint{font-size:13px;opacity:.66;line-height:1.7;border-top:1px solid rgba(255,255,255,.13);
+  padding-top:16px;margin-top:22px}
+#screen .stats{display:flex;gap:26px;justify-content:center;margin:22px 0 4px;
+  font-family:var(--mono);font-size:12px;opacity:.62;letter-spacing:.06em}
+#screen .keys{margin-top:30px;display:flex;gap:9px;justify-content:center;flex-wrap:wrap}
+#screen kbd{font-family:var(--mono);font-size:11px;padding:5px 9px;border-radius:5px;
+  border:1px solid rgba(255,255,255,.24);background:rgba(255,255,255,.06);letter-spacing:.06em}
+#screen .cta{margin-top:26px;font-family:var(--mono);font-size:13px;letter-spacing:.2em;
+  color:#FFC83D;animation:blink 1.3s steps(2,start) infinite}
+@keyframes blink{50%{opacity:.28}}
+#screen.win h1{color:#7FE0A0}
+#screen.lose h1{color:#F5F5F0}
+#load{position:absolute;inset:0;display:grid;place-items:center;background:#07070A;
+  font-family:var(--mono);font-size:11px;letter-spacing:.3em;color:#77766F}
