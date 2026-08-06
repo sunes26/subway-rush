@@ -95,9 +95,49 @@ const noopRig = (): NpcRig => ({
   dispose: () => {},
 })
 
-const loadOr = async (url: string, tag: string): Promise<NpcRig> => {
+/**
+ * 캐릭터 배율 — 에셋(0.84~0.92m)을 실척 맵(문 1.9m · 벤치 0.9m)에 맞춘다.
+ *
+ * 1.6 을 쓰면 MC 1.48m · GP 1.34m · CP 1.48m 이 된다. GDD §7.3 의 "3등신 SD" 를
+ * 유지하면서(머리가 크고 키가 작다) **인형이 아니라 짧은 사람**으로 읽히는 지점이다.
+ * 한 상수로 주는 이유: 작가가 만든 상대 신장(할아버지가 MC보다 9% 작다)을 보존한다.
+ */
+export const CHAR_SCALE = 1.6
+
+/**
+ * 모델 전방축 보정 — **리그마다 다르다.** 캐릭터별로 준다.
+ *
+ * `place()` 공식(`rotation.y = -facing + π/2`)은 전방 = 로컬 +z 를 가정한다
+ * (`player-rig.ts` 규약). 실측으로 확인한 결과:
+ *
+ * | 리그 | 전방축 | 보정 |
+ * |---|---|---|
+ * | MC (플레이어) | +z | 0 |
+ * | CP (캐리어 승객) | +z | 0 |
+ * | **GP (할아버지)** | **−z** | **π** |
+ *
+ * GP 만 반대로 익스포트돼 있었다 — 그래서 **벤치 등받이를 마주 보고** 앉아 있었다
+ * (등받이는 북쪽 y 15.4 이므로 앉는 방향은 남향 −y 가 맞다).
+ *
+ * 판정 방법(눈으로 찍지 않는다): **머리는 앞으로 기운다.** facing 단위벡터와
+ * (Head − Hips) 수평 성분의 내적이 양수면 앞을 본다. 한 번은 CP 에 π 를 같이 줬다가
+ * CP 가 −0.014 로 뒤집힌 것을 이 방법으로 잡았다.
+ */
+const YAW_FIX = { gp: Math.PI, cp: 0 } as const
+
+/**
+ * 앉은 자세 보정(m) — **실척 가구와 축소 캐릭터의 간극**을 메운다.
+ *
+ * `GP_SitIdle` 은 리그 비율상 정확하다: 엉덩이가 신장의 26% 높이에 있다(사람도 그렇다).
+ * 문제는 벤치가 **1.7m 성인 기준 실척**(좌면 0.45m)이라는 것이다. 1.34m 캐릭터의
+ * 엉덩이는 0.38m 에 오므로 좌면보다 7cm 낮게, 즉 **좌판을 관통해** 앉는다.
+ * 캐릭터를 더 키우면 문·개찰구 비율이 깨지므로, 앉는 순간만 들어올린다.
+ */
+const GP_SEAT_LIFT = 0.08
+
+const loadOr = async (url: string, tag: string, yawOffset: number): Promise<NpcRig> => {
   try {
-    return await loadNpcRig(url)
+    return await loadNpcRig(url, { scale: CHAR_SCALE, yawOffset })
   } catch (e: unknown) {
     // 게임은 NPC 없이도 끝까지 돌아야 한다 — 열차만 타면 엔딩이 난다
     console.error(`[actors] ${tag} GLB 로드 실패 — 해당 NPC 없이 진행합니다`, e)
@@ -108,8 +148,8 @@ const loadOr = async (url: string, tag: string): Promise<NpcRig> => {
 export const loadActors = async (baseUrl: string): Promise<Actors> => {
   const dir = `${baseUrl}models/npc/`
   const [gp, cp] = await Promise.all([
-    loadOr(`${dir}gp_character_rigged.glb`, 'GP'),
-    loadOr(`${dir}cp_character_rigged.glb`, 'CP'),
+    loadOr(`${dir}gp_character_rigged.glb`, 'GP', YAW_FIX.gp),
+    loadOr(`${dir}cp_character_rigged.glb`, 'CP', YAW_FIX.cp),
   ])
 
   const root = new Group()
@@ -146,7 +186,9 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
      */
     const chasing = chasePosOf(s)
     const at = chasing ?? gpHome
-    gp.place(at.x, at.y, at.z, chasing ? s.chase.facing : GP_FACING)
+    // 앉아 있을 때만 좌면 보정을 얹는다. 일어서면 발이 바닥이어야 한다
+    const lift = chasing ? 0 : GP_SEAT_LIFT
+    gp.place(at.x, at.y, at.z + lift, chasing ? s.chase.facing : GP_FACING)
 
     const visible = near(s, at)
     gp.setVisible(visible)

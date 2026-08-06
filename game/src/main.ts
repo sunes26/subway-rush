@@ -10,7 +10,7 @@ import { createInput, EMPTY_INPUT, type InputFrame } from './core/input'
 import { resolveSeed } from './core/rng'
 import { CAMERA, FPV, MAX_FRAME_MS, MAX_STEPS_PER_FRAME, MOVE, STEP_MS } from './data/tuning'
 import { FLOOR, GATES, GATE_BODY, GATE_LAMP_Z } from './data/world'
-import { loadActors, type Actors } from './render/actors'
+import { CHAR_SCALE, loadActors, type Actors } from './render/actors'
 import { createCameraRig } from './render/camera-rig'
 import { buildTraffic, type Traffic } from './render/cars'
 import { createGuideArrows } from './render/guide-arrows'
@@ -138,6 +138,11 @@ const handleMeta = (f: InputFrame): void => {
 
 let prev = performance.now()
 let acc = 0
+
+/** 아직 시뮬에 전달되지 못한 원샷 입력. 아래 프레임 루프 주석 참고 */
+type Pending = Pick<InputFrame, 'pressInteract' | 'pressSlot' | 'pressCancel' | 'qteDelta'>
+const EMPTY_PENDING: Pending = { pressInteract: false, pressSlot: 0, pressCancel: false, qteDelta: 0 }
+let pending: Pending = EMPTY_PENDING
 /** 직전 시뮬 스텝의 플레이어 위치 — 렌더 보간의 시작점 */
 let prevPos = state.player.pos
 /** 렌더 보간 on/off — E2E에서 이 테스트가 실제로 저더를 잡는지 확인하는 용도 */
@@ -167,14 +172,45 @@ const frame = (now: number): void => {
    */
   const simYaw = cameraRig.mode() === 'fp' ? sample.lookYaw : cameraRig.yaw()
 
+  /**
+   * ★ 원샷 입력(E · 1/2/3 · ESC)은 **보류하고 첫 스텝에만** 실어 보낸다.
+   *
+   * 고정 스텝 루프와 원샷 입력을 그냥 섞으면 두 방향으로 다 틀린다.
+   *
+   *  1. **씹힘** — `input.sample()` 은 매 프레임 호출되어 원샷을 소비한다. 그런데
+   *     `acc < STEP_MS` 인 프레임에서는 tick이 **0회** 돈다(144Hz 모니터면 프레임이
+   *     7ms 라 절반이 그렇다). 그 프레임에 누른 E는 아무 시스템도 못 보고 사라진다.
+   *     → 소비되지 않은 원샷을 `pending` 에 모아 다음 tick까지 들고 간다.
+   *
+   *  2. **중복** — 반대로 한 프레임에 2~5스텝을 돌 때 같은 sample을 모든 스텝에 넘기면
+   *     E가 스텝 수만큼 발화한다. 대화가 열리자마자 분기가 선택되거나 습득이 두 번 돈다.
+   *     → 첫 스텝만 원샷을 싣고, 나머지 스텝은 비운 프레임을 쓴다.
+   *
+   * 홀드 입력(WASD·Shift·마우스)은 이 처리가 필요 없다 — 다음 프레임에도 같은 값이 온다.
+   */
+  pending = {
+    pressInteract: pending.pressInteract || sample.pressInteract,
+    pressSlot: sample.pressSlot !== 0 ? sample.pressSlot : pending.pressSlot,
+    pressCancel: pending.pressCancel || sample.pressCancel,
+    // 마우스 델타는 누적값이다 — 버리면 QTE 스트로크가 짧아진다
+    qteDelta: pending.qteDelta + sample.qteDelta,
+  }
+
+  const withOneShots: InputFrame = { ...sample, ...pending }
+  const noOneShots: InputFrame = {
+    ...sample, pressInteract: false, pressSlot: 0, pressCancel: false, qteDelta: 0,
+  }
+
   let steps = 0
   while (acc >= STEP_MS && steps < MAX_STEPS_PER_FRAME) {
     prevPos = state.player.pos
-    state = tick(state, STEP_MS, { input: sample, cameraYaw: simYaw })
+    state = tick(state, STEP_MS, { input: steps === 0 ? withOneShots : noOneShots, cameraYaw: simYaw })
     acc -= STEP_MS
     steps++
   }
   if (steps === MAX_STEPS_PER_FRAME) acc = 0
+  // tick이 한 번이라도 돌았으면 보류분은 전달됐다. 0회면 다음 프레임으로 이월한다
+  if (steps > 0) pending = EMPTY_PENDING
 
   /**
    * 렌더 보간 — 시뮬은 고정 60Hz, 렌더는 가변이다.
@@ -257,7 +293,7 @@ const frame = (now: number): void => {
 const boot = async (): Promise<void> => {
   const [stationResult, playerResult, propsResult, actorsResult] = await Promise.allSettled([
     loadStation(BASE, stage.camera, (d, t) => screens.setLoading(`역사 로딩 ${d} / ${t}`)),
-    loadPlayerRig(`${BASE}models/mc_character_rigged.glb`, false),
+    loadPlayerRig(`${BASE}models/mc_character_rigged.glb`, false, CHAR_SCALE),
     loadProps(BASE),
     loadActors(BASE),
   ])
@@ -352,6 +388,31 @@ input.sample = (): InputFrame => (forcedInput ? { ...rawSample(), ...forcedInput
 // 진단용 — 월드 좌표를 화면 픽셀로 투영해 볼 수 있게 카메라와 벡터 생성자를 노출한다.
 ;(window as unknown as { __camera?: unknown }).__camera = stage.camera
 ;(window as unknown as { __V3?: unknown }).__V3 = Vector3
+
+/**
+ * 전방축 판정 훅 (E2E 전용) — **머리는 앞으로 기운다.**
+ *
+ * facing 단위벡터와 (Head − Hips) 수평 성분의 내적. 양수면 모델이 앞을 본다.
+ * 리그마다 전방축이 달라(GP 는 −z, MC·CP 는 +z) 눈으로 스크린샷을 판독하다 한 번
+ * 틀렸다 — 그래서 숫자로 잠근다(`render/actors.ts` YAW_FIX 주석 참고).
+ */
+const leanDot = (rootName: string, facing: number): number => {
+  let head: Vector3 | null = null
+  let hips: Vector3 | null = null
+  stage.scene.traverse((o) => {
+    if (!(o.name || '').startsWith(rootName)) return
+    o.traverse((k) => {
+      if (k.name === 'Head') { const v = new Vector3(); k.getWorldPosition(v); head = v }
+      if (k.name === 'Hips') { const v = new Vector3(); k.getWorldPosition(v); hips = v }
+    })
+  })
+  if (head === null || hips === null) return NaN
+  const h: Vector3 = head
+  const p: Vector3 = hips
+  // three(x, y, z) → 월드(x, −z)
+  return Math.cos(facing) * (h.x - p.x) + Math.sin(facing) * (-h.z + p.z)
+}
+;(window as unknown as { __leanDot?: unknown }).__leanDot = leanDot
 // 시선 방향을 밖에서 읽을 수 있게 — 마우스 경로가 실제로 카메라를 돌리는지 재려면 필요하다
 ;(window as unknown as { __camera?: unknown }).__camera = stage.camera
 

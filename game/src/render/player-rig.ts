@@ -33,7 +33,7 @@ export type PlayerRig = Readonly<{
   dispose(): void
 }>
 
-export const loadPlayerRig = async (url: string, outline: boolean): Promise<PlayerRig> => {
+export const loadPlayerRig = async (url: string, outline: boolean, scale = 1): Promise<PlayerRig> => {
   const gltf = await new GLTFLoader().loadAsync(url)
   const source = gltf.scene as Object3D
   const model = cloneSkinned(source) as Object3D
@@ -42,6 +42,12 @@ export const loadPlayerRig = async (url: string, outline: boolean): Promise<Play
   const root = new Group()
   root.name = 'player'
   root.add(model)
+  /**
+   * 에셋이 0.92m 라 실척 맵에서는 인형으로 보인다 — NPC 와 **같은 배율**을 받는다.
+   * 1인칭에서는 안 보이지만 `V` 3인칭에서는 보이고, 배율이 다르면 할아버지가
+   * 플레이어보다 커 보이는 역전이 생긴다.
+   */
+  if (scale !== 1) model.scale.setScalar(scale)
 
   model.traverse((o) => {
     const m = o as Mesh
@@ -56,7 +62,7 @@ export const loadPlayerRig = async (url: string, outline: boolean): Promise<Play
 
   // 접지 그림자 — 쿼터뷰에서 높이를 읽게 해주는 유일한 단서
   const shadow = new Mesh(
-    new CircleGeometry(0.42, 20),
+    new CircleGeometry(0.42 * scale, 20),
     new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.26, depthWrite: false }),
   )
   shadow.rotation.x = -Math.PI / 2

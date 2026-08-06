@@ -175,3 +175,88 @@ test('S8 상호작용이 실제 키보드 E 로 작동한다', async ({ page }) 
   const glyph = await page.textContent('#hud-inv .slot span')
   expect(glyph?.length ?? 0, 'HUD 슬롯에 글리프가 찍혔다').toBeGreaterThan(0)
 })
+
+/**
+ * 원샷 입력이 고정 스텝 루프를 무사히 통과하는가.
+ *
+ * 두 방향으로 다 틀릴 수 있어서 두 케이스를 나눠 잠근다 (`main.ts` 프레임 루프 주석 참고).
+ *  · 씹힘 — tick 0회 프레임에 눌린 키가 사라진다
+ *  · 중복 — 한 프레임에 여러 스텝을 돌 때 같은 키가 스텝마다 발화한다
+ */
+test('E 한 번은 정확히 한 번 — 대화가 열리기만 하고 분기가 눌리지 않는다', async ({ page }) => {
+  await boot(page)
+  await stand(page, 42, 13.4, [42, 14.9])
+  await page.keyboard.press('KeyE')
+  await page.waitForFunction(() => window.__game!.state().act.dialogId !== null,
+    null, { timeout: 10_000 })
+  await page.waitForTimeout(600)
+  const s = await page.evaluate(() => {
+    const st = window.__game!.state()
+    return { dialogId: st.act.dialogId, inv: st.inventory, consumed: st.act.consumed,
+      conscience: st.scores.conscience, dlgOn: document.getElementById('dlg')!.className }
+  })
+  expect(s.dialogId, '선택 UI 열림').toBe('ACT-02-GP')
+  expect(s.dlgOn).toContain('on')
+  expect(s.inv.filter(Boolean), 'E 한 번으로 분기가 눌리지 않았다').toEqual([])
+  expect(s.consumed).toEqual([])
+  expect(s.conscience, '훔치기가 자동 선택되지 않았다').toBe(0)
+})
+
+test('E 를 연타해도 습득은 한 번 — 중복·씹힘 없음', async ({ page }) => {
+  await boot(page)
+  await stand(page, 38, 4.4, [38, 5.0])          // 우산꽂이 정면
+  for (let i = 0; i < 10; i++) await page.keyboard.press('KeyE')
+  await page.waitForFunction(() => window.__game!.state().inventory.includes('I-09'),
+    null, { timeout: 15_000 })
+  await page.waitForTimeout(1200)
+  const s = await page.evaluate(() => window.__game!.state())
+  expect(s.inventory.filter((v) => v === 'I-09'), '우산은 하나').toHaveLength(1)
+  expect(s.drops, '교체가 없었으니 바닥 잔존 0').toHaveLength(0)
+  expect(s.act.consumed, '대상은 한 번만 소진').toEqual(['OBJ-16'])
+})
+
+test('슬롯 키(1/2/3)가 씹히지 않는다 — 마스크 착용', async ({ page }) => {
+  await boot(page)
+  await page.evaluate(() => {
+    const g = window.__game!
+    const st = g.state()
+    g.set({ phase: 'playing', inventory: ['I-06', null, null],
+      player: { ...st.player, pos: { x: 30, y: 12, z: -6 }, vel: { x: 0, y: 0 } } })
+  })
+  await page.waitForTimeout(400)
+  await page.keyboard.press('Digit1')
+  await page.waitForFunction(() => window.__game!.state().flags.includes('MASK_ON'),
+    null, { timeout: 10_000 })
+  const s = await page.evaluate(() => window.__game!.state())
+  expect(s.flags).toContain('MASK_ON')
+  expect(s.scores.style, '사용 종류 1').toBe(1)
+  const worn = await page.getAttribute('#hud-inv .slot', 'class')
+  expect(worn, 'HUD 슬롯이 착용 표시로 바뀐다').toContain('worn')
+})
+
+/**
+ * 캐릭터가 **앞을 보는가.**
+ *
+ * 눈으로 찍지 않는다 — 머리는 언제나 앞으로 기운다. facing 단위벡터와
+ * (Head − Hips) 수평 성분의 내적이 양수면 전방축이 맞다.
+ * GP 는 리그가 −z 로 익스포트돼 있어 보정 없이는 **벤치 등받이를 마주 보고** 앉았고,
+ * 그 보정을 CP 에도 같이 줬다가 CP 가 뒤집힌 것을 이 판정으로 잡았다.
+ */
+test('MC · GP · CP 세 리그가 전부 정면을 향한다', async ({ page }) => {
+  await boot(page)
+  // GP 는 벤치, CP 는 에스컬레이터 — 컬링(40m) 안에서만 place/mixer 가 돈다
+  await stand(page, 42, 12.6, [42, 14.9])
+  const gp = await page.evaluate(() => (window as unknown as { __leanDot: (n: string, f: number) => number })
+    .__leanDot('npc:gp', -Math.PI / 2))
+  await stand(page, 93.5, 2.2, [96.6, 2.2])
+  const cp = await page.evaluate(() => (window as unknown as { __leanDot: (n: string, f: number) => number })
+    .__leanDot('npc:cp', Math.PI))
+  const mc = await page.evaluate(() => {
+    const g = window.__game!
+    const f = g.state().player.facing
+    return (window as unknown as { __leanDot: (n: string, f: number) => number }).__leanDot('player', f)
+  })
+  expect(gp, `GP lean ${gp.toFixed(4)}`).toBeGreaterThan(0)
+  expect(cp, `CP lean ${cp.toFixed(4)}`).toBeGreaterThan(0)
+  expect(mc, `MC lean ${mc.toFixed(4)}`).toBeGreaterThan(0)
+})

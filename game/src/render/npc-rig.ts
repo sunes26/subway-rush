@@ -44,7 +44,19 @@ export type NpcRig = Readonly<{
 
 export const loadNpcRig = async (
   url: string,
-  opts?: { tint?: Readonly<Record<string, number>> },
+  opts?: {
+    tint?: Readonly<Record<string, number>>
+    scale?: number
+    /**
+     * 모델 전방축 보정(rad).
+     *
+     * `place()` 의 공식(`rotation.y = -facing + π/2`)은 **모델 전방 = 로컬 +z** 를 가정한다
+     * (`player-rig.ts` 규약). GP·CP 리그는 전방이 **−z** 로 익스포트돼 있어 그대로 쓰면
+     * 180° 돌아앉는다 — 벤치 등받이(북쪽)를 마주 보고 앉아 있었다.
+     * 에셋을 다시 뽑지 않고 여기서 한 번 돌린다. 앉은 자세뿐 아니라 **추격 방향도** 같이 고쳐진다.
+     */
+    yawOffset?: number
+  },
 ): Promise<NpcRig> => {
   const gltf = await new GLTFLoader().loadAsync(url)
   // 스켈레톤까지 같이 복제한다. 같은 GLB 로 두 명을 세울 여지를 남기려는 것이다
@@ -54,6 +66,18 @@ export const loadNpcRig = async (
   const root = new Group()
   root.name = `npc:${url.split('/').pop() ?? url}`
   root.add(model)
+
+  /**
+   * 캐릭터 스케일 — **에셋이 실척 맵보다 작게 만들어져 있다.**
+   *
+   * GLB 실측(바인드 포즈 바운딩): MC·CP 0.92m · GP 0.84m. 맵은 실척이다(문 1.9m ·
+   * 벽 3.2m · 벤치 0.9m). 그대로 올리면 사람이 **인형**으로 읽힌다 — 실제로 그렇게
+   * 보였다(벤치 등받이보다 머리가 낮았다).
+   * 배율은 `actors.ts` 가 한 상수로 준다 — 캐릭터마다 다르게 주면 작가가 의도한
+   * 상대 신장(할아버지가 MC보다 9% 작다)이 깨진다.
+   */
+  if (opts?.scale !== undefined) model.scale.setScalar(opts.scale)
+  const yawOffset = opts?.yawOffset ?? 0
 
   /**
    * 재질을 **툰으로 갈아끼운다 — 단, 색은 GLB 가 들고 온 것을 쓴다.**
@@ -94,7 +118,8 @@ export const loadNpcRig = async (
 
   // 접지 그림자 — 실제 그림자가 없는 씬에서 발이 바닥에 붙어 보이게 하는 유일한 단서
   const shadow = new Mesh(
-    new CircleGeometry(0.42, 20),
+    // 접지 그림자도 같이 커져야 한다 — 안 그러면 발보다 작은 그림자가 남는다
+    new CircleGeometry(0.42 * (opts?.scale ?? 1), 20),
     new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.26, depthWrite: false }),
   )
   shadow.rotation.x = -Math.PI / 2
@@ -157,8 +182,8 @@ export const loadNpcRig = async (
     place(x, y, z, facing) {
       // 월드(z 상) → three(y 상). 플레이어 리그와 **같은 변환**을 쓴다
       root.position.set(x, z, -y)
-      // 월드 facing(+x 기준, 반시계) → three 요
-      root.rotation.y = -facing + Math.PI / 2
+      // 월드 facing(+x 기준, 반시계) → three 요. `yawOffset` 은 모델 전방축 보정이다
+      root.rotation.y = -facing + Math.PI / 2 + yawOffset
     },
     play,
     current: () => current,
