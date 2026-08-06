@@ -708,6 +708,867 @@ for _m in _hyo.data.materials:
 shade(_hyo, False)
 ITEMS["ITM01_Backscratcher"] = _hyo
 
+# ======================================= ITM-12 편의점 진열 상품 5종
+# 할아버지 선물 후보다. 플레이어는 이 다섯 중 **하나만** 골라 산다.
+#
+# 정답은 양갱. 나머지 넷은 오답인데, 오답에도 등급이 있다 —
+#   헷갈리는 오답 (바나나우유 · 초콜릿)  단 것·부드러운 것. 따뜻한 색이라 정답과 한 무리로 보인다.
+#   명확한 오답 (탄산음료 · 새우맛 과자)  초록·코랄. 색만 보고 무리에서 떨어져 나온다.
+# 먼저 시끄러운 둘을 걷어내고 남은 셋에서 고민하는 2단 판단이다.
+#
+# 실루엣만으로 품목이 읽혀야 한다. 다섯이 전부 다른 형태 부류를 갖는다.
+#   양갱      세로로 선 작은 바 · 위아래 밀봉 날개  (bar + fin)
+#   바나나우유 짧고 통통한 병                       (squat bottle)
+#   초콜릿    가로로 긴 얇은 바 · 양끝 밀봉 필름    (long flat bar)
+#   탄산음료   길쭉한 원통 · 은색 뚜껑과 탭          (cylinder)
+#   새우맛과자 세로로 긴 필로우 파우치              (puffed pouch)
+#
+# **포장 그림은 전부 인쇄다.** 팥알·바나나·초콜릿 조각·기포·새우 — 하나도
+# 도드라진 부품이 아니다. 두께 0.26mm 에 돌출 0.12~0.24mm 로, 포장 두께의
+# 1~2% 다. 옆에서 보면 보이지 않는다. 브랜드명·상표·가짜 글자는 넣지 않는다.
+#
+# 원점 규약 — 이 다섯만 **바닥면 중앙**이다. 매대에 세우는 물건이라 바닥이
+# z=0 이라야 뜨거나 파묻히지 않는다. 손에 들릴 때는 `bone_attach` 가 월드
+# 위치를 유지하므로 원점이 어디든 상관없다(카드·우산과 다른 이유가 이것).
+#
+# 크기는 실물 × 0.62 다. 봉지과자만 예외로 × 0.42 — 실물 비율대로면 캔의
+# 두 배가 되어 다른 넷이 부스러기로 보인다. 그래도 다섯 중 가장 크다.
+
+# === 상품별 팔레트 ===================================================
+# 레퍼런스 사진에서 **색 배치**만 가져왔다. 로고·상표·글자는 쓰지 않는다.
+
+# --- 양갱 (정답) — 닫힌 **종이 박스 패키지**. 짙은 갈색 + 황금빛 오렌지.
+M_YG_BOX = new_mat("ITM_YanggaengBox", "D9A24B", 0.50)     # 골드 오렌지 본체
+M_YG_BOX_L = new_mat("ITM_YanggaengBoxLit", "E8BE72", 0.48)  # 박스 옆면
+M_YG_DARK = new_mat("ITM_YanggaengDark", "3A211A", 0.54)   # 짙은 갈색 끝 구역
+M_YG_BEIGE = new_mat("ITM_YanggaengBeige", "EFE0BD", 0.50)  # 제품명 자리 베이지판
+M_YG_BEAN = new_mat("ITM_YanggaengBean", "6B2E22", 0.52)   # 팥알 모티프
+
+# --- 바나나우유 — 원뿔로 벌어지다 중간에 턱이 있는 단지형. 뚜껑은 진초록.
+M_BM = new_mat("ITM_MilkBody", "F8ECB4", 0.42)            # 바나나 크림 몸통 (플라스틱 0.42)
+M_BM_LIT = new_mat("ITM_MilkLit", "FFF6CE", 0.42)         # 밝은 면
+M_BM_CAP = new_mat("ITM_MilkCap", "2E4A2A", 0.42)         # 진초록 뚜껑 (플라스틱 0.42)
+M_BM_GRN = new_mat("ITM_MilkAccent", "4E7A3A", 0.42)      # 초록 포인트·꼭지
+M_BM_BAN = new_mat("ITM_MilkBanana", "EFBE2E", 0.42)      # 바나나 아이콘
+
+# --- 초콜릿 — 은박을 아래만 감은 '먹기 직전' 상태. 블록 2×3.
+M_CH = new_mat("ITM_ChocoBlock", "4E2E22", 0.58)          # 진한 초콜릿
+M_CH_LIT = new_mat("ITM_ChocoBlockLit", "6B4231", 0.56)   # 조각 옆면
+M_CH_FOIL = new_mat("ITM_ChocoFoil", "C2C8CD", 0.30)      # 은박 (금속 0.30)
+M_CH_FOIL_D = new_mat("ITM_ChocoFoilShade", "8E969D", 0.30)  # 은박 접힘면
+
+# --- 탄산음료 — 초록 캔에 흰↔초록 대각 필드 분할 + 별 포인트.
+M_SD = new_mat("ITM_SodaBody", "3EA832", 0.42)            # 사이다 그린 (플라스틱 0.42)
+M_SD_LIT = new_mat("ITM_SodaLit", "5CC24C", 0.40)         # 밝은 초록
+M_SD_WHT = new_mat("ITM_SodaField", "F2F7EE", 0.42)       # 흰 필드
+M_SD_MET = new_mat("ITM_SodaMetal", "B3BCC0", 0.30)       # 상하 림·탭 (금속 0.30)
+M_SD_GUN = new_mat("ITM_SodaGunmetal", "6E7A80", 0.30)    # 탭 구멍
+
+# --- 새우깡 — 상단 금색 띠 + 오렌지 필드 + 하단 크림 조각 더미.
+M_SN = new_mat("ITM_SnackBag", "F0742C", 0.62)            # 오렌지 필드
+M_SN_LIT = new_mat("ITM_SnackLit", "F9993F", 0.60)        # 밝은 오렌지
+M_SN_TOP = new_mat("ITM_SnackTopBand", "D9A85A", 0.52)    # 상단 금색 띠
+M_SN_SHR = new_mat("ITM_SnackShrimp", "D4381C", 0.60)     # 새우 (붉은 코랄)
+M_SN_Y = new_mat("ITM_SnackLower", "F6BC3C", 0.60)        # 하단 옐로 구역
+M_SN_PC = new_mat("ITM_SnackPiece", "F4E1B2", 0.64)       # 과자 조각 (크림)
+M_SN_PCD = new_mat("ITM_SnackPieceGroove", "CBA666", 0.64)  # 조각 홈
+M_SN_DK = new_mat("ITM_SnackShade", "B8501A", 0.60)       # 밀봉·접힘선
+
+
+# --------------------------------------------------------- 도우미 2 : 회전체
+def revolve(name, rings, seg, mats, row_mat=None, mat_fn=None):
+    """(z, 반경) 고리를 쌓은 회전체 — `lobed` 와 달리 **행마다** 재질을 준다.
+
+    `lobed` 는 우산살(세로 골)이 목적이라 재질이 열 단위로만 갈린다. 캔의
+    은색 상하단이나 우유병 라벨 띠는 **가로 띠**라 그 함수로는 못 만든다.
+    띠마다 오브젝트를 쪼개면 이음매에 안 보이는 뚜껑 면이 끼므로 여기서 낸다.
+    """
+    verts, faces, idx = [], [], []
+    for z, r in rings:
+        for k in range(seg):
+            a = 2.0 * math.pi * k / seg
+            verts.append((r * math.cos(a), r * math.sin(a), z))
+    d = 2.0 * math.pi / seg
+    for i in range(len(rings) - 1):
+        mi = row_mat[i] if row_mat else 0
+        zc = (rings[i][0] + rings[i + 1][0]) / 2.0
+        for k in range(seg):
+            a, b = i * seg + k, i * seg + (k + 1) % seg
+            faces.append((a, b, b + seg, a + seg))
+            # `mat_fn(u, z)` 는 **가로 띠가 아닌** 배색을 만든다. u 는 정면에서
+            # 옆으로 잰 호 길이다. 캔의 대각 필드 분할처럼 세로로 기운 경계는
+            # 행 단위(row_mat)로는 낼 수 없다.
+            if mat_fn is None:
+                idx.append(mi)
+            else:
+                phi = (k + 0.5) * d + math.pi / 2.0
+                u = ((phi + math.pi) % (2.0 * math.pi) - math.pi) * rings[i][1]
+                idx.append(mat_fn(u, zc, mi))
+    faces.append(tuple(range(seg - 1, -1, -1)))              # 바닥
+    idx.append(row_mat[0] if row_mat else 0)
+    base = (len(rings) - 1) * seg
+    faces.append(tuple(range(base, base + seg)))             # 윗면
+    idx.append(row_mat[-1] if row_mat else 0)
+    return _mesh(name, verts, faces, mats, idx)
+
+
+# --------------------------------------------------------- 도우미 3 : 봉지
+def _puff(u, v, fmin, pw, ph):
+    """가운데가 부풀고 가장자리로 꺼지는 두께. `pw`·`ph` 는 **꺼지기 시작하는
+    지점**이다 (0 이면 한가운데부터, 0.9 면 끝에서만).
+
+    처음엔 (1−|x|ⁿ)^0.55 를 썼다. 이 식은 가장자리에서 기울기가 무한대라
+    **마지막 한 행에서 두께가 통째로 떨어진다.** 그 행이 아래를 향한 급경사가
+    되어 빛을 못 받고 밑동에 검은 사다리꼴로 보였다 — 포장이 벌어진 것처럼.
+    행을 늘리고 지수를 낮춰도 소용없었다. 기울기가 발산하는 게 원인이라
+    지수를 못 고른다. 스무스스텝은 양 끝에서 기울기가 0 이라 그 면이 아예
+    생기지 않는다.
+    """
+    def S(x, x0):
+        t = min(1.0, max(0.0, (abs(x) - x0) / (1.0 - x0)))
+        return 1.0 - t * t * (3.0 - 2.0 * t)
+    return fmin + (1.0 - fmin) * S(u, pw) * S(v, ph)
+
+
+def pillow(name, w, h, d, nx, nz, mats, fmin=0.05, pw=0.30, ph=0.35, taper=0.03,
+           zone=None):
+    """공기 든 봉지. 가운데가 부풀고 가장자리로 갈수록 얇아지는 높이장이다.
+
+    판(`plate`)에 베벨을 두껍게 먹여 흉내 내면 **모서리만 둥근 단단한 상자**가
+    된다 — 실제로 그렇게 나왔고 도시락통·물티슈통으로 읽혔다.
+
+    테두리를 두께 0 으로 보내지 않고 `fmin` 만큼 남긴다. 0 이면 앞뒤 정점이
+    겹쳐 면적 0 인 면이 생기고, 남겨 두면 그게 그대로 **필름 접힘선**이 된다.
+    접힘선(좌우 테두리)에만 mats[1] 이 붙는다 — 위아래 테두리까지 어둡게
+    칠했더니 밀봉부 모서리에 검은 삼각형이 생겨 포장 불량으로 보였다.
+
+    `pw`·`ph` 는 두께가 꺼지기 시작하는 지점이다. 0 에 가까우면 한가운데부터
+    줄어 렌즈(볼록거울)가 되고 — 봉지가 아니라 쿠션이다.
+    """
+    hw, hh, hd = w / 2.0, h / 2.0, d / 2.0
+    F, B = [], []
+    for j in range(nz):
+        v = -1.0 + 2.0 * j / (nz - 1)
+        xs = 1.0 - taper * abs(v) ** 3.0     # 밀봉부로 갈수록 폭이 조금 준다
+        for i in range(nx):
+            u = -1.0 + 2.0 * i / (nx - 1)
+            y = hd * _puff(u, v, fmin, pw, ph)
+            F.append((u * hw * xs, -y, v * hh))
+            B.append((u * hw * xs, +y, v * hh))
+    n = nx * nz
+
+    def f(i, j):
+        return j * nx + i
+
+    def b(i, j):
+        return n + j * nx + i
+
+    def _zone(u0, v0):
+        """면마다 재질 인덱스. 봉지 과자는 인쇄면이 곧 봉지라 배색을 데칼로
+        흉내 내면 '스티커 붙인 단색 봉지'가 된다. 면 자체가 갈려야 한다.
+
+        `zone(u, v)` 로 받는 이유 — 상단 띠와 하단 구역이 동시에 필요하고,
+        경계가 가로 직선이면 포장이 아니라 색칠한 블록으로 보인다."""
+        return zone(u0, v0) if zone else 0
+
+    faces, idx = [], []
+    for j in range(nz - 1):
+        v0 = -1.0 + 2.0 * j / (nz - 1)
+        for i in range(nx - 1):
+            u0 = -1.0 + 2.0 * i / (nx - 1)
+            mi = _zone(u0, v0)
+            faces.append((f(i, j), f(i + 1, j), f(i + 1, j + 1), f(i, j + 1)))
+            idx.append(mi)
+            faces.append((b(i, j), b(i, j + 1), b(i + 1, j + 1), b(i + 1, j)))
+            idx.append(mi)
+    peri = ([(i, 0) for i in range(nx)]
+            + [(nx - 1, j) for j in range(1, nz)]
+            + [(i, nz - 1) for i in range(nx - 2, -1, -1)]
+            + [(0, j) for j in range(nz - 2, 0, -1)])
+    for k in range(len(peri)):
+        p, q = peri[k], peri[(k + 1) % len(peri)]
+        faces.append((f(*p), b(*p), b(*q), f(*q)))
+        # 좌우 세로 테두리만 접힘선. 위아래는 몸통 색이라야 밀봉부와 이어진다.
+        side = p[0] in (0, nx - 1) and q[0] == p[0]
+        uu = -1.0 + 2.0 * min(p[0], q[0]) / (nx - 1)
+        vv = -1.0 + 2.0 * min(p[1], q[1]) / (nz - 1)
+        idx.append(1 if side else _zone(uu, vv))
+    return _mesh(name, F + B, faces, mats, idx)
+
+
+def ground(o):
+    """바닥면을 z=0 에, 가로 중심을 x=y=0 에 맞춘다. 원점은 (0,0,0) 그대로라
+    **피벗이 바닥 중앙**이 된다 — 매대에 놓을 때 뜨거나 파묻히지 않는다.
+
+    좌우 중심까지 맞추는 이유: 양갱은 필름이 한쪽만 덮여 좌우가 비대칭이라
+    바닥만 맞추면 피벗이 4.6mm 치우친다. 나란히 세울 때 혼자 어긋나 보인다.
+    """
+    xs = [v.co.x for v in o.data.vertices]
+    ys = [v.co.y for v in o.data.vertices]
+    dx = (min(xs) + max(xs)) / 2.0
+    dy = (min(ys) + max(ys)) / 2.0
+    dz = min(v.co.z for v in o.data.vertices)
+    for v in o.data.vertices:
+        v.co.x -= dx
+        v.co.y -= dy
+        v.co.z -= dz
+    return o
+
+
+# ------------------------------------------------- 도우미 4 : 인쇄(데칼)
+# 포장 그림을 **표면 위에 얹은 부품**으로 만들면 장난감 블록에 장식을 붙인
+# 꼴이 된다. 인쇄는 두께가 없어야 한다 — 그런데 두께를 0 으로 두면 면이
+# 겹쳐 깜빡이므로, 보이지 않을 만큼만 남긴다.
+PRINT_T = 0.00026        # 인쇄층 두께 0.26mm
+PRINT_LIFT = 0.00012     # 층당 돌출 0.12mm (2층이면 0.24mm)
+
+
+def _densify(ring, step):
+    """긴 변을 잘게 나눈다. **곡면에 앉히기 전에** 해야 한다.
+
+    양 끝점만 표면에 올려 두면 그 사이를 잇는 직선이 표면 안으로 파고들어
+    가운데가 잘려 보인다 — 실측: 캔 뒷면 정보 바가 양끝만 남고 「‹ ›」로
+    쪼개졌다. 라운드 사각형은 긴 변이 한 조각이라 특히 잘 걸린다.
+    """
+    out = []
+    for i in range(len(ring)):
+        a, b = ring[i], ring[(i + 1) % len(ring)]
+        out.append(a)
+        k = int(math.hypot(b[0] - a[0], b[1] - a[1]) / step)
+        for j in range(1, k + 1):
+            f = j / float(k + 1)
+            out.append((a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f))
+    return out
+
+
+def decal(name, ring, place, mat, layer=0, step=None, subdiv=1):
+    """포장에 인쇄된 그림. 평면이든 곡면이든 **표면을 따라** 앉는다.
+
+    평평한 판을 곡면에 붙이면 가운데가 파묻히고 양끝이 뜬다. 두껍게 만들어
+    피할 수 있지만 그 순간 인쇄가 아니라 붙인 장식물이 된다. 그래서 그림
+    자체가 곡면을 따르게 한다 — `place(u, z, lift)` 가 그 자리의 표면 좌표를 준다.
+
+    `layer` 0 은 바탕(라벨판), 1 은 그 위에 얹는 아이콘이다. 1 층의 뒷면은
+    0 층 안에 묻히므로 두 층이 겹쳐 보이지 않는다.
+
+    `subdiv` 는 **안쪽**을 몇 겹으로 나눌지다. 외곽선만 표면에 올리면 안쪽이
+    한 장의 평면이라 가운데가 표면 아래로 파고들어 **테두리만 남는다**
+    (실측: 봉지 크림 라벨이 액자처럼 테두리만 보였다). 넓은 라벨은 3~4 를 준다.
+    평면 포장에서는 1 이 정확하고 가장 싸다.
+    """
+    lift = PRINT_LIFT * (layer + 1)
+    if step:
+        ring = _densify(ring, step)
+    n = len(ring)
+    cu = sum(p[0] for p in ring) / n
+    cz = sum(p[1] for p in ring) / n
+    shells = [[(cu + (u - cu) * (1.0 - j / float(subdiv)),
+                cz + (z - cz) * (1.0 - j / float(subdiv))) for u, z in ring]
+              for j in range(subdiv)]
+    F = [place(u, z, lift) for sh in shells for u, z in sh]
+    F.append(place(cu, cz, lift))
+    B = [place(u, z, lift - PRINT_T) for sh in shells for u, z in sh]
+    B.append(place(cu, cz, lift - PRINT_T))
+    nf = len(F)
+
+    def fi(j, i):
+        return j * n + i % n
+
+    def bi(j, i):
+        return nf + j * n + i % n
+
+    faces = []
+    for j in range(subdiv - 1):                       # 껍질 사이 띠
+        for i in range(n):
+            faces.append((fi(j, i), fi(j, i + 1), fi(j + 1, i + 1), fi(j + 1, i)))
+            faces.append((bi(j + 1, i), bi(j + 1, i + 1), bi(j, i + 1), bi(j, i)))
+    for i in range(n):                                # 가장 안쪽 부채꼴
+        faces.append((fi(subdiv - 1, i), fi(subdiv - 1, i + 1), nf - 1))
+        faces.append((bi(subdiv - 1, i + 1), bi(subdiv - 1, i), nf + nf - 1))
+    for i in range(n):                                # 테두리
+        faces.append((bi(0, i), bi(0, i + 1), fi(0, i + 1), fi(0, i)))
+    return _mesh(name, F + B, faces, mat)
+
+
+def flat_place(y0):
+    """평면 포장 앞면. `y0` 이 그 면의 y 다."""
+    def p(u, z, lift):
+        return (u, y0 - lift, z)
+    return p
+
+
+def flat_back(y0):
+    """평면 포장 **뒷면**. 바깥이 +y 라 밀어내는 방향이 앞면과 반대다.
+    외곽선도 뒤집어 넘겨야 한다 — 그대로 두면 법선이 안쪽을 본다."""
+    def p(u, z, lift):
+        return (u, y0 + lift, z)
+    return p
+
+
+def _poly_r(R, seg, phi):
+    """정 seg 각형 단면에서 방향 `phi` 쪽 표면까지 거리.
+
+    회전체는 원기둥이 아니라 각기둥이다. 원 반경으로 그림을 앉히면 **면
+    한가운데에서 0.5mm 뜬다** — 돌출 0.12mm 짜리 인쇄에는 치명적이다.
+    """
+    d = 2.0 * math.pi / seg
+    c = (math.floor(phi / d) + 0.5) * d          # 그 방향이 속한 면의 중심각
+    return R * math.cos(math.pi / seg) / math.cos(phi - c)
+
+
+def _ring_r(rings, z):
+    for i in range(len(rings) - 1):
+        z0, r0 = rings[i]
+        z1, r1 = rings[i + 1]
+        if z0 <= z <= z1 and z1 > z0:
+            return r0 + (r1 - r0) * (z - z0) / (z1 - z0)
+    return rings[-1][1]
+
+
+def body_place(rings, seg, back=False):
+    """회전체 표면. `u` 는 정면(-y)에서 옆으로 잰 **호 길이**다.
+
+    `back=True` 면 뒷면(+y)에 앉힌다. 이때 u 가 커질수록 x 가 줄어 좌우가
+    뒤집히므로, 외곽선도 뒤집어 넘겨야 법선이 바깥을 본다.
+    """
+    base = math.pi / 2.0 if back else -math.pi / 2.0
+    def p(u, z, lift):
+        R = _ring_r(rings, z)
+        phi = base + u / R
+        r = _poly_r(R, seg, phi) + lift
+        return (r * math.cos(phi), r * math.sin(phi), z)
+    return p
+
+
+def _rr(w, h, r, seg=3, cx=0.0, cz=0.0, rot=0.0):
+    ring = round_rect(w, h, r, seg)
+    if rot:
+        c, s = math.cos(math.radians(rot)), math.sin(math.radians(rot))
+        ring = [(x * c - z * s, x * s + z * c) for x, z in ring]
+    return [(x + cx, z + cz) for x, z in ring]
+
+
+def _circ(d, cx=0.0, cz=0.0, seg=9):
+    return [(cx + d / 2.0 * math.cos(2.0 * math.pi * k / seg),
+             cz + d / 2.0 * math.sin(2.0 * math.pi * k / seg)) for k in range(seg)]
+
+
+def _spin(ring, deg, cx=0.0, cz=0.0):
+    """외곽선을 (cx, cz) 둘레로 돌린다. **좌우 대칭 도형은 얼굴 부품으로
+    읽힌다** — 아치는 눈썹, 그 아래 두 점은 눈이 된다. 기울이면 그 해석이 깨진다."""
+    c, sn = math.cos(math.radians(deg)), math.sin(math.radians(deg))
+    return [(cx + (x - cx) * c - (z - cz) * sn,
+             cz + (x - cx) * sn + (z - cz) * c) for x, z in ring]
+
+
+def _center(ring, cx=0.0, cz=0.0):
+    """외곽선의 바운딩 박스 중심을 (cx, cz) 로 옮긴다.
+
+    `_spin` 은 지정한 점 둘레로 돌리므로 도형의 무게중심이 함께 이동한다 —
+    라벨 한가운데 두려고 만든 아이콘이 모서리로 밀려난다(실측: 새우가 라벨
+    밖으로, 바나나가 병 왼쪽으로 나갔다). 돌린 다음 다시 앉힌다.
+    """
+    xs = [p[0] for p in ring]
+    zs = [p[1] for p in ring]
+    dx = cx - (min(xs) + max(xs)) / 2.0
+    dz = cz - (min(zs) + max(zs)) / 2.0
+    return [(x + dx, z + dz) for x, z in ring]
+
+
+def _edges(pt, hw, n=7):
+    """중심선 + 폭 → 위·아래 두 모서리. `decal_strip` 에 그대로 넘긴다."""
+    lo, up = [], []
+    for i in range(n):
+        t = -1.0 + 2.0 * i / (n - 1)
+        x, z = pt(t)
+        x1, z1 = pt(min(t + 0.02, 1.0))
+        x0, z0 = pt(max(t - 0.02, -1.0))
+        dx, dz = x1 - x0, z1 - z0
+        L = math.hypot(dx, dz) or 1.0
+        nx, nz = -dz / L, dx / L
+        w = hw(t)
+        up.append((x + nx * w, z + nz * w))
+        lo.append((x - nx * w, z - nz * w))
+    return lo, up
+
+
+def _refine(lo, up, step):
+    """스트립의 두 모서리를 나란히 잘게 나눈다.
+
+    각기둥 표면에서는 표본 간격이 **면 폭보다 작아도** 부족하다. 모서리를
+    건너뛰는 쿼드 하나가 생기면 그 면의 중심이 현 위에 얹혀 표면 위로
+    0.013mm 밖에 안 뜬다(실측). 돌출이 0.24mm 인데 그 한 장만 사실상 표면과
+    같은 높이가 되어 깜빡이고, 렌더에서는 **인쇄에 뚫린 구멍**으로 보인다.
+    """
+    L, U = [], []
+    for i in range(len(lo) - 1):
+        d = max(math.hypot(lo[i + 1][0] - lo[i][0], lo[i + 1][1] - lo[i][1]),
+                math.hypot(up[i + 1][0] - up[i][0], up[i + 1][1] - up[i][1]))
+        k = max(1, int(math.ceil(d / step)))
+        for j in range(k):
+            f = j / float(k)
+            L.append((lo[i][0] + (lo[i + 1][0] - lo[i][0]) * f,
+                      lo[i][1] + (lo[i + 1][1] - lo[i][1]) * f))
+            U.append((up[i][0] + (up[i + 1][0] - up[i][0]) * f,
+                      up[i][1] + (up[i + 1][1] - up[i][1]) * f))
+    L.append(lo[-1])
+    U.append(up[-1])
+    return L, U
+
+
+def decal_strip(name, lo, up, place, mat, layer=0, step=None, lift=None,
+                cross=1):
+    """굽은 띠 모양 인쇄 — 바나나·새우·과자 조각.
+
+    `decal` 로는 안 된다. 굽은 리본의 외곽선은 **강하게 오목한 다각형**이라
+    n각형 한 장으로 두면 삼각분할이 깨져 나비넥타이가 나온다(실측: 바나나가
+    ⋈ 로 찢어졌다). 자기 교차는 없었다 — 외곽선은 멀쩡한데 면 나누기가 틀린 것이다.
+    위·아래 모서리를 쿼드로 잇는 스트립은 그 위험이 아예 없다.
+
+    `step` 은 **길이 방향**, `cross` 는 **폭 방향** 분할이다. 길이만 잘게 나눴을
+    때 바나나 한가운데에 노란 세로줄이 그어졌다 — 폭이 3.8mm 한 조각이라 그
+    변이 각기둥 모서리를 통째로 건너뛰고, 그 자리에서 면이 표면 아래로 잠긴
+    것이다. 곡면에 앉히는 띠는 두 방향 다 나눠야 한다.
+    """
+    lift = PRINT_LIFT * (layer + 1) if lift is None else lift
+    if step:
+        lo, up = _refine(lo, up, step)
+    m = len(lo)
+    rows = []
+    for j in range(cross + 1):
+        t = j / float(cross)
+        rows.append([(lo[i][0] + (up[i][0] - lo[i][0]) * t,
+                      lo[i][1] + (up[i][1] - lo[i][1]) * t) for i in range(m)])
+    F = [place(u, z, lift) for r in rows for u, z in r]
+    B = [place(u, z, lift - PRINT_T) for r in rows for u, z in r]
+    nf = len(F)
+
+    def fi(j, i):
+        return j * m + i
+
+    def bi(j, i):
+        return nf + j * m + i
+
+    faces = []
+    for j in range(cross):
+        for i in range(m - 1):
+            faces.append((fi(j, i), fi(j, i + 1), fi(j + 1, i + 1), fi(j + 1, i)))
+            faces.append((bi(j, i + 1), bi(j, i), bi(j + 1, i), bi(j + 1, i + 1)))
+    for i in range(m - 1):                                   # 바깥·안쪽 모서리
+        faces.append((fi(cross, i), fi(cross, i + 1),
+                      bi(cross, i + 1), bi(cross, i)))
+        faces.append((fi(0, i), bi(0, i), bi(0, i + 1), fi(0, i + 1)))
+    for j in range(cross):                                   # 양 끝단
+        faces.append((fi(j, 0), fi(j + 1, 0), bi(j + 1, 0), bi(j, 0)))
+        faces.append((fi(j, m - 1), bi(j, m - 1),
+                      bi(j + 1, m - 1), fi(j + 1, m - 1)))
+    return _mesh(name, F + B, faces, mat)
+
+
+def _ribbon(pt, hw, n=7):
+    """중심선 + 폭 함수 → 닫힌 외곽선.
+
+    바나나·새우처럼 '가운데가 굵고 양끝이 뾰족한' 그림은 폭이 일정한 호로는
+    안 나온다 — 그렇게 만들면 갈고리나 웃는 입으로 읽힌다.
+    """
+    lo, up = [], []
+    for i in range(n):
+        t = -1.0 + 2.0 * i / (n - 1)
+        x, z = pt(t)
+        x1, z1 = pt(min(t + 0.02, 1.0))
+        x0, z0 = pt(max(t - 0.02, -1.0))
+        dx, dz = x1 - x0, z1 - z0
+        L = math.hypot(dx, dz) or 1.0
+        nx, nz = -dz / L, dx / L
+        w = hw(t)
+        up.append((x + nx * w, z + nz * w))
+        lo.append((x - nx * w, z - nz * w))
+    return lo + up[::-1]
+
+
+# ---------------------------------------------------- 양갱 (정답) · 금박 필름
+# 두 덩어리를 이어 붙인 것처럼 보이던 원인은 **속과 포장의 단면이 같아서**였다.
+# 실물은 필름이 바를 감싸므로 포장부가 조금 더 굵고, 드러난 속은 그보다 얇다.
+# 전체 두께도 11 → 8mm 로 낮춰 '두꺼운 플라스틱 케이스' 인상을 지운다.
+# 실물 편의점 양갱은 **닫힌 종이 박스**다. 앞선 판은 금박을 벗겨 속을 드러낸
+# 낱개 포장이었는데, 그 구조는 '케이스에 블록을 붙인 것'으로 계속 읽혔다.
+# 박스로 바꾸면 그 문제가 통째로 사라진다 — 벗길 것이 없으면 붙일 것도 없다.
+# 단면만 7% 줄인다(26×12 → 24.2×11.2). 길이는 그대로라 더 얇고 긴
+# 박스가 된다 — 편의점 양갱은 손바닥에 납작하게 눕는 물건이다.
+YG_L, YG_H, YG_D = 0.100, 0.0242, 0.0112
+YG_DARK_W = YG_L * 0.145             # 한쪽 끝 14.5% 는 짙은 갈색 구역
+_YGF = -YG_D / 2.0
+# 박스는 두 판을 맞대 만든다. 단면이 같으므로 이음매가 안 보이고, 색만
+# 갈린다 — 인쇄된 색 분할로 읽힌다. 종이라 모서리 반경과 베벨을 작게 준다.
+_p = [plate("yg_box", YG_L - YG_DARK_W, YG_H, 0.0010, YG_D, M_YG_BOX, seg=2,
+            cx=YG_DARK_W / 2.0, edge_mat=M_YG_BOX_L)]
+_p.append(plate("yg_dark", YG_DARK_W, YG_H, 0.0010, YG_D, M_YG_DARK, seg=2,
+                cx=-(YG_L - YG_DARK_W) / 2.0))
+for _o in _p:
+    bevel(_o, 0.0005, 1)
+# 제품명 자리 — 베이지 장방형. 실물 패키지에서 이름이 앉는 자리다.
+# 글자는 넣지 않는다. 자리만 있어도 '상품 포장'으로 읽힌다.
+_p.append(decal("yg_panel", _rr(YG_L * 0.36, YG_H * 0.72, 0.0020, 2,
+                                cx=YG_L * 0.08),
+                flat_place(_YGF), M_YG_BEIGE))
+# 글자 "양갱" — 상품 **종류** 이름이라 상표가 아니다. 추상 붓획을 얹어 봤더니
+# 곡선 둘이 눈썹, 그 아래 팥알 줄이 입이 되어 통째로 웃는 얼굴이 됐고,
+# 고쳐 쌓은 가로획 셋은 낙서로 읽혔다. 이름 두 글자를 그대로 새기면 그
+# 문제가 없어지고 무엇인지도 한눈에 잡힌다. 획은 둥근 사각 막대와
+# 고리로만 만든다 — 폰트를 옮겨 오지 않는다.
+_YGT = 0.0015                                  # 획 굵기
+_YGC = YG_L * 0.08                             # 판 중심
+
+
+def _yg_bar(n, cx, cz, w, h):
+    _p.append(decal("yg_%s" % n, _rr(w, h, min(w, h) * 0.32, 1, cx=cx, cz=cz),
+                    flat_place(_YGF), M_YG_BEAN, layer=1))
+
+
+def _yg_ring(n, cx, cz, od, seg=12):
+    _ro, _ri = od / 2.0, od / 2.0 - _YGT
+    _a = [2.0 * math.pi * i / seg for i in range(seg + 1)]
+    _p.append(decal_strip(
+        "yg_%s" % n,
+        [(cx + _ri * math.cos(t), cz + _ri * math.sin(t)) for t in _a],
+        [(cx + _ro * math.cos(t), cz + _ro * math.sin(t)) for t in _a],
+        flat_place(_YGF), M_YG_BEAN, layer=1))
+
+
+_YG1 = _YGC - 0.0068                           # 양
+_yg_ring("y_ini", _YG1 - 0.0032, 0.0030, 0.0056)          # ㅇ
+# ㅏ 의 짧은 획은 세로줄 **오른쪽**이다. 왼쪽에 붙이면 ㅓ 가 되어 "엉갱"이 된다.
+_yg_bar("y_med", _YG1 + 0.0028, 0.0028, _YGT, 0.0074)     # ㅏ 세로
+_yg_bar("y_nub", _YG1 + 0.0039, 0.0028, 0.0022, _YGT)     # ㅏ 가로
+_yg_ring("y_fin", _YG1 + 0.0002, -0.0034, 0.0062)         # 받침 ㅇ
+_YG2 = _YGC + 0.0066                           # 갱
+_yg_bar("g_ini_h", _YG2 - 0.0032, 0.0058, 0.0044, _YGT)   # ㄱ 가로
+_yg_bar("g_ini_v", _YG2 - 0.0017, 0.0036, _YGT, 0.0058)   # ㄱ 세로
+_yg_bar("g_med1", _YG2 + 0.0014, 0.0028, _YGT, 0.0074)    # ㅐ 왼 세로
+_yg_bar("g_med2", _YG2 + 0.0044, 0.0028, _YGT, 0.0074)    # ㅐ 오른 세로
+_yg_bar("g_nub", _YG2 + 0.0029, 0.0026, 0.0030, _YGT)     # ㅐ 가로
+_yg_ring("g_fin", _YG2 + 0.0000, -0.0034, 0.0062)         # 받침 ㅇ
+# 팥알 셋 — 베이지판 **밖**, 오른쪽 금색 여백에 비스듬한 줄로. 판 아래에
+# 깔면 그 자체가 입이 된다. 크기를 달리해 무늬가 반복으로 보이지 않게 한다.
+for _i, (_bx, _bz, _bs, _br) in enumerate(((0.0000, 0.0052, 1.00, -26.0),
+                                           (0.0044, -0.0006, 0.86, 16.0),
+                                           (0.0088, -0.0064, 1.10, -38.0))):
+    _p.append(decal("yg_bean%d" % _i,
+                    _rr(0.0040 * _bs, 0.0025 * _bs, 0.0012 * _bs, 2,
+                        cx=YG_L * 0.35 + _bx, cz=_bz, rot=_br),
+                    flat_place(_YGF), M_YG_BEAN, layer=1))
+# 뒷면 — 같은 색 분할이 이어지고 베이지판만 작게. 박스는 사방이 인쇄면이다.
+# 후면 — 전면 폭의 42% 짜리 긴 흰 바를 두었더니 그것만으로 **다른 상품의
+# 앞면**처럼 보였다. 실물 박스 뒷면에서 눈에 띄는 건 작은 성분표 한 칸이다.
+_p.append(decal("yg_back", _rr(YG_L * 0.15, YG_H * 0.46, 0.0012, 2,
+                               cx=YG_L * 0.20)[::-1],
+                flat_back(YG_D / 2.0), M_YG_BEIGE))
+for _o in _p:
+    shade(_o, False)
+ITEMS["ITM12_Yanggaeng"] = ground(finish("ITM12_Yanggaeng", _p))
+
+# ------------------------------------------ 바나나우유 · 플라스틱 단지 용기
+# 도자기 단지로 읽히던 원인은 **아래가 위만큼 굵고 배가 부풀어서**였다.
+# 실물은 아래 통이 오히려 조금 좁고, 턱 위로 부드럽게 원뿔이 서며, 바닥이
+# 평평하다. 그 셋을 맞추면 도자기가 아니라 플라스틱 음료 용기가 된다.
+BM_SEG = 20
+# **턱(돌출 링)을 없앴다.** 지름이 튀는 고리 하나가 용기를 위아래 두 부품으로
+# 갈라 보이게 만든 원인이었다. 바닥에서 목까지 반경이 단조롭게만 변하는
+# 연속 곡면으로 다시 잡고, 초록은 지오메트리가 아니라 **인쇄 띠**로만 남긴다.
+# 반경만 줄였더니 이번엔 **눌린 항아리**가 됐다. 낮고 넓은 비율 자체가
+# 그릇을 부르는 것이라, 높이를 +15% 세우고 폭을 −6% 더 좁힌다.
+# 짧고 통통한 단지형은 남되, 그릇이나 화장품 단지와는 갈라진다.
+# 어깨 위 기울기가 마지막 고리에서 완만해지며 꺾여 보이던 것도 이어서 폈다.
+BM_RINGS = [(0.0000, 0.01351), (0.0017, 0.01542), (0.0046, 0.01666),
+            (0.0099, 0.01708),
+            (0.0197, 0.01767), (0.0314, 0.01787), (0.0368, 0.01752),
+            (0.0428, 0.01665), (0.0494, 0.01499), (0.0554, 0.01296),
+            (0.0604, 0.01050), (0.0634, 0.00879)]
+#             바닥 ─── 배 ───┬── 초록 인쇄 띠 ──┬── 어깨 ── 목(밝은 면)
+_rows = [0, 0, 0, 0, 0, 3, 3, 3, 0, 1, 1]   # 초록 인쇄 띠 = 밴드 5~7
+_p = [revolve("bm_body", BM_RINGS, BM_SEG,
+              [M_BM, M_BM_LIT, M_BM_CAP, M_BM_GRN], _rows)]
+# 뚜껑은 목보다 **1.5mm 넓게** 벌린다. 지름 차이가 작으면 뚜껑이 몸통의
+# 연장으로 보여, 어디까지가 병이고 어디부터가 뚜껑인지 읽히지 않았다.
+# 뚜껑 밑동을 목 바로 위에 얹었더니 그 사이 고리 틈으로 속이 비쳐 **검은 띠**가
+# 생겼다(반경을 0.15mm 만 띄우면 이번엔 각기둥 면끼리 교차해 깜빡인다).
+# 밑동을 목 **안쪽**까지 내려 몸통이 좁아지는 지점에서 저절로 뚫고 나오게 한다 —
+# 틈도 겹침도 없이 두 면이 가로지르고, 보이는 뚜껑 높이는 11mm 가 된다.
+_p.append(revolve("bm_cap", [(0.0572, 0.01112), (0.0618, 0.01132),
+                             (0.0632, 0.01162),
+                             (0.0692, 0.01147), (0.0701, 0.01056)],
+                  BM_SEG, M_BM_CAP))
+_BMP = body_place(BM_RINGS, BM_SEG)
+# 바나나 — 초록 라벨 아래, 턱 바로 위. 인쇄 그래픽이라 돌출 0.20mm.
+_BAN_R, _BAN_CZ, _BAN_A, _BAN_T = 0.0056, 0.0393, 1.32, -30.0
+_blo, _bup = _edges(
+    lambda t: (_BAN_R * math.sin(t * _BAN_A), _BAN_R * math.cos(t * _BAN_A)),
+    lambda t: 0.0023 * max(0.12, 1.0 - 0.88 * ((t - 0.15) / 1.15) ** 2), 15)
+_bc, _bs = math.cos(math.radians(_BAN_T)), math.sin(math.radians(_BAN_T))
+_blo = [(x * _bc - z * _bs, x * _bs + z * _bc) for x, z in _blo]
+_bup = [(x * _bc - z * _bs, x * _bs + z * _bc) for x, z in _bup]
+_bxs = [q[0] for q in _blo + _bup]
+_bzs = [q[1] for q in _blo + _bup]
+_bdx = -(min(_bxs) + max(_bxs)) / 2.0
+_bdz = _BAN_CZ - (min(_bzs) + max(_bzs)) / 2.0
+_blo = [(x + _bdx, z + _bdz) for x, z in _blo]
+_bup = [(x + _bdx, z + _bdz) for x, z in _bup]
+_p.append(decal_strip("bm_banana", _blo, _bup, _BMP, M_BM_BAN, layer=1,
+                      step=0.0019, lift=0.00020, cross=3))
+# 꼭지는 넣지 않는다. 가는 끝에 달면 부리, 굵은 끝에 달면 티끌이 된다 —
+# 초승달 하나로 이미 바나나로 읽히고, 점 하나가 그걸 흐린다.
+for _o in _p:
+    shade(_o, False)
+# 몸통만 부드럽게. 평면 음영이면 가로 고리마다 밝기가 계단으로 끊겨, 이어진
+# 곡면이 아니라 **테를 쌓아 올린 통**으로 보인다. 뚜껑과 인쇄는 각을 살린다.
+shade(_p[0], True)
+ITEMS["ITM12_BananaMilk"] = ground(finish("ITM12_BananaMilk", _p))
+
+# --------------------------------------- 초콜릿 · 은박에서 반쯤 꺼낸 판
+# 조각을 낱개 판으로 세워 놨더니 **벽돌담**이 됐고, 은박은 직육면체라
+# **받침대**가 됐다. 실물은 판 하나에 홈이 파여 여섯으로 갈린 것이고,
+# 포일은 그 판을 감싸며 윗변에서 바깥으로 접혀 있다.
+CH_W, CH_H, CH_D = 0.092, 0.046, 0.0100
+CH_COL, CH_ROW = 3, 2
+CH_TEAR = -0.0209                    # 포일이 끝나는 x. 오른쪽 짧은 끝이 뜯겼다
+_p = [plate("ch_bar", CH_W, CH_H, 0.0024, CH_D, M_CH, seg=2,
+            edge_mat=M_CH_LIT)]
+bevel(_p[0], 0.0008, 1)
+# 조각 여섯 — 판 위로 0.8mm 솟은 칸. 사이 간격이 그대로 **쪼개는 홈**이 된다.
+# 낱개로 떼어 놓지 않았으므로 '한 판에서 갈린 것'으로 읽힌다.
+_CW = (CH_W - 0.0060 - 0.0022 * (CH_COL - 1)) / CH_COL
+_CHH = (CH_H - 0.0050 - 0.0022 * (CH_ROW - 1)) / CH_ROW
+_BLK = []
+for _r in range(CH_ROW):
+    for _c in range(CH_COL):
+        _cx = -CH_W / 2.0 + 0.0030 + _CW / 2.0 + (_CW + 0.0022) * _c
+        _cz = -CH_H / 2.0 + 0.0025 + _CHH / 2.0 + (_CHH + 0.0022) * _r
+        _BLK.append((_cx, _cz, _c))
+        _b = plate("ch_blk%d%d" % (_r, _c), _CW, _CHH, 0.0016, CH_D + 0.0007,
+                   M_CH, seg=1, cx=_cx, cz=_cz, edge_mat=M_CH_LIT)
+        bevel(_b, 0.0006, 1)         # 약한 베벨 — 각지면 장난감 블록이다
+        _p.append(_b)
+# 은박 — **좁은 쪽 끝에서 뜯긴다.** 넓은 아래쪽을 통째로 벗겨 놨더니 포일이
+# 바를 감싼 게 아니라 **회색 받침대 위에 초콜릿을 올려 놓은 것**이 됐다.
+# 실물은 짧은 끝을 조금 까서 먹는다. 포일이 몸통 대부분을 덮고, 오른쪽
+# 짧은 끝에서만 초콜릿이 드러난다.
+# 포일 두께는 **판 두께에 딸린 예산**이다. 조각이 판 위로 솟는 높이보다
+# 포일이 두꺼워야 덮이는데, 그 조건 때문에 포일이 두꺼워지면 세워 놨을 때
+# 회색 받침대가 된다. 그래서 조각을 0.7mm(한쪽 0.35)로 낮추고, 포일은
+# 한쪽 0.45mm 만 내밀었다 — 1.3 → 0.9mm, 30% 얇아졌다.
+CH_FD = CH_D + 0.0009
+_FL = CH_W / 2.0 + 0.0006 + CH_TEAR          # 덮는 길이 31.4 → 25.7mm (−18%)
+# 정면 폭은 몸통보다 0.3mm 만 넓다. 1.8mm 내밀었더니 감싼 것이 아니라
+# 초콜릿을 담아 둔 **회색 상자**가 됐고, 딱 맞추면 옆으로 감긴 게 안 보였다.
+_p.append(plate("ch_foil", _FL, CH_H + 0.0006, 0.0014, CH_FD, M_CH_FOIL,
+                seg=2, cx=CH_TEAR - _FL / 2.0, edge_mat=M_CH_FOIL_D))
+bevel(_p[-1], 0.0006, 1)
+_FCX = CH_TEAR - _FL / 2.0
+# 접힘 — 포일 **면 위에** 판을 얹는 방식은 세 번 다 실패했다. 가는 줄 셋은
+# 눈금, 가운데 넓은 판은 회색 스티커, 가장자리 띠는 덧댄 패널이 됐다.
+# 이 크기·이 음영에서 평평한 은색 면에 뭘 얹든 붙인 것으로 보인다.
+# 접힘은 **뜯긴 경계에서** 나온다 — 한쪽으로 치우친 작은 탭 하나만 비스듬히
+# 세우면 손으로 까다 접힌 자국이 되고, 위 경계도 그만큼 비대칭이 된다.
+_p.append(plate("ch_fold", 0.0062, CH_H * 0.26, 0.0010, CH_FD + 0.0006,
+                M_CH_FOIL_D, seg=1, cx=CH_TEAR - 0.0034,
+                cz=-CH_H * 0.28, rot=-17.0))
+# 뜯긴 경계 — 좌우가 **다르게** 어긋나야 손으로 깐 자국이 된다. 자리는
+# CH_H 비율로 잡는다. 절대값으로 박아 뒀더니 폭을 줄였을 때 삐져나왔다.
+_TH = CH_H / 2.0
+for _i, (_t0, _t1, _tw) in enumerate(((-0.99, -0.46, 0.0038),
+                                      (-0.46, 0.28, 0.0012),
+                                      (0.28, 0.99, 0.0029))):
+    _p.append(plate("ch_tear%d" % _i, _tw, (_t1 - _t0) * _TH, 0.0004, CH_FD,
+                    M_CH_FOIL, seg=1, cx=CH_TEAR + _tw / 2.0 - 0.0005,
+                    cz=(_t0 + _t1) / 2.0 * _TH, edge_mat=M_CH_FOIL_D))
+for _o in _p:
+    shade(_o, False)
+_ch = finish("ITM12_Chocolate", _p)
+# 세로로 세운다 — 긴 축을 Z 로 돌린다. 뜯긴 좁은 끝이 위, 포일이 아래를
+# 감싸는 자세가 되어 진열대에 세워 둔 모습과 맞는다.
+#
+# **폭이 여기에 딸려 있다.** 54mm 로 세웠더니 새우깡 봉지와 실루엣 상이도가
+# 48 → 32% 로 떨어졌다. 둘 다 '세로로 긴 둥근 사각'이 되어 작게 줄이면
+# 구분이 안 된다. 46mm 로 좁히면 41% 로 회복하고, 다섯 중 최악 쌍은
+# 바나나우유↔탄산음료 35% 자리로 되돌아온다 — 눕혔을 때와 같은 하한이다.
+# 40mm 아래로 더 좁히면 이번엔 탄산음료 캔과 붙는다(32%).
+_ch.rotation_euler = (0.0, math.radians(-90.0), 0.0)
+set_active(_ch)
+bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+ITEMS["ITM12_Chocolate"] = ground(_ch)
+
+# ------------------------------------------- 탄산음료 · 대각 리본 초록 캔
+# 필드 분할은 정면에서 **세로 띠**로 보여 레퍼런스의 경쾌함이 사라졌다.
+# 굵은 대각 리본으로 되돌리되 폭을 14mm 로 키우고 기울기를 세워, 캔을
+# 비스듬히 감아 도는 흐름이 정면에서 한눈에 보이게 한다.
+SD_SEG = 18
+# 짧고 굵어 미니캔으로 보였다. 높이 +13% · 지름 −6%. 바나나우유보다
+# 확실히 높고 가늘어야 '캔'과 '단지'가 실루엣만으로 갈린다.
+SD_R = 0.01466         # 지름 31.2 → 29.3mm
+# 상하 금속 림은 **좁혔다** — 아래 6.3 → 5.0mm, 위 3.9 → 3.3mm.
+SD_RINGS = [(0.0000, 0.01139), (0.0023, 0.01416), (0.0050, SD_R),
+            (0.0755, SD_R), (0.0843, 0.01329), (0.0896, 0.01096),
+            (0.0913, 0.01137), (0.0929, 0.01175)]
+#           은 ─ 얇은 림 ── 초록 몸통 ── 어깨 ─ 어깨 ─ 은 ─ 림
+_rows = [2, 2, 0, 1, 1, 2, 2]
+_p = [revolve("sd_body", SD_RINGS, SD_SEG, [M_SD, M_SD_LIT, M_SD_MET], _rows)]
+# 뚜껑 — 오목한 면 + 따는 홈 + 고리 + 구멍 + 리벳. 다섯이 다 있어야
+# '따서 마시는 뚜껑'으로 읽힌다. 판 하나만 얹으면 뭔가 붙은 수준에 머문다.
+_p.append(revolve("sd_lid", [(0.0929, 0.01147), (0.0936, 0.01090)],
+                  SD_SEG, M_SD_GUN))
+_p.append(slab("sd_score", (-0.0081, 0.0, 0.09345), (0.0086, 0.0098, 0.0008),
+               M_SD_GUN))
+_p.append(slab("sd_tab", (0.0032, 0.0, 0.09390), (0.0134, 0.0049, 0.0013),
+               M_SD_MET))
+_p.append(slab("sd_tab_hole", (0.0058, 0.0, 0.09458), (0.0062, 0.0024, 0.0010),
+               M_SD_GUN))
+_p.append(slab("sd_rivet", (-0.0034, 0.0, 0.09447), (0.0040, 0.0040, 0.0015),
+               M_SD_MET))
+_SDP = body_place(SD_RINGS, SD_SEG)
+# 리본 — 한 바퀴 반을 감는다. 정면에서 사선 하나가 통째로 보이도록 기울기를
+# 세웠다. 양끝은 좁혀 두어 끊긴 자리가 눈에 걸리지 않게 한다.
+_RB = math.pi * SD_R * 1.00
+# 한 바퀴를 다 감아 끊긴 자리가 정면에 걸리지 않게 한다. 양끝 폭을 좁혀
+# 시작과 끝이 뒤에서 자연스럽게 만난다.
+_rlo, _rup = _edges(lambda t: (t * _RB, 0.0429 + t * 0.0283),
+                    lambda t: 0.0070 * max(0.22, 1.0 - 0.74 * t * t), 19)
+_p.append(decal_strip("sd_ribbon", _rlo, _rup, _SDP, M_SD_WHT, layer=1,
+                      step=0.0038, lift=0.00020, cross=2))
+# 기포 — 리본 위 초록 면에서 올라간다. 별은 뺐다.
+for _i, (_bx, _bz, _bd) in enumerate((
+        (-0.0040, 0.0673, 0.0034), (0.0026, 0.0728, 0.0026),
+        (0.0072, 0.0642, 0.0021))):
+    _p.append(decal("sd_bub%d" % _i, _circ(_bd, cx=_bx, cz=_bz),
+                    _SDP, M_SD_WHT, layer=1, step=0.0007))
+for _o in _p:
+    shade(_o, False)
+ITEMS["ITM12_Soda"] = ground(finish("ITM12_Soda", _p))
+
+# --------------------------------- 새우깡 · 금색 띠 + 오렌지/옐로 + 조각 더미
+# 레이아웃을 실물처럼 3단으로 되돌린다 — **상단 금색 띠 / 오렌지 필드에 큰
+# 붉은 새우 / 옐로 바닥에 쌓인 스낵 조각**. 조각은 길고 얇은 초승달이 아니라
+# **짧고 통통한 곡선 스틱**이라야 과자로 보인다(앞선 판은 물결 무늬였다).
+# 정면 실루엣(70×98)은 건드리지 않고 **두께만** 36 → 31.5mm (−12.5%).
+SN_W, SN_H, SN_D = 0.070, 0.098, 0.0315
+# SN_FMIN 은 **가장자리에 남는 두께 비율**이다. 0.36 이면 위아래 끝이
+# 두께의 1/3 까지 급히 좁아져 뾰족한 쿠션 모서리가 된다. 0.46 으로 올리고
+# 평평 구역(SN_PH)도 넓혀, 끝이 완만하게 눕는다.
+SN_FMIN, SN_PW, SN_PH, SN_TAPER = 0.46, 0.58, 0.54, 0.012
+
+
+def SN_ZONE(u, v):
+    """상단 금색 띠(2) / 오렌지 필드(0) / 하단 옐로(3). 경계를 살짝 기울여
+    자로 그은 직선처럼 보이지 않게 한다."""
+    if v > 0.80:
+        return 2
+    return 3 if v < -0.26 - 0.05 * u else 0
+
+
+_p = [pillow("sn_body", SN_W, SN_H, SN_D, 11, 11,
+             [M_SN, M_SN_DK, M_SN_TOP, M_SN_Y],
+             SN_FMIN, SN_PW, SN_PH, SN_TAPER, zone=SN_ZONE)]
+
+
+def _sn_place(u, z, lift):
+    v = max(-1.0, min(1.0, z / (SN_H / 2.0)))
+    xs = 1.0 - SN_TAPER * abs(v) ** 3.0
+    uu = max(-1.0, min(1.0, u / (SN_W / 2.0 * xs)))
+    y = (SN_D / 2.0) * _puff(uu, v, SN_FMIN, SN_PW, SN_PH)
+    return (u, -y - lift, z)
+
+
+for _s in (-1, 1):
+    _p.append(plate("sn_seal%d" % (_s > 0), SN_W * 0.90, 0.0058, 0.0010, 0.0012,
+                    M_SN_TOP if _s > 0 else M_SN_Y, seg=1,
+                    cz=_s * (SN_H / 2.0 + 0.0005)))
+    for _i in range(5):
+        _p.append(slab("sn_crimp%d%d" % (_s > 0, _i),
+                       (-0.0230 + 0.0115 * _i, 0.0, _s * (SN_H / 2.0 + 0.0005)),
+                       (0.0007, 0.0012, 0.0022), M_SN_DK))
+# 새우 — 오렌지 필드를 가득 채운다. 머리 · 마디 있는 굽은 몸통 · 부채꼴 꼬리.
+_SHR_R, _SHR_CZ, _SHR_A = 0.0172, 0.0074, -32.0
+
+
+def _shr_pt(t):
+    a = math.radians(_SHR_A)
+    x, z = _SHR_R * math.sin(t * 1.14), _SHR_R * math.cos(t * 1.14)
+    return (x * math.cos(a) - z * math.sin(a) + _SHR_DX,
+            x * math.sin(a) + z * math.cos(a) + _SHR_DZ)
+
+
+_SHR_DX, _SHR_DZ = 0.0, 0.0
+_slo, _sup = _edges(_shr_pt,
+                    lambda t: 0.0051 * max(0.28, 1.0 - 0.66
+                                           * ((t + 0.55) / 1.55) ** 2), 15)
+_sxs = [q[0] for q in _slo + _sup]
+_szs = [q[1] for q in _slo + _sup]
+_SHR_DX = -0.0014 - (min(_sxs) + max(_sxs)) / 2.0
+_SHR_DZ = 0.0166 - (min(_szs) + max(_szs)) / 2.0
+_slo = [(x + _SHR_DX, z + _SHR_DZ) for x, z in _slo]
+_sup = [(x + _SHR_DX, z + _SHR_DZ) for x, z in _sup]
+_p.append(decal_strip("sn_shr_body", _slo, _sup, _sn_place, M_SN_SHR, layer=1,
+                      step=0.0034, cross=2))
+for _i, _mt in enumerate((-0.36, -0.02, 0.32)):
+    _m0, _m1, _mc = _shr_pt(_mt - 0.03), _shr_pt(_mt + 0.03), _shr_pt(_mt)
+    _p.append(decal("sn_shr_seg%d" % _i,
+                    _rr(0.0013, 0.0092, 0.00056, 1, cx=_mc[0], cz=_mc[1],
+                        rot=math.degrees(math.atan2(_m1[1] - _m0[1],
+                                                    _m1[0] - _m0[0]))),
+                    _sn_place, M_SN_DK, layer=2, step=0.0040))
+_hx, _hz = _shr_pt(-1.0)
+_p.append(decal("sn_shr_head", _rr(0.0141, 0.0101, 0.0044, 2,
+                                   cx=_hx - 0.0014, cz=_hz + 0.0021, rot=26.0),
+                _sn_place, M_SN_SHR, layer=1, step=0.0060))
+_tx, _tz = _shr_pt(1.0)
+_ta0, _ta1 = _shr_pt(0.92), _shr_pt(1.0)
+_tdx, _tdz = _ta1[0] - _ta0[0], _ta1[1] - _ta0[1]
+_tn = math.hypot(_tdx, _tdz) or 1.0
+_tdx, _tdz = _tdx / _tn, _tdz / _tn
+# 꼬리 — 통짜 삼각형이면 몸통과 합쳐져 **화살표**가 된다. 실제 새우 꼬리는
+# 갈라진 부챗살이라, 살 셋을 벌려 놓고 사이를 띄우면 화살촉이 되지 않는다.
+_TA = math.atan2(_tdz, _tdx)
+for _i, (_fa, _fl, _fw) in enumerate(((-0.46, 0.0057, 0.0018),
+                                      (0.02, 0.0066, 0.0021),
+                                      (0.50, 0.0055, 0.0017))):
+    _fc, _fs = math.cos(_TA + _fa), math.sin(_TA + _fa)
+    _flo, _fup = _edges(lambda t, L=_fl: (_tx + _fc * L * (t + 1.0),
+                                          _tz + _fs * L * (t + 1.0)),
+                        lambda t, W=_fw: 0.0010 + W * (t + 1.0) / 2.0, 5)
+    _p.append(decal_strip("sn_shr_fin%d" % _i, _flo, _fup, _sn_place,
+                          M_SN_SHR, layer=1, step=0.0045, cross=2))
+# 스낵 조각 — 열 개를 흩었더니 국수 가락·뼈다귀로 읽혔다. **넷만 크게** 두고
+# 각각에 얕은 세로 홈 셋을 넣는다. 길이:폭을 3:1 로 — 거의 정사각형이면
+# 두툼한 게 아니라 **구겨진 종이 조각**이 된다. 새우맛 스낵의 정체는 굽은 막대가 아니라
+# 그 위의 골이라, 홈이 없으면 무엇이든 될 수 있는 곡선일 뿐이다.
+for _i, (_cx, _cz, _cl, _cw, _cd) in enumerate((
+        (-0.0196, -0.0182, 0.0090, 0.0066, -16.0),
+        (0.0000, -0.0172, 0.0095, 0.0070, 9.0),
+        (0.0196, -0.0182, 0.0090, 0.0066, -22.0))):
+    _cc, _cs = math.cos(math.radians(_cd)), math.sin(math.radians(_cd))
+
+    def _put(x, z, cc=_cc, cs=_cs, ox=_cx, oz=_cz):
+        return (x * cc - z * cs + ox, x * cs + z * cc + oz)
+
+    _clo, _cup = _edges(lambda t, L=_cl: (t * L, 0.0024 * (t * t - 0.5)),
+                        lambda t, W=_cw: W / 2.0 * (1.0 - 0.14 * abs(t) ** 3.0),
+                        9)
+    _p.append(decal_strip("sn_pc%d" % _i,
+                          [_put(x, z) for x, z in _clo],
+                          [_put(x, z) for x, z in _cup],
+                          _sn_place, M_SN_PC, layer=1, step=0.0055, cross=1))
+    for _k, _gt in enumerate((-0.44, 0.0, 0.44)):
+        _gx, _gz = _gt * _cl, 0.0024 * (_gt * _gt - 0.5)
+        _p.append(decal("sn_pcg%d%d" % (_i, _k),
+                        _rr(0.0008, _cw * 0.56, 0.00034, 1,
+                            cx=_put(_gx, _gz)[0], cz=_put(_gx, _gz)[1],
+                            rot=_cd + math.degrees(math.atan2(
+                                0.0060 * _gt, 1.0))),
+                        _sn_place, M_SN_PCD, layer=2, step=0.0040))
+for _o in _p:
+    shade(_o, False)
+shade(_p[0], True)          # 몸통만 부드럽게 — 밑동 명암 띠를 없애는 열쇠다
+ITEMS["ITM12_SnackBag"] = ground(finish("ITM12_SnackBag", _p))
+
 # ======================================= 물품보관소 (독립형 모듈 · 가구)
 # 배치 존과 상호작용은 아직 정해지지 않았다. 어느 구역에도 놓을 수 있는
 # **모듈 한 칸**으로 만든다 — 가로로 이어 붙이면 보관소 벽이 된다.
