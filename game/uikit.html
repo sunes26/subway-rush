@@ -54,9 +54,10 @@
     무대 크기가 다르면 여기서 잘 보이던 간격이 게임에서 달라진다.
     화면이 작으면 scale 로 줄인다 — 레이아웃이 아니라 배율만 바뀐다.
   */
-  #stage{position:relative;width:1280px;height:720px;flex:none;overflow:hidden;
+  #holder{flex:none}
+  #stage{position:relative;width:1280px;height:720px;overflow:hidden;
     border-radius:10px;border:1px solid rgba(255,255,255,.13);
-    background:#07070A center/cover no-repeat;transform-origin:center}
+    background:#07070A center/cover no-repeat;transform-origin:top left}
   #stage.grid{background-image:
     linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),
     linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);
@@ -80,7 +81,7 @@
       <button data-bg="grid">그리드</button>
       <button data-bg="concourse">대합실</button>
       <button data-bg="vending">자판기</button>
-      <button data-bg="chase">추격</button>
+      <button data-bg="platform">승강장</button>
       <span class="gap"></span>
       <span class="lbl">배율</span>
       <button data-zoom="1">100%</button>
@@ -91,7 +92,9 @@
       <span class="note" id="note"></span>
     </div>
     <div id="wrap">
-      <div id="stage"><div id="stage-ui"></div></div>
+      <!-- 홀더가 **축소된 크기**를 차지한다. transform 만 쓰면 레이아웃 박스가 1280 그대로라
+           무대가 좌우로 잘린다(실제로 미니맵이 화면 밖으로 나갔다). -->
+      <div id="holder"><div id="stage"><div id="stage-ui"></div></div></div>
     </div>
     <div id="hint">CSS 를 고치면 저장하는 순간 이 화면과 게임에 함께 반영된다 ·
       상태를 고르면 그 순간의 UI 가 실제 코드로 그려진다</div>

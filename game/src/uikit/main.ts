@@ -18,6 +18,7 @@ import { GROUPS, PRESETS, type Preset } from './presets'
 const $ = <T extends HTMLElement>(sel: string): T => document.querySelector<T>(sel) as T
 
 const stage = $('#stage')
+const holder = $('#holder')
 const stageUi = $('#stage-ui')
 const list = $('#list')
 const note = $('#note')
@@ -29,17 +30,19 @@ const dialog = createDialog(stageUi)
 hud.setCrosshair(true)
 
 /**
- * 배경 — UI 는 배경 위에서 읽혀야 한다.
+ * 배경 — UI 는 배경 위에서 읽혀야 한다. 단색 위에서만 확인하면
+ * "대합실 형광등 아래에서 흰 글자가 날아가는" 종류를 못 잡는다.
  *
- * E2E 가 남긴 실제 게임 스크린샷을 그대로 쓴다. 단색 위에서만 확인하면
- * "대합실 형광등 아래에서 흰 글자가 날아가는" 종류의 문제를 못 잡는다.
+ * ⚠ **HUD 를 끈 씬 사진**을 쓴다(`tests/e2e/backdrop.spec.ts` 가 만든다).
+ *   처음엔 P1 스크린샷을 배경으로 썼는데 그 사진들에 예전 HUD 가 박혀 있어
+ *   킷에서 HUD 가 두 겹으로 보였다 — 새 HUD 를 판단할 수가 없었다.
  */
 const BACKDROPS: Readonly<Record<string, string>> = {
   dark: '',
   grid: '',
-  concourse: new URL('../../tests/e2e/__shots__/p1/02-hud-inventory.png', import.meta.url).href,
-  vending: new URL('../../tests/e2e/__shots__/p1/04-qte-vending.png', import.meta.url).href,
-  chase: new URL('../../tests/e2e/__shots__/p1/05-chase-danso.png', import.meta.url).href,
+  concourse: new URL('../../tests/e2e/__shots__/backdrop/concourse.png', import.meta.url).href,
+  vending: new URL('../../tests/e2e/__shots__/backdrop/vending.png', import.meta.url).href,
+  platform: new URL('../../tests/e2e/__shots__/backdrop/platform.png', import.meta.url).href,
 }
 
 let current: Preset = PRESETS[0] as Preset
@@ -61,6 +64,9 @@ const setZoom = (key: string): void => {
   const fit = Math.min((wrap.clientWidth - 44) / 1280, (wrap.clientHeight - 44) / 720, 1)
   const z = key === 'fit' ? fit : Number(key)
   stage.style.transform = `scale(${z})`
+  // 홀더가 축소된 크기를 차지해야 `place-items:center` 가 실제 중앙에 놓는다
+  holder.style.width = `${1280 * z}px`
+  holder.style.height = `${720 * z}px`
   for (const b of document.querySelectorAll<HTMLElement>('#bar [data-zoom]')) {
     b.classList.toggle('on', b.dataset['zoom'] === key)
   }

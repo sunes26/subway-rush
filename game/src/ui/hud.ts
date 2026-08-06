@@ -15,6 +15,13 @@ import type { GameState } from '../state/types'
 // 스타일은 `css/hud.css` 가 단일 원천이다 — UI 킷(/uikit.html)이 같은 파일을 읽는다.
 // `?inline` 은 파일 내용을 문자열로 준다: 주입 방식(<style> 삽입)은 예전과 같다.
 import CSS from './css/hud.css?inline'
+/**
+ * Figma `game-hud-ui` 에서 내보낸 아이콘 **원본 그대로**를 인라인한다.
+ * `?raw` 라서 파일이 곧 에셋이고, 다시 그리거나 대체하지 않는다.
+ * (게이지 링은 값이 매 프레임 바뀌므로 정적 SVG 로 표현할 수 없다 — `hud.css` 의 conic-gradient)
+ */
+import iconBackpack from './icons/backpack.svg?raw'
+import iconCoin from './icons/coin.svg?raw'
 
 /**
  * 신호 표시를 띄우는 범위.
@@ -49,36 +56,62 @@ export const createHud = (mount: HTMLElement): Hud => {
 
   const el = document.createElement('div')
   el.id = 'hud'
+  /**
+   * 레이아웃 출처: Figma `game-hud-ui` (node 4:4).
+   * 예전 하단 4칸 `foot` 바는 없앴다 — Zone 은 미니맵 배너로, 잔액은 우하단 배지로,
+   * 스태미너는 좌상단 원형으로, 소지품은 하단 중앙 패널로 흩어졌다.
+   */
   el.innerHTML = `
-    <div class="bar">
+    <div class="bar hud-panel">
       <div class="marquee"><span id="hud-led"></span></div>
       <div class="clock" id="hud-clock"><small>열차 도착</small><b id="hud-time">3:00</b></div>
     </div>
+
+    <div id="stam-w">
+      <div id="stam-ring"><div id="stam-g"></div><div id="stam-n">100%</div></div>
+      <div id="stam-l">스태미너</div>
+    </div>
+
+    <div id="mini" class="hud-panel locked">
+      <div id="mini-r">
+        <div id="mini-lock"><b>미니맵 잠김</b>노선도를 구해야<br>지도를 볼 수 있다</div>
+        <div id="mini-z">—</div>
+      </div>
+    </div>
     <div id="coord">—</div>
+
+    <div id="cons"><i id="cons-i"></i><u></u></div>
+    <div id="inv-p" class="hud-panel">
+      <div id="inv-h">
+        <div class="t">${iconBackpack}<span>소지품</span></div>
+        <div class="c" id="inv-c">0 / ${SLOTS}</div>
+      </div>
+      <div class="inv" id="hud-inv"></div>
+    </div>
+
+    <div id="rb">
+      <div id="bal-b" class="hud-panel">
+        ${iconCoin}<span class="k">잔액</span><span class="v" id="hud-bal">—</span>
+      </div>
+      <div id="lockhint">화면을 클릭하면 시점이 잠깁니다 · <em>ESC 해제</em></div>
+    </div>
+
     <div id="fx"></div>
     <div id="vig"></div>
     <div id="cross"><i></i><i></i><i></i><i></i></div>
-    <div id="sig"></div>
-    <div id="lockhint">화면을 클릭하면 시점이 잠깁니다 · ESC 해제</div>
-    <div id="cons"><i id="cons-i"></i><u></u></div>
-    <div class="foot">
-      <div class="cell"><div class="k">Zone</div><div class="v" id="hud-zone">—</div></div>
-      <div class="cell"><div class="k">교통카드 잔액</div><div class="v" id="hud-bal">—</div></div>
-      <div class="cell"><div class="k">스태미너 · Shift</div>
-        <div class="stam" id="hud-stam"><i id="hud-stam-i" style="width:100%"></i></div></div>
-      <div class="cell"><div class="k">소지품 · 1 2 3</div>
-        <div class="inv" id="hud-inv"></div></div>
-    </div>`
+    <div id="sig"></div>`
   mount.appendChild(el)
 
   const $ = <T extends HTMLElement>(id: string): T => el.querySelector<T>(`#${id}`) as T
   const led = $('hud-led')
   const clock = $('hud-clock')
   const time = $('hud-time')
-  const zoneEl = $('hud-zone')
+  const zoneEl = $('mini-z')
   const balEl = $('hud-bal')
-  const stamBox = $('hud-stam')
-  const stamFill = $('hud-stam-i')
+  const stamWrap = $('stam-w')
+  const stamRing = $('stam-g')
+  const stamNum = $('stam-n')
+  const invCount = $('inv-c')
   const coordEl = $('coord')
   const fxBox = $('fx')
   const vig = $('vig')
@@ -106,6 +139,8 @@ export const createHud = (mount: HTMLElement): Hud => {
   let lastStage = 'x'
   let lastZone = ''
   let lastBal = -1
+  let lastStam = -1
+  let lastInvCount = -1
   let lastLow = false
   let lastLocked = false
   let lastCoord = ''
@@ -157,9 +192,15 @@ export const createHud = (mount: HTMLElement): Hud => {
       const low = s.cardBalance < FARE && !s.gates.passed
       if (low !== lastLow) { balEl.className = low ? 'v low' : 'v'; lastLow = low }
 
-      stamFill.style.width = `${s.player.stamina}%`
+      // 원형 게이지 — 각도는 CSS 변수 하나로만 넘긴다. 링을 그리는 일은 CSS 몫이다
+      const stam = Math.round(s.player.stamina)
+      if (stam !== lastStam) {
+        stamRing.style.setProperty('--stam', String(stam / 100))
+        stamNum.textContent = `${stam}%`
+        lastStam = stam
+      }
       if (s.player.sprintLocked !== lastLocked) {
-        stamBox.className = s.player.sprintLocked ? 'stam locked' : 'stam'
+        stamWrap.className = s.player.sprintLocked ? 'locked' : ''
         lastLocked = s.player.sprintLocked
       }
 
@@ -177,6 +218,16 @@ export const createHud = (mount: HTMLElement): Hud => {
         slot.box.title = item ? itemDef(item).name : ''
         slot.box.className = item ? (worn ? 'slot has worn' : 'slot has') : 'slot'
         slot.last = key
+      }
+
+      /**
+       * 헤더 카운터 — Figma 는 `4 / 8` 이었다. 우리는 **3슬롯 고정**이므로 분모가 3이다
+       * (GDD §5.2 "슬롯 압박 자체가 선택을 만든다"). 칸을 늘리면 그 압박이 사라진다.
+       */
+      const held = s.inventory.filter(Boolean).length
+      if (held !== lastInvCount) {
+        invCount.textContent = `${held} / ${SLOTS}`
+        lastInvCount = held
       }
 
       // ── 양심 게이지. 0을 중심으로 좌(적)·우(녹)로 자란다. **숫자는 없다**

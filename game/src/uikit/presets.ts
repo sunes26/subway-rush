@@ -269,6 +269,59 @@ export const PRESETS: readonly Preset[] = [
     }),
   },
 
+  // ─────────────── HUD 계기판 ───────────────
+  // Figma `game-hud-ui` 적용 후 신설. 위젯 4개가 각 모서리에 흩어졌으므로
+  // "한 화면에서 같이 봐야" 균형을 판단할 수 있다.
+  {
+    id: 'hud-calm',
+    group: 'HUD 계기판',
+    label: '평시 — 3:00',
+    note: '좌상단 스태미너 · 우상단 미니맵(잠김) · 하단 소지품 · 우하단 잔액',
+    state: () => base(),
+  },
+  {
+    id: 'hud-warn',
+    group: 'HUD 계기판',
+    label: '타이머 60s — 노랑',
+    note: '4단계 중 2단계. 색만 바뀌고 자리는 그대로여야 같은 계기로 읽힌다',
+    state: () => base({ timeLeftMs: 45_000 }),
+  },
+  {
+    id: 'hud-crit',
+    group: 'HUD 계기판',
+    label: '타이머 8s — 적색 + 비네팅',
+    note: '심박 애니 + 화면 가장자리 붉은 비네팅이 같이 걸린다',
+    state: () => base({ timeLeftMs: 8000 }),
+  },
+  {
+    id: 'hud-stam-low',
+    group: 'HUD 계기판',
+    label: '스태미너 잠김',
+    note: '원형 게이지가 시안 → 적색. 위치·크기는 안 바뀐다',
+    state: (t) => {
+      const s = base()
+      return { ...s, player: { ...s.player,
+        stamina: 8 + Math.sin(t * 2) * 6, sprintLocked: true } }
+    },
+  },
+  {
+    id: 'hud-lowbal',
+    group: 'HUD 계기판',
+    label: '잔액 부족 — 적색 진동',
+    note: '요금 1,400원 미달. 개찰구 도착 **전에** 알려야 한다 (GDD §7.2)',
+    state: () => base({ cardBalance: 900 }),
+  },
+  {
+    id: 'hud-zones',
+    group: 'HUD 계기판',
+    label: '존 배너 — 승강장',
+    note: '예전 foot 의 Zone 칸이 미니맵 하단 배너로 옮겨졌다',
+    state: () => {
+      const s = base()
+      return { ...s, zone: 'Z5', player: { ...s.player, pos: { x: 150, y: 6, z: -20 } } }
+    },
+  },
+
   // ─────────────── 종합 ───────────────
   {
     id: 'combo-chase',

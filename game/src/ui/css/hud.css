@@ -1,47 +1,156 @@
 /*
- * HUD 스타일 — LED 전광판 · 타이머 · 잔액 · 스태미너 · 인벤 3슬롯 · 양심 게이지.
+ * HUD 스타일 — LED 전광판 · 타이머 · 원형 스태미너 · 미니맵 · 인벤 3슬롯 · 잔액 배지 · 양심.
  *
  * ★ 이 파일이 **단일 원천**이다. 게임(`ui/hud.ts`)과 UI 킷(`/uikit.html`)이 같은 파일을
  *   읽는다. 킷에서 수치를 만지면 그 순간 게임도 바뀐다 — 이식 단계가 없다.
  *   TS 쪽은 `?inline` 로 문자열을 받아 예전처럼 <style> 로 주입한다(주입 방식 무변경).
+ *
+ * ── 레이아웃 출처: Figma `game-hud-ui` (node 4:4) ──
+ *   좌상단 원형 스태미너 · 우상단 미니맵 220 · 하단중앙 인벤 패널 · 우하단 잔액/안내.
+ *   예전 하단 4칸 `foot` 바는 **없앴다** — 정보가 위젯으로 흩어져 화면 하단이 열린다.
+ *
+ * ── 디자인과 의도적으로 다르게 간 것 ──
+ *   · 슬롯 8칸 → **3칸**. GDD §5.2 "3슬롯 고정 · 슬롯 압박 자체가 선택을 만든다"
+ *   · 미니맵 상시 → **잠김**(노선도 I-13 해금은 P2). 껍데기를 보여 P2 아이템 가치를 광고한다
+ *   · 상단 LED·타이머는 디자인에 없다. 180초가 이 게임의 심장이라 뺄 수 없으므로
+ *     **같은 패널 언어**로 다시 입혔다
  */
-#hud{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:space-between;
-  font-family:var(--sans);user-select:none}
-#hud .bar{display:flex;align-items:center;gap:16px;padding:10px 18px;
-  background:linear-gradient(180deg,rgba(6,6,8,.92),rgba(6,6,8,.55));
-  border-bottom:1px solid rgba(255,255,255,.08);backdrop-filter:blur(6px)}
+
+/* ─────────────── 공통 레이어 ─────────────── */
+#hud{position:absolute;inset:0;font-family:var(--sans);user-select:none}
+
+/* Figma 패널 — 반투명 검정 · 실낱 테두리 · 깊은 그림자. 모든 위젯이 이 한 규칙을 쓴다 */
+.hud-panel{background:var(--panel);border:1px solid var(--panel-line);
+  box-shadow:var(--panel-shadow);backdrop-filter:blur(8px)}
+
+/* ─────────────── 상단: LED 전광판 + 타이머 ─────────────── */
+/* 디자인에 없는 영역이지만 게임의 심장이다 — 패널 언어만 맞춘다 */
+#hud .bar{position:absolute;top:24px;left:50%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:20px;padding:10px 20px;
+  border-radius:var(--r-pill);width:min(720px,calc(100% - 320px))}
 #hud .marquee{flex:1;overflow:hidden;white-space:nowrap;font-family:var(--mono);
   font-size:13px;letter-spacing:.06em;color:#FFB020;text-shadow:0 0 12px rgba(255,176,32,.45)}
 #hud .marquee span{display:inline-block;padding-left:100%;animation:sc 22s linear infinite}
 @keyframes sc{to{transform:translateX(-100%)}}
-#hud .clock{font-family:var(--mono);font-size:34px;font-weight:700;letter-spacing:.04em;
-  font-variant-numeric:tabular-nums;line-height:1;transition:color .25s}
-#hud .clock small{font-size:11px;letter-spacing:.24em;display:block;opacity:.5;font-weight:400;margin-bottom:3px}
+#hud .clock{font-family:var(--mono);font-size:30px;font-weight:800;letter-spacing:.04em;
+  font-variant-numeric:tabular-nums;line-height:1;transition:color .25s;text-align:right}
+#hud .clock small{font-size:9px;letter-spacing:.22em;display:block;opacity:.45;
+  font-weight:500;margin-bottom:3px;color:var(--muted)}
 #hud .clock.warn{color:var(--warn)}
 #hud .clock.hot{color:var(--hot)}
 #hud .clock.crit{color:var(--crit);animation:beat .5s ease-in-out infinite}
 @keyframes beat{0%,100%{transform:scale(1)}45%{transform:scale(1.07)}}
 
-#hud .foot{display:flex;align-items:stretch;gap:1px;padding:0;
-  background:rgba(255,255,255,.07);border-top:1px solid rgba(255,255,255,.08)}
-#hud .cell{flex:1;background:rgba(6,6,8,.88);padding:9px 16px;display:flex;
-  flex-direction:column;gap:5px;backdrop-filter:blur(6px)}
-#hud .k{font-family:var(--mono);font-size:9px;letter-spacing:.24em;opacity:.45;text-transform:uppercase}
-#hud .v{font-size:17px;font-weight:650;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
-#hud .v.low{color:var(--crit);animation:jit .28s linear infinite}
-@keyframes jit{0%,100%{transform:translateX(0)}25%{transform:translateX(-.7px)}75%{transform:translateX(.7px)}}
-#hud .stam{height:7px;border-radius:4px;background:rgba(255,255,255,.12);overflow:hidden;margin-top:5px}
-#hud .stam i{display:block;height:100%;background:linear-gradient(90deg,#00A84D,#7FE0A0);
-  transition:width .09s linear}
-#hud .stam.locked i{background:linear-gradient(90deg,#E5484D,#FF8A3D)}
+/* ─────────────── 좌상단: 원형 스태미너 ─────────────── */
+/*
+  Figma 는 링을 SVG 두 장(트랙 + 진행)으로 그렸다. **값이 매 프레임 바뀌므로**
+  정적 에셋으로는 표현할 수 없다 — conic-gradient 로 같은 그림을 만든다.
+  각도는 `--stam`(0~1)이 정하고 TS 가 그 변수만 쓴다.
+*/
+#stam-w{position:absolute;left:40px;top:40px;display:flex;flex-direction:column;
+  align-items:center;gap:10px}
+#stam-ring{position:relative;width:100px;height:100px}
+/*
+  ⚠ 마스크는 **자식까지 함께** 잘라낸다. 숫자를 링 안에 넣었더니 가운데 구멍과 같이
+  사라졌다 — 그래서 숫자는 링의 **형제**로 두고 절대배치로 겹친다.
+*/
+#stam-g{position:absolute;inset:0;border-radius:50%;
+  background:conic-gradient(var(--accent) calc(var(--stam,1) * 360deg),
+    rgba(255,255,255,.12) 0);
+  /* 링 두께 8px — Figma 의 stroke-width 와 같다 */
+  mask:radial-gradient(circle,transparent 41px,#000 42px);
+  -webkit-mask:radial-gradient(circle,transparent 41px,#000 42px);
+  filter:drop-shadow(0 0 6px rgba(0,240,255,.35));transition:filter .3s}
+#stam-n{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;
+  font-size:22px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums}
+#stam-l{font-size:14px;font-weight:700;color:var(--accent);letter-spacing:.02em}
+/* 스프린트 잠김 — 색만 바꾼다. 위치·크기는 그대로여야 "같은 게이지"로 읽힌다 */
+#stam-w.locked #stam-g{background:conic-gradient(var(--crit) calc(var(--stam,1) * 360deg),
+  rgba(255,255,255,.12) 0);filter:drop-shadow(0 0 6px rgba(229,72,77,.4))}
+#stam-w.locked #stam-l{color:var(--crit)}
 
-/* 좌표 표시 — 상단 바 **아래** 왼쪽. 바 안에 넣으면 LED 전광판을 밀어낸다.
-   F3 디버그 오버레이(#dbg)는 top:64px 를 쓰므로 그 위에 겹치지 않게 top:56px 로 둔다. */
-#coord{position:absolute;top:56px;left:14px;font-family:var(--mono);font-size:11px;
-  letter-spacing:.06em;color:rgba(230,235,232,.72);background:rgba(6,6,8,.55);
-  padding:4px 9px;border-radius:5px;border:1px solid rgba(255,255,255,.09);
+/* ─────────────── 우상단: 미니맵 (P1 잠김) ─────────────── */
+#mini{position:absolute;right:40px;top:40px;width:220px;height:220px;
+  border-radius:110px;border-width:1.5px;padding:10px;display:grid;place-items:center}
+#mini-r{width:200px;height:200px;border-radius:100px;background:#0E1017;
+  position:relative;overflow:hidden}
+/* 잠김 — 노선도(I-13)를 얻기 전. 지도 대신 "왜 못 보는지"를 보여준다 */
+#mini.locked #mini-r{display:grid;place-items:center;gap:6px;text-align:center}
+#mini-lock{font-size:11px;line-height:1.7;color:var(--muted);padding:0 22px}
+#mini-lock b{display:block;font-size:13px;color:var(--led);margin-bottom:3px}
+#mini.on #mini-lock{display:none}
+/* 존 배너 — 예전 foot 의 Zone 칸이 여기로 옮겨졌다 */
+#mini-z{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);
+  background:var(--chip);border-radius:4px;padding:4px 10px;
+  font-size:11px;font-weight:700;color:#fff;white-space:nowrap}
+
+/* ─────────────── 하단 중앙: 인벤 패널 ─────────────── */
+#inv-p{position:absolute;left:50%;bottom:40px;transform:translateX(-50%);
+  display:flex;flex-direction:column;align-items:center;gap:12px;padding:16px;
+  border-radius:var(--r-panel)}
+#inv-h{display:flex;align-items:center;gap:14px;justify-content:center}
+#inv-h .t{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:800;color:#fff}
+#inv-h .t svg{width:16px;height:16px;display:block}
+#inv-h .c{font-size:12px;font-weight:500;color:#6B7280;font-variant-numeric:tabular-nums}
+#hud .inv{display:flex;gap:8px}
+/*
+  슬롯 72px — Figma 그대로. 3칸이라 패널 폭이 디자인(720)보다 좁아진다:
+  16 + 72*3 + 8*2 + 16 = 264. 디자인의 720 은 8칸 전제였고, 칸 수가 규칙이므로
+  **폭이 칸을 따른다**(패널을 늘려 빈 칸을 채우면 3슬롯의 압박이 사라진다).
+*/
+#hud .slot{position:relative;width:72px;height:72px;border-radius:var(--r-slot);
+  background:var(--panel);border:1px solid var(--panel-line);
+  display:grid;place-items:center;font-size:30px;line-height:1;transition:border-color .18s}
+/* 빈 칸 — Figma 의 16px placeholder */
+#hud .slot::after{content:'';width:16px;height:16px;border-radius:2px;
+  background:rgba(255,255,255,.06)}
+#hud .slot.has::after{display:none}
+/* 착용 중(마스크) — 선택 슬롯과 같은 시안 강조. Figma 의 선택 상태를 이 의미로 쓴다 */
+#hud .slot.worn{border:2px solid var(--accent);box-shadow:0 0 8px rgba(0,240,255,.4)}
+#hud .slot b{position:absolute;right:5px;bottom:5px;background:var(--chip);
+  border-radius:4px;padding:1px 4px;font-family:var(--mono);font-size:10px;
+  font-weight:700;color:var(--muted)}
+
+/* ─────────────── 하단 중앙: 양심 게이지 ─────────────── */
+/*
+  디자인에 없는 요소다. GDD §7.2 가 "은은하게 · 숫자 미표시"를 못 박았으므로
+  인벤 패널 **위**에 얇은 선으로 둔다 — 값이 바뀔 때만 0.6s 밝아진다.
+  상시 강조하면 도덕 점수판이 되고, 그러면 플레이어가 게임이 아니라 채점을 의식한다.
+*/
+#cons{position:absolute;left:50%;bottom:184px;transform:translateX(-50%);
+  width:140px;height:4px;border-radius:3px;background:rgba(255,255,255,.1);
+  pointer-events:none;opacity:.3;transition:opacity .5s}
+#cons.lit{opacity:.95}
+#cons i{position:absolute;top:0;bottom:0;border-radius:3px;transition:left .3s,width .3s}
+#cons u{position:absolute;left:50%;top:-3px;width:1px;height:10px;background:rgba(255,255,255,.3)}
+
+/* ─────────────── 우하단: 잔액 배지 + 안내 ─────────────── */
+#rb{position:absolute;right:40px;bottom:40px;display:flex;flex-direction:column;
+  align-items:flex-end;gap:16px}
+#bal-b{display:flex;align-items:center;gap:10px;padding:10px 16px;
+  border-radius:var(--r-pill)}
+#bal-b svg{width:20px;height:20px;display:block}
+#bal-b .k{font-size:14px;font-weight:500;color:var(--muted)}
+#bal-b .v{font-size:16px;font-weight:800;color:var(--gold);
+  font-variant-numeric:tabular-nums}
+/* GDD §7.2 — 잔액이 요금 미만이면 적색 + 미세 진동. 개찰구 도착 **전에** 알린다 */
+#bal-b .v.low{color:var(--crit);animation:jit .28s linear infinite}
+@keyframes jit{0%,100%{transform:translateX(0)}25%{transform:translateX(-.7px)}75%{transform:translateX(.7px)}}
+
+/* 안내 필 — Figma 의 hud-instruction. 포인터 락 전에만 뜬다 */
+#lockhint{background:var(--chip);border:1px solid rgba(255,255,255,.05);
+  border-radius:6px;padding:8px 16px;font-size:12px;font-weight:500;color:var(--muted);
+  display:none;white-space:nowrap}
+#lockhint.on{display:block;animation:pop .3s ease both}
+#lockhint em{font-style:normal;color:var(--gold)}
+
+/* ─────────────── 좌표 · 피드백 · 비네팅 · 조준점 · 신호 ─────────────── */
+/* 좌표는 개발용이다 — 미니맵 아래에 붙여 위젯과 겹치지 않게 한다 */
+#coord{position:absolute;top:274px;right:40px;font-family:var(--mono);font-size:11px;
+  letter-spacing:.06em;color:rgba(230,235,232,.6);background:var(--chip);
+  padding:4px 9px;border-radius:5px;border:1px solid rgba(255,255,255,.07);
   pointer-events:none;font-variant-numeric:tabular-nums;white-space:pre}
-#coord b{color:#7FE0A0;font-weight:600}
+#coord b{color:var(--accent);font-weight:600}
 
 #fx{position:absolute;left:50%;top:33%;transform:translateX(-50%);display:flex;
   flex-direction:column;align-items:center;gap:7px;pointer-events:none}
@@ -50,33 +159,12 @@
   animation:pop .34s cubic-bezier(.2,1.5,.4,1) both}
 #fx .timePenalty{color:var(--crit);border:1px solid rgba(229,72,77,.4)}
 #fx .balance{color:var(--gold);border:1px solid rgba(255,200,61,.35)}
-#fx .toast{color:var(--line2);border:1px solid rgba(0,168,77,.35);font-size:15px}
+#fx .toast{color:var(--accent);border:1px solid rgba(0,240,255,.3);font-size:15px}
 @keyframes pop{from{opacity:0;transform:translateY(11px) scale(.9)}to{opacity:1;transform:none}}
 
 #vig{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .4s;
   background:radial-gradient(ellipse at center,transparent 42%,rgba(140,10,14,.62) 100%)}
 #shake{position:absolute;inset:0;pointer-events:none}
-
-/* 인벤 3슬롯 — GDD §5.2. 아이콘 에셋 대신 글리프 한 자로 끝낸다.
-   3분 게임에서 아이콘 4개를 만들 시간은 다른 데 쓰는 게 낫고,
-   슬롯 압박 자체가 정보라 "무엇이 몇 번에 있나"만 읽히면 충분하다 */
-#hud .inv{display:flex;gap:6px}
-#hud .slot{position:relative;width:38px;height:38px;border-radius:6px;
-  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);
-  display:flex;align-items:center;justify-content:center;font-size:18px;line-height:1}
-#hud .slot.has{border-color:rgba(255,200,61,.5);background:rgba(255,200,61,.09)}
-#hud .slot.worn{border-color:rgba(0,168,77,.6);background:rgba(0,168,77,.12)}
-#hud .slot b{position:absolute;top:1px;left:3px;font-family:var(--mono);font-size:8px;opacity:.45}
-
-/* 양심 게이지 — GDD §7.2 "은은하게, 숫자 미표시".
-   상시 강조하면 도덕 점수판이 되고, 그러면 플레이어가 게임을 하는 게 아니라
-   채점을 의식한다. 값이 바뀐 순간에만 0.6s 밝아진다 */
-#cons{position:absolute;left:50%;bottom:78px;transform:translateX(-50%);width:120px;height:4px;
-  border-radius:3px;background:rgba(255,255,255,.1);pointer-events:none;opacity:.3;
-  transition:opacity .5s}
-#cons.lit{opacity:.95}
-#cons i{position:absolute;top:0;bottom:0;border-radius:3px;transition:left .3s,width .3s}
-#cons u{position:absolute;left:50%;top:-3px;width:1px;height:10px;background:rgba(255,255,255,.3)}
 
 /* 1인칭 조준점 — 상호작용 대상이 화면 어디를 기준으로 판정되는지 알려준다 */
 #cross{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
@@ -89,23 +177,12 @@
 #cross i:nth-child(3){top:7px;left:0;height:2px;width:5px}
 #cross i:nth-child(4){top:7px;right:0;height:2px;width:5px}
 
-/* 횡단보도 신호.
-   예전에는 적신호에 보이지 않는 벽이 서서 "간헐적으로 앞이 막힌다"가 원인 불명의
-   버그로 읽혔고, 이 표시는 그 벽의 정체를 밝히는 물건이었다.
-   지금은 벽이 없다 — 적신호에도 건널 수 있고 대신 **차에 치이면 처음으로 돌아간다.**
-   그래서 문안도 명령("정지")이 아니라 경고로 바꿨다. 신호등 폴은 횡단보도 남쪽 끝
-   (y 22.6)에 하나뿐이라 북쪽으로 건너는 동안에는 시야 밖이므로 표시가 더 필요하다. */
+/* 횡단보도 신호. 적신호는 금지가 아니라 **위험 경고**다 —
+   벽으로 막던 것을 결과(차에 치이면 스폰으로)로 바꿨기 때문이다. */
 #sig{position:absolute;left:50%;top:63%;transform:translateX(-50%);
   font-family:var(--mono);font-size:13px;letter-spacing:.1em;display:none;
-  padding:7px 15px;border-radius:5px;background:rgba(8,8,10,.78);
+  padding:7px 15px;border-radius:5px;background:var(--chip);
   pointer-events:none;font-variant-numeric:tabular-nums;white-space:pre}
 #sig.on{display:block;animation:pop .3s ease both}
 #sig.stop{color:var(--crit);border:1px solid rgba(229,72,77,.45)}
 #sig.go{color:var(--line2);border:1px solid rgba(0,168,77,.45)}
-
-/* 포인터 락 안내 — 잠기기 전에는 시선이 안 움직인다는 걸 알려야 한다 */
-#lockhint{position:absolute;left:50%;top:72%;transform:translateX(-50%);
-  font-family:var(--mono);font-size:12px;letter-spacing:.18em;color:#F5F5F0;
-  background:rgba(8,8,10,.72);padding:9px 16px;border-radius:5px;display:none;
-  border:1px solid rgba(255,255,255,.16);pointer-events:none}
-#lockhint.on{display:block;animation:pop .3s ease both}

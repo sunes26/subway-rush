@@ -96,7 +96,8 @@ test('검토용 스크린샷 — 그룹 대표 상태', async ({ page }) => {
   test.setTimeout(180_000)
   await boot(page)
   const reps = ['prompt-aimed', 'ring-story', 'deny-need', 'dlg-fish', 'qte-live',
-    'inv-worn', 'cons-bad', 'combo-chase']
+    'inv-worn', 'cons-bad', 'combo-chase',
+    'hud-calm', 'hud-crit', 'hud-stam-low', 'hud-lowbal']
   for (const id of reps) {
     await page.click(`#list button[data-id="${id}"]`)
     await page.waitForTimeout(500)

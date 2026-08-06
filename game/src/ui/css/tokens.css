@@ -16,3 +16,29 @@
   --mono:ui-monospace,"Cascadia Mono","SF Mono",Menlo,Consolas,monospace;
   --sans:system-ui,-apple-system,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;
 }
+
+/*
+ * ── Figma `game-hud-ui` (node 4:4) 에서 들여온 패널 언어 ──
+ *
+ * 디자인이 준 값 중 **반복되는 것만** 변수로 올린다. 한 번만 쓰이는 값은 그 자리에 둔다 —
+ * 토큰이 난립하면 "어느 변수가 이 화면을 정하는가"를 못 읽게 된다.
+ *
+ * ⚠ `#FFB800`(디자인의 강조 앰버)은 우리 골드 `#FFC83D` 와 4% 차이다.
+ *   **골드로 통일했다.** 골드는 3D 상호작용 아웃라인(`PALETTE.gold`)과 같은 값이어야 하고,
+ *   그 일관성이 4%의 색차보다 중요하다 — 화면에서 "만질 수 있는 것"의 색은 하나여야 한다.
+ */
+:root{
+  /* 플레이어 자신의 상태 — 스태미너 · 선택 슬롯 · 미니맵의 나 */
+  --accent:#00F0FF;
+  /* 패널: 반투명 검정 + 실낱 테두리 + 깊은 그림자 */
+  --panel:rgba(11,12,16,.72);
+  --panel-line:rgba(255,255,255,.1);
+  --panel-shadow:0 8px 16px rgba(0,0,0,.7);
+  /* 보조 텍스트(라벨·부가 수치) */
+  --muted:#A3A9C2;
+  /* 어두운 배지 — 슬롯 번호 · 존 배너 · 안내 필 */
+  --chip:rgba(0,0,0,.62);
+  --r-slot:8px;
+  --r-panel:12px;
+  --r-pill:20px;
+}
