@@ -45,15 +45,15 @@ describe('S12-1 엔딩 6종이 각각 재현된다', () => {
     const s = start(7, {
       boarded: true,
       timeLeftMs: 20_000,
-      tally: { coinsEarned: 3000, itemsUsed: [], secrets: [] },
+      tally: { coinsEarned: 3000, itemsUsed: [], secrets: [], pushes: 0 },
     })
     expect(resolveEnding(s).id).toBe('E-14')
   })
 
-  it('6종 전부 서로 다른 id·title 을 갖는다', () => {
-    expect(ENDINGS.length).toBe(6)
-    expect(new Set(ENDINGS.map((e) => e.id)).size).toBe(6)
-    expect(new Set(ENDINGS.map((e) => e.title)).size).toBe(6)
+  it('전부 서로 다른 id·title 을 갖는다 (P2에서 14종)', () => {
+    expect(ENDINGS.length).toBe(14)
+    expect(new Set(ENDINGS.map((e) => e.id)).size).toBe(14)
+    expect(new Set(ENDINGS.map((e) => e.title)).size).toBe(14)
   })
 })
 
@@ -72,7 +72,7 @@ describe('S12-2~S12-3 우선순위', () => {
       boarded: true,
       timeLeftMs: 20_000,
       scores: { conscience: -5, style: 0, knowledge: 0 },
-      tally: { coinsEarned: 4500, itemsUsed: [], secrets: [] },
+      tally: { coinsEarned: 4500, itemsUsed: [], secrets: [], pushes: 0 },
     })
     expect(resolveEnding(s).id, 'E-14 priority 90 > E-10 80').toBe('E-14')
   })
@@ -136,7 +136,7 @@ describe('S12-4~S12-6 채점 축', () => {
   it('S12-6 지식은 시크릿 중복을 세지 않는다', () => {
     const s0 = start(7)
     // 같은 시크릿 id를 두 번 넣어도 1
-    const once = { ...s0, tally: { ...s0.tally, secrets: ['vend-OBJ-06'] }, scores: { ...s0.scores, knowledge: 1 } }
+    const once = { ...s0, tally: { ...s0.tally, secrets: ['vend-OBJ-06'], pushes: 0 }, scores: { ...s0.scores, knowledge: 1 } }
     const again = tap(once, {})
     expect(again.scores.knowledge).toBe(1)
   })
@@ -149,7 +149,7 @@ describe('S12-4~S12-6 채점 축', () => {
     // QTE를 강제로 성공시키는 대신, 소진 상태에서 다시 눌러 중복이 안 생기는지만 본다
     const consumed = { ...s, qte: { ...s.qte, active: false },
       act: { ...s.act, consumed: ['OBJ-06'] },
-      tally: { ...s.tally, secrets: ['vend-OBJ-06'] },
+      tally: { ...s.tally, secrets: ['vend-OBJ-06'], pushes: 0 },
       scores: { ...s.scores, knowledge: 1 } }
     const retry = tap(consumed, { pressInteract: true }, yaw)
     expect(retry.scores.knowledge, '중복 카운트 0').toBe(1)
@@ -170,7 +170,7 @@ describe('S12-8 실패 엔딩의 톤 가드레일', () => {
       expect(h, h).not.toMatch(MOCKING)
       expect(h.length, h).toBeGreaterThan(8)
     }
-    expect(FAIL_HINTS.length, 'P1에서 3줄 추가 → 8줄').toBe(8)
+    expect(FAIL_HINTS.length, 'P1 8줄 + P2 5줄 → 13줄').toBe(13)
   })
 
   it('실패 엔딩은 힌트를 받는다 (고유 힌트 또는 공용 풀)', () => {
@@ -213,7 +213,7 @@ describe('S12 엔딩 판정이 시뮬 종료와 연결된다', () => {
       { timeLeftMs: -99_999 },
       { timeLeftMs: TOTAL_TIME_MS },
       { scores: { conscience: 5, style: 9, knowledge: 12 } },
-      { tally: { coinsEarned: 99_999, itemsUsed: [], secrets: [] } },
+      { tally: { coinsEarned: 99_999, itemsUsed: [], secrets: [], pushes: 0 } },
     ]
     for (const p of wild) expect(() => resolveEnding(start(7, p))).not.toThrow()
   })

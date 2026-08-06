@@ -1,8 +1,11 @@
 import type { Vec2, Vec3 } from '../core/math'
 import type { InteractKind } from '../data/interactables'
+import type { ObsId } from '../data/obstacles'
 import type { ZoneId } from '../data/world'
 
 export type { InteractKind }
+
+export type { ObsId }
 
 export type { ZoneId }
 
@@ -27,8 +30,19 @@ export type FlagId =
   | 'HINT_GRANDPA'       // 대화 완주 보상 — 안내 LED가 고장 게이트를 지목한다
   | 'MASK_ON'            // 마스크 착용 (O-04 저항 +50%)
   | 'CHASE_DONE'         // 추격이 한 번 끝났다 — 재발동 금지
-  | 'WALLET_RETURNED'    // P2 예약
-  | 'SEAT_YIELDED'       // P2 예약
+  | 'WALLET_RETURNED'    // 유실물 지갑 반납 — 비상게이트 개방원 (E-12 조건)
+  | 'SEAT_YIELDED'       // 임산부 배려석 양보 (E-12 조건)
+  // ── P2 착용 ──
+  | 'EARBUDS_ON'         // 이어폰 착용 — 전단지·아주머니 무시. 대가: LED 힌트가 안 들린다
+  | 'CARRIER_ON'         // 캐리어 견인 — 인파 관통. 대가: 이동속도 −20%
+  | 'CAFFEINE'           // 커피를 마셨다 — 스태미너 소모 감소
+  | 'MAP_OPEN'           // 노선도를 펼쳤다 — 미니맵 확대
+  // ── P2 개찰 ──
+  | 'EMERGENCY_OPEN'     // 비상게이트가 열려 있다
+  | 'FARE_EVADED'        // 요금을 안 내고 통과했다 — 역무원 시야에 들면 E-09
+  | 'TOILET_USED'        // Z2 화장실 진입 (E-13)
+  | 'OPPOSITE_SIDE'      // Z5 반대편 승강장 도달 (E-08)
+  | 'BUSTED'             // 역무원에게 적발됐다 — E-09 의 단일 조건
 
 export type GateState = 'idle' | 'tagging' | 'open' | 'reject'
 
@@ -58,6 +72,15 @@ export type PlayerState = Readonly<{
   /** 이동 중 여부 (애니 선택용) */
   moving: boolean
   sprinting: boolean
+  /**
+   * 못 움직이는 남은 시간(ms) — P2 방해요소 공용 (`systems/obstacles.ts`).
+   *
+   * P1의 `surge.stallMs` 와 **의미가 같다.** 합치지 않은 이유는 역류가 자기 웨이브
+   * 안에서만 유효한 `fell` 과 짝지어 있기 때문이고, 대신 이동 봉쇄는 둘 다 같은 수법
+   * (`MOVE` 재발행)을 쓴다. 겹치면 **더 긴 쪽이 이긴다** — 짧은 쪽이 끝났다고 풀리면
+   * 두 방해가 겹칠 때 하나가 공짜가 된다.
+   */
+  stallMs: number
 }>
 
 export type GatesState = Readonly<{
@@ -127,18 +150,46 @@ export type ActState = Readonly<{
 /** 바닥에 떨어진 아이템 — 슬롯 교체 시 생긴다. 되돌아가 주울 수 있다 */
 export type Drop = Readonly<{ id: string; item: ItemId; x: number; y: number; z: number }>
 
-/** 자판기 긁기 QTE (P1) */
+/**
+ * UI-14 교체 창 (P2).
+ *
+ * ★ **P1 동작이 먼저 일어나고, 그 뒤 0.9초 동안 되돌릴 수 있다.**
+ *   모달을 띄우고 *기다리는* 방식이 아니다 — 그렇게 짜면 무입력 플레이(헤드리스·자동조종)가
+ *   습득 지점마다 0.9초씩 멈추고, P1 회귀 테스트 2건이 통째로 뒤집힌다.
+ *   지금 방식은 아무것도 안 눌러도 P1과 **완전히 같은 결과**이고, 누르면 자리를 바꾼다.
+ */
+export type SwapState = Readonly<{
+  active: boolean
+  /** 새 아이템이 들어간 칸 (항상 0 — 리듀서의 `chooseSlot` 규칙) */
+  newSlot: number
+  /** 밀려나 바닥에 놓인 드랍 id */
+  dropId: string | null
+  /** 남은 창(ms) */
+  leftMs: number
+}>
+
+/**
+ * 자판기 긁기 QTE — **P2에서 타이밍 바로 바뀌었다.**
+ *
+ * P1은 마우스 좌↔우 왕복 드래그였다(누적 이동량 + 리듬 판정). 손목 왕복이 동사였는데,
+ * 그건 마우스 감도·DPI 에 따라 난이도가 갈리고 판정 이유가 화면에 안 보였다.
+ * P2는 **좌우로 왕복하는 마커를 중앙 구간에서 클릭**한다 — 언제 눌러야 하는지가
+ * 게이지 하나에 전부 그려진다.
+ *
+ * ★ 마커는 `ADVANCE` 에서만 움직인다(타이머 단일 감산 규칙). 시스템이 자기 위치를
+ *   따로 밀면 프레임당 두 번 움직여 판정이 프레임레이트를 탄다.
+ */
 export type QteState = Readonly<{
   active: boolean
   vendorId: string | null
-  /** 성공한 스트로크 0..3 */
+  /** 성공 횟수 0..3 */
   strokes: number
-  /** 현재 진행 방향. 0 = 아직 미정 */
-  dir: -1 | 0 | 1
-  /** 방향 유지 중 누적 이동량(px) */
-  travel: number
-  /** 다음 판정창까지 남은 시간(ms). 음수면 창을 지났다 */
-  beatMs: number
+  /** 마커 위치 0(왼쪽 끝) ~ 1(오른쪽 끝) */
+  pos: number
+  /** 진행 방향. +1 = 오른쪽 */
+  dirSign: -1 | 1
+  /** 초당 왕복 배수 — 성공할 때마다 빨라진다 */
+  speedMul: number
   misses: number
   elapsedMs: number
 }>
@@ -193,6 +244,8 @@ export type TallyState = Readonly<{
   itemsUsed: readonly ItemId[]
   /** 발견한 시크릿 id (지식 축) — 중복 카운트 방지용으로 집합 성격 */
   secrets: readonly string[]
+  /** 우산으로 인파를 밀어낸 횟수 (E-11 조건). GDD §9.4 "3회 이상" */
+  pushes: number
 }>
 
 export type GameState = Readonly<{
@@ -239,6 +292,24 @@ export type GameState = Readonly<{
   qte: QteState
   surge: SurgeState
   tally: TallyState
+
+  // ── P2 신설 ──
+  /** UI-14 교체 창 — 슬롯이 가득 찬 채로 습득한 직후 0.9초 */
+  swap: SwapState
+  /**
+   * 이번 판에 켜진 방해요소 8종 (`data/obstacles.ts rollObstacles`).
+   * **판정 시스템은 이 배열에 없는 id 를 무시한다** — 조건을 만족해도 침묵한다.
+   */
+  obstacles: readonly ObsId[]
+  /** 방해요소별 재발동 쿨다운 잔여(ms). 키가 없으면 0 */
+  obsCooldown: Readonly<Partial<Record<ObsId, number>>>
+  /**
+   * ACT-08 역무원 경보 누적(ms). 시야에서 벗어나면 0으로 돌아간다.
+   * **위치는 여기 없다** — 순찰이 정해진 구간 왕복이라 `staffAt(elapsedMs)` 로 파생한다.
+   */
+  staffAlertMs: number
+  /** 승차 대기줄 ⓐⓑⓒ 인원. 합계 고정·분포 시드 (R3 해소) */
+  queues: readonly number[]
 }>
 
 export type Action =
@@ -275,14 +346,18 @@ export type Action =
   | { t: 'SECRET'; id: string }
   | { t: 'FLAG'; id: FlagId; on: boolean }
 
-  // ── P1 QTE ──
+  // ── QTE (P2 — 타이밍 바) ──
   | { t: 'QTE_BEGIN'; vendorId: string }
-  | { t: 'QTE_INPUT'; dir: -1 | 0 | 1; travel: number }
-  | { t: 'QTE_STROKE'; hit: boolean }
+  /** 클릭 판정 1회. 성공이면 마커가 빨라진다 */
+  | { t: 'QTE_HIT'; hit: boolean }
   | { t: 'QTE_END'; success: boolean }
 
   // ── P1 단소 추격 (O-14) ──
-  | { t: 'CHASE_START'; x: number; y: number }
+  /**
+   * 발도 시작. **`facing` 을 반드시 같이 준다** — 안 주면 `EMPTY_CHASE` 의 0(동쪽)이
+   * 발도 0.6초 내내 남아서, 훔친 직후 할아버지가 엉뚱한 쪽을 보고 일어선다.
+   */
+  | { t: 'CHASE_START'; x: number; y: number; facing: number }
   | { t: 'CHASE_MOVE'; x: number; y: number; facing: number; stuckMs: number }
   | { t: 'CHASE_PHASE'; phase: ChasePhase }
   | { t: 'CHASE_HIT' }
@@ -291,3 +366,21 @@ export type Action =
 
   // ── P1 인파 (O-04) ──
   | { t: 'SURGE_FALL' }
+
+  // ── P2 방해요소 ──
+  /** 이동 봉쇄. 더 긴 쪽이 이긴다 (누적이 아니라 최대) */
+  | { t: 'STALL'; ms: number }
+  /** 방해요소가 발동했다 — 쿨다운 시작. `obsId` 는 `data/obstacles.ts` 의 id */
+  | { t: 'OBS_FIRE'; id: ObsId; cooldownMs: number }
+  /** 슬롯 하나를 바닥에 떨어뜨린다 (물청소 미끄럼) */
+  | { t: 'FUMBLE'; slot: number }
+  /** 역무원 경보 누적 갱신 — 절대값으로 쓴다(누적은 시스템이 계산한다) */
+  | { t: 'STAFF_ALERT'; ms: number }
+  /** 우산으로 인파를 밀어냈다 (E-11 계수) */
+  | { t: 'PUSH' }
+
+  // ── P2 슬롯 교체 (UI-14) ──
+  /** 교체 창 안에서 `1``2``3` — 새 아이템을 그 칸으로 옮기고 원래 있던 것을 바닥으로 */
+  | { t: 'SWAP_TO'; slot: number }
+  /** 교체 창 안에서 `ESC` — 습득 자체를 되돌린다 (새 아이템이 바닥에 남는다) */
+  | { t: 'SWAP_CANCEL' }

@@ -53,3 +53,24 @@ export const resolveSeed = (search = ''): number => {
   if (m?.[1]) return Number(m[1]) >>> 0
   return (Math.random() * 0xffffffff) >>> 0
 }
+
+/**
+ * 용도별 파생 스트림 (P2).
+ *
+ * 하나의 Rng를 순서대로 나눠 쓰면 **앞의 소비량이 바뀔 때 뒤가 전부 바뀐다.**
+ * P1에서 자판기 동전 분배를 끼워 넣자 게이트 시드가 통째로 이동해 회귀 테스트가
+ * 무더기로 빨간불이 됐다(`systems/qte.ts coinPlan` 이 `seed ^ hash(id)` 를 쓰는 이유).
+ * P2는 방해요소·대기줄이 더 붙으므로 규약으로 못 박는다: **용도마다 소금이 다르다.**
+ */
+export const SALT = {
+  gates: 0x0000_0000,      // 기존 동작 보존 — rollSeed 는 소금 없이 seed 그대로 쓴다
+  obstacles: 0x9e37_79b9,
+  queue: 0x85eb_ca6b,
+  crowd: 0xc2b2_ae35,
+} as const
+
+export type SaltKey = keyof typeof SALT
+
+/** 같은 seed 라도 용도가 다르면 독립적인 수열이 나온다 */
+export const streamFor = (seed: number, key: SaltKey): Rng =>
+  makeRng(((seed >>> 0) ^ SALT[key]) >>> 0)

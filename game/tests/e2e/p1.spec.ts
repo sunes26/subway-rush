@@ -8,6 +8,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test'
+import { SLOTS } from '../../src/data/tuning'
 
 const collectConsole = (page: Page): string[] => {
   const errs: string[] = []
@@ -50,7 +51,7 @@ test('S13-7 · P1 자산이 콘솔 오류 없이 로드된다', async ({ page })
     const s = window.__game!.state()
     return { slots: document.querySelectorAll('#hud-inv .slot').length, cons: !!document.getElementById('cons'), phase: s.phase }
   })
-  expect(ok.slots, '인벤 3슬롯 HUD').toBe(3)
+  expect(ok.slots, `인벤 ${SLOTS}슬롯 HUD`).toBe(SLOTS)
   expect(ok.cons, '양심 게이지').toBe(true)
   expect(errs.filter((e) => !e.includes('WebGL') && !e.includes('SwiftShader')), errs.join('\n')).toEqual([])
 })
@@ -137,7 +138,15 @@ test('S9-12 QTE 중 시선이 얼고 포인터 락 상태가 유지된다', asyn
   expect(r.drift, `시선 이동 ${r.drift.toFixed(3)}rad — 얼어 있어야 한다`).toBeLessThan(0.02)
 })
 
-test('S13-2 P1 추가 후에도 드로우 콜 예산 안에 든다 (Z2 핫스팟)', async ({ page }) => {
+/**
+ * 드로우 콜은 **폭주 감지선**이다(예산이 아니라). 프레임 시간을 실제로 지키는 건 `feel.spec` 이다.
+ *
+ * P2 에서 습득물이 4종 → 20개(아이템 14 + 동전 6)로 늘며 실측 240 이 됐다.
+ * 먼저 **거리 컬링**으로 236 까지 줄이고(`render/props.ts` — 동전은 12m, 나머지 26m),
+ * 남은 폭은 선을 245 로 올려 받는다. 컬링 거리를 더 조이면 "보이는 것과 잡히는 것"이
+ * 갈라지기 시작하므로 거기서 멈췄다.
+ */
+test('S13-2 P2 추가 후에도 드로우 콜 감지선 안에 든다 (Z2 핫스팟)', async ({ page }) => {
   await boot(page)
   await stand(page, 24, 12, [42, 15])              // 대합실 중앙에서 할아버지 쪽
   await page.waitForTimeout(1600)
@@ -145,7 +154,7 @@ test('S13-2 P1 추가 후에도 드로우 콜 예산 안에 든다 (Z2 핫스팟
     const r = (window as unknown as { __renderer: { info: { render: { calls: number; triangles: number } } } }).__renderer
     return { calls: r.info.render.calls, tris: r.info.render.triangles }
   })
-  expect(info.calls, `드로우 콜 ${info.calls}`).toBeLessThan(235)
+  expect(info.calls, `드로우 콜 ${info.calls}`).toBeLessThan(245)
   expect(info.tris, `삼각형 ${info.tris}`).toBeLessThan(520_000)
 })
 

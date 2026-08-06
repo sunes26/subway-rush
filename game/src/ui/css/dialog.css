@@ -67,15 +67,22 @@
   padding:13px 16px;backdrop-filter:blur(8px)}
 #qte.on{display:flex;animation:rpop .22s ease both}
 #qte .cap{font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--gold)}
-#qte .track{position:relative;height:11px;border-radius:6px;background:rgba(255,255,255,.1);
+#qte .cap b{color:#fff;font-weight:800}
+/* 세로 16.5px = 최초 11px 의 **1.5배**(디렉터 지시). 반지름도 같이 키워 알약 모양을 유지한다.
+   `overflow:hidden` 이라 마커는 트랙 높이로 잘린다 — 마커 치수도 같은 비율로 올린다 */
+#qte .track{position:relative;height:16.5px;border-radius:9px;background:rgba(255,255,255,.1);
   overflow:hidden}
 /* 판정창 — 트랙 중앙 고정. 마커가 여기 들어왔을 때 임계를 넘겨야 한다 */
+/* 성공 구간 — 폭은 TS 가 `QTE.zoneHalf` 로 넣는다(난이도가 올라도 안 좁아진다) */
 #qte .win{position:absolute;top:0;bottom:0;left:50%;transform:translateX(-50%);
   background:rgba(0,168,77,.42);border-left:1px solid rgba(0,168,77,.8);
   border-right:1px solid rgba(0,168,77,.8)}
-#qte .mark{position:absolute;top:-3px;width:3px;height:17px;border-radius:2px;
+/* 마커 — 시뮬의 `qte.pos` 를 그대로 옮긴다. transform 으로 중앙 정렬 */
+#qte .mark{position:absolute;top:-4.5px;width:3px;height:25.5px;border-radius:2px;
+  transform:translateX(-50%);
   background:var(--gold);box-shadow:0 0 8px rgba(255,200,61,.8)}
-#qte .fill{position:absolute;left:0;top:0;bottom:0;background:rgba(255,200,61,.28)}
+/* 채움 = **남은 제한시간**. 성공 횟수는 아래 점(dots)이 이미 보여 준다 */
+#qte .fill{position:absolute;left:0;top:0;bottom:0;background:rgba(255,255,255,.14)}
 #qte .row{display:flex;align-items:center;gap:12px;font-size:12px}
 #qte .dots{display:flex;gap:5px}
 #qte .dots i{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.16)}

@@ -22,6 +22,11 @@ export type Preset = Readonly<{
   note: string
   /** 시간(초) → 상태. 정적 화면은 t 를 무시한다 */
   state: (t: number) => GameState
+  /**
+   * 상태로 그려지지 않는 오버레이. 설정 패널은 `GameState` 가 아니라 **저장된 설정**이
+   * 그리므로 프리셋이 상태로 만들 수가 없다 — 켤지 말지만 지시한다.
+   */
+  overlay?: 'settings'
 }>
 
 /** 대합실에 서 있는 기본 상태 — 모든 프리셋의 바탕 */
@@ -49,6 +54,16 @@ const pingpong = (t: number, period: number): number => {
 }
 
 export const PRESETS: readonly Preset[] = [
+  // ─────────────── 설정 ───────────────
+  {
+    id: 'settings-panel',
+    group: '설정',
+    label: 'ESC 설정 패널',
+    note: 'Figma node 15:4 — 사운드·조작·그래픽. 값은 localStorage 의 실제 설정이다',
+    state: () => base(),
+    overlay: 'settings',
+  },
+
   // ─────────────── 프롬프트 ───────────────
   {
     id: 'prompt-aimed',
@@ -172,29 +187,29 @@ export const PRESETS: readonly Preset[] = [
     id: 'qte-start',
     group: 'QTE',
     label: '시작 — 0/3',
-    note: '판정창(초록)과 마커(골드). 창이 안 보이면 판정은 운으로 읽힌다',
+    note: '성공 구간(초록)과 마커(골드). 구간이 안 보이면 판정은 운으로 읽힌다',
     state: () => ({
       ...base({ inventory: inv(['I-01', null, null]) }),
-      qte: { active: true, vendorId: 'OBJ-06', strokes: 0, dir: 0, travel: 0,
-        beatMs: QTE.beatMs, misses: 0, elapsedMs: 0 },
+      qte: { active: true, vendorId: 'OBJ-06', strokes: 0, pos: 0,
+        dirSign: 1 as const, speedMul: 1, misses: 0, elapsedMs: 0 },
     }),
   },
   {
     id: 'qte-live',
     group: 'QTE',
-    label: '진행 — 마커가 창을 지난다',
-    note: '마커가 판정창 중앙에 있을 때 임계를 넘겨야 성공',
+    label: '진행 — 마커가 구간을 지난다',
+    note: '마커가 중앙 구간에 있을 때 클릭해야 성공. 성공할수록 빨라진다',
     state: (t) => {
-      const beat = QTE.beatMs - ((t * 1000) % QTE.beatMs)
+      const hits = Math.floor(t / 1.1) % 3
       return {
         ...base({ inventory: inv(['I-01', null, null]) }),
         qte: {
           active: true, vendorId: 'OBJ-06',
-          strokes: Math.floor(t / 1.1) % 3,
-          dir: (Math.floor(t) % 2 === 0 ? 1 : -1) as 1 | -1,
-          travel: QTE.strokeTravel * pingpong(t, 1.1),
-          beatMs: beat - QTE.beatMs / 2,
-          misses: 0, elapsedMs: t * 1000,
+          strokes: hits,
+          pos: pingpong(t, QTE.cycleMs / 1000),
+          dirSign: (Math.floor((t * 2000) / QTE.cycleMs) % 2 === 0 ? 1 : -1) as 1 | -1,
+          speedMul: QTE.speedUpPerHit ** hits,
+          misses: 0, elapsedMs: (t * 1000) % QTE.timeoutMs,
         },
       }
     },
@@ -206,8 +221,8 @@ export const PRESETS: readonly Preset[] = [
     note: '성공 점과 미스 카운터가 같이 보이는 상태',
     state: () => ({
       ...base({ inventory: inv(['I-01', null, null]) }),
-      qte: { active: true, vendorId: 'OBJ-06', strokes: 2, dir: -1,
-        travel: QTE.strokeTravel * 0.55, beatMs: 40, misses: 1, elapsedMs: 3200 },
+      qte: { active: true, vendorId: 'OBJ-06', strokes: 2, pos: 0.5 - QTE.zoneHalf * 0.4,
+        dirSign: -1 as const, speedMul: QTE.speedUpPerHit ** 2, misses: 1, elapsedMs: 3200 },
     }),
   },
 

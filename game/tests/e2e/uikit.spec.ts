@@ -10,6 +10,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test'
+import { SLOTS } from '../../src/data/tuning'
 
 const DIR = 'tests/e2e/__shots__/uikit'
 
@@ -65,7 +66,8 @@ test('모든 프리셋이 의도한 표면을 띄운다', async ({ page }) => {
       slots: document.querySelectorAll('#hud-inv .slot').length,
       cons: !!document.getElementById('cons'),
     }))
-    if (base.slots !== 3) failures.push(`${p.id}: 인벤 슬롯이 ${base.slots}개`)
+    // 칸 수는 `SLOTS` 한 곳이 정한다 — 테스트가 숫자를 따로 들면 그게 두 번째 원천이 된다
+    if (base.slots !== SLOTS) failures.push(`${p.id}: 인벤 슬롯이 ${base.slots}개 (SLOTS=${SLOTS})`)
     if (!base.cons) failures.push(`${p.id}: 양심 게이지 없음`)
   }
   expect(failures.join('\n')).toBe('')

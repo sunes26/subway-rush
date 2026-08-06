@@ -1,5 +1,5 @@
 /**
- * NPC 배치·상태 동기 — 할아버지(GP)와 캐리어 승객(CP).
+ * NPC 배치·상태 동기 — 할아버지(GP) · 인파 3인(CP) · P2 방해요소 액터 4종.
  *
  * 이 파일은 **게임 규칙을 담지 않는다.** 무엇이 소진됐는지·누가 화났는지는 시뮬이 정하고
  * 여기서는 그 결과를 읽어 클립과 좌표로 옮긴다. 그래서 상태를 되짚어 쓰는 코드가 없고,
@@ -10,9 +10,12 @@
  */
 
 import { Group } from 'three'
-import { GRANDPA_ID, byId } from '../data/interactables'
+import { CP_IDS, GRANDPA_ID, byId } from '../data/interactables'
+import { OBSTACLE } from '../data/tuning'
 import { FLOOR } from '../data/world'
-import type { GameState } from '../state/types'
+import type { GameState, ObsId } from '../state/types'
+import { AJUMMA_AT, FLYER_AT, zombieAt } from '../systems/obstacles'
+import { staffAt } from '../systems/staff'
 import { loadNpcRig, type NpcRig } from './npc-rig'
 
 export type Actors = Readonly<{
@@ -21,8 +24,21 @@ export type Actors = Readonly<{
   dispose(): void
 }>
 
-/** 에스컬레이터 진입부 승객 — `interactables.ts` 의 `ACT-CP` 항목 */
-const CP_ID = 'ACT-CP'
+/**
+ * P2 방해요소 액터 — **리그는 진작 있었는데 반입이 안 돼 있었다.**
+ *
+ * 판정(`systems/obstacles.ts` · `systems/staff.ts`)만 돌고 몸이 없어서
+ * *"도 아십니까 아주머니가 구현 안 된 것 같다"* 는 지적이 나왔다. 보이지 않는 방해요소는
+ * GDD §11 이 금지한 **단서 없는 랜덤 처형**이다 — 피할 대상이 화면에 있어야 피한다.
+ *
+ * 프롭이 곧 정체다: `PR_Flyer`(전단지) · `PR_Book`(도 아세요) · `PR_Phone`(좀비폰족).
+ */
+const OBS_ACTORS = [
+  { key: 'ajp', obs: 'OBS-06' as ObsId, file: 'ajp_character_rigged.glb' },
+  { key: 'aj', obs: 'OBS-07' as ObsId, file: 'aj_character_rigged.glb' },
+  { key: 'zp', obs: 'OBS-08' as ObsId, file: 'zp_character_rigged.glb' },
+  { key: 'ss', obs: 'OBS-13' as ObsId, file: 'ss_character_rigged.glb' },
+] as const
 
 /**
  * 이 거리를 넘으면 통째로 끈다.
@@ -33,6 +49,15 @@ const CP_ID = 'ACT-CP'
  * 40 m 는 안개 far 안쪽이라, 꺼지는 순간이 화면에 잡히지 않는다.
  */
 const CULL_RANGE_M = 40
+
+/**
+ * P2 액터 컬링 — GP·CP 보다 **짧다**(26 m).
+ *
+ * 스킨드 메시는 인스턴싱이 안 되므로 한 명이 곧 드로우 콜 몇 개다. Z2 핫스팟이 이미
+ * 236/245 라 여유가 없다. 26 m 는 아주머니 반경(3 m)의 8배 이상이라
+ * **보이는 것과 잡히는 것이 갈라지지 않는다**(`render/props.ts` 와 같은 기준).
+ */
+const OBS_CULL_M = 26
 
 /**
  * 할아버지가 보는 방향 — 남쪽(−y).
@@ -105,25 +130,17 @@ const noopRig = (): NpcRig => ({
 export const CHAR_SCALE = 1.6
 
 /**
- * 모델 전방축 보정 — **리그마다 다르다.** 캐릭터별로 준다.
+ * 모델 전방축 보정 — 리그마다 다를 수 있어 캐릭터별로 준다.
  *
- * `place()` 공식(`rotation.y = -facing + π/2`)은 전방 = 로컬 +z 를 가정한다
- * (`player-rig.ts` 규약). 실측으로 확인한 결과:
+ * **지금은 전부 0 이다.** 예전에 GP·AJ·AJP 에 π 가 붙어 있었는데, 그건 리그의 문제가 아니라
+ * `npc-rig.ts place()` 의 **반사 버그를 가리던 보정**이었다(공식이 `-facing + π/2` 라
+ * 북축 대칭이 걸렸다). 공식을 `facing + π/2` 로 고치니 이 리포의 리그는 전부 +z 전방이다.
  *
- * | 리그 | 전방축 | 보정 |
- * |---|---|---|
- * | MC (플레이어) | +z | 0 |
- * | CP (캐리어 승객) | +z | 0 |
- * | **GP (할아버지)** | **−z** | **π** |
- *
- * GP 만 반대로 익스포트돼 있었다 — 그래서 **벤치 등받이를 마주 보고** 앉아 있었다
- * (등받이는 북쪽 y 15.4 이므로 앉는 방향은 남향 −y 가 맞다).
- *
- * 판정 방법(눈으로 찍지 않는다): **머리는 앞으로 기운다.** facing 단위벡터와
- * (Head − Hips) 수평 성분의 내적이 양수면 앞을 본다. 한 번은 CP 에 π 를 같이 줬다가
- * CP 가 −0.014 로 뒤집힌 것을 이 방법으로 잡았다.
+ * ⚠ 판정 방법: **동·서를 반드시 같이 본다.** 남·북은 그 반사의 고정점이라 버그가 있어도
+ *   멀쩡해 보인다 — 실제로 남북으로만 확인하다 두 번 놓쳤다.
+ *   `tests/e2e/p2.spec.ts` 의 "네 방향" 테스트가 이걸 잠근다.
  */
-const YAW_FIX = { gp: Math.PI, cp: 0 } as const
+const YAW_FIX = { gp: 0, cp: 0, aj: 0, ajp: 0, zp: 0, ss: 0 } as const
 
 /**
  * 앉은 자세 보정(m) — **실척 가구와 축소 캐릭터의 간극**을 메운다.
@@ -147,21 +164,33 @@ const loadOr = async (url: string, tag: string, yawOffset: number): Promise<NpcR
 
 export const loadActors = async (baseUrl: string): Promise<Actors> => {
   const dir = `${baseUrl}models/npc/`
-  const [gp, cp] = await Promise.all([
+  /**
+   * 인파벽은 **3인 1열**이다(P2 복원). 리그를 세 번 로드한다 —
+   * `loadNpcRig` 이 스켈레톤까지 복제하므로 셋이 각자 움직인다(얕은 복제는 본을 공유한다).
+   * 브라우저가 같은 URL 을 캐시하므로 네트워크 비용은 1회다.
+   */
+  const [gp, cp0, cp1, cp2, ajp, aj, zp, ss] = await Promise.all([
     loadOr(`${dir}gp_character_rigged.glb`, 'GP', YAW_FIX.gp),
-    loadOr(`${dir}cp_character_rigged.glb`, 'CP', YAW_FIX.cp),
+    loadOr(`${dir}cp_character_rigged.glb`, 'CP0', YAW_FIX.cp),
+    loadOr(`${dir}cp_character_rigged.glb`, 'CP1', YAW_FIX.cp),
+    loadOr(`${dir}cp_character_rigged.glb`, 'CP2', YAW_FIX.cp),
+    loadOr(`${dir}${OBS_ACTORS[0].file}`, 'AJP', YAW_FIX.ajp),
+    loadOr(`${dir}${OBS_ACTORS[1].file}`, 'AJ', YAW_FIX.aj),
+    loadOr(`${dir}${OBS_ACTORS[2].file}`, 'ZP', YAW_FIX.zp),
+    loadOr(`${dir}${OBS_ACTORS[3].file}`, 'SS', YAW_FIX.ss),
   ])
+  const cps = [cp0, cp1, cp2] as const
 
   const root = new Group()
   root.name = 'actors'
-  root.add(gp.root, cp.root)
+  root.add(gp.root, cp0.root, cp1.root, cp2.root, ajp.root, aj.root, zp.root, ss.root)
 
   const gpHome = anchorOf(GRANDPA_ID)
-  const cpHome = anchorOf(CP_ID)
+  const cpHomes = CP_IDS.map((id) => anchorOf(id))
 
   /** 발도 이후 경과(s). 화가 풀리는 경로는 없으므로 되돌리지 않는다 */
   /** 비켜선 이후 경과(s) — 횡이동 보간의 유일한 입력 */
-  let cpAsideSec = 0
+  const cpAsideSec: number[] = [0, 0, 0]
 
   /** 프롭 토글은 상태가 바뀐 프레임에만 — 매 프레임 traverse 결과를 다시 쓰지 않는다 */
   let propHyojason: boolean | null = null
@@ -216,23 +245,106 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
     gp.update(dtSec)
   }
 
+  /**
+   * 인파벽 3인 — 각자 자기 `ACT-CP*` 를 본다.
+   * 비켜선 사람만 북쪽으로 물러나므로 **한 명을 밀어도 나머지 둘이 그대로 서 있는 것**이
+   * 화면에 보인다. 그게 15초 정체의 근거이자 우산을 세 번 쓸 이유(E-11)다.
+   */
   const syncCarrier = (s: GameState, dtSec: number): void => {
-    const aside = s.act.consumed.includes(CP_ID)
-    if (aside) cpAsideSec += dtSec
+    for (let i = 0; i < cps.length; i++) {
+      const rig = cps[i]
+      const home = cpHomes[i]
+      if (!rig || !home) continue
+      const aside = s.act.consumed.includes(CP_IDS[i] as string)
+      if (aside) cpAsideSec[i] = (cpAsideSec[i] ?? 0) + dtSec
 
-    // 자세 클립에 좌표 이동을 얹는다 — 클립 자체는 제자리다
-    const t = aside ? Math.min(1, cpAsideSec / CP_ASIDE_SEC) : 0
-    const at: Anchor = { x: cpHome.x, y: cpHome.y + CP_ASIDE_NORTH_M * t, z: cpHome.z }
-    cp.place(at.x, at.y, at.z, CP_FACING)
+      // 자세 클립에 좌표 이동을 얹는다 — 클립 자체는 제자리다
+      const t = aside ? Math.min(1, (cpAsideSec[i] ?? 0) / CP_ASIDE_SEC) : 0
+      const at: Anchor = { x: home.x, y: home.y + CP_ASIDE_NORTH_M * t, z: home.z }
+      rig.place(at.x, at.y, at.z, CP_FACING)
 
-    const visible = near(s, at)
-    cp.setVisible(visible)
+      const visible = near(s, at)
+      rig.setVisible(visible)
+      if (!visible) continue
+
+      if (!aside) rig.play('CP_Idle')
+      else if (t < 1) rig.play('CP_MoveAside', true)
+      else rig.play('CP_AsideIdle')   // 없으면 원위치로 돌아가 버린다 (README ACT-06)
+      rig.update(dtSec)
+    }
+  }
+
+  /** 이번 판에 안 켜진 방해요소는 **몸도 없다** — 세계가 활성 목록에 대해 거짓말하면 안 된다 */
+  const obsOff = (s: GameState, rig: NpcRig, id: ObsId): boolean => {
+    if (s.obstacles.includes(id)) return false
+    rig.setVisible(false)
+    return true
+  }
+
+  const nearObs = (s: GameState, x: number, y: number, z: number): boolean => {
+    const p = s.player.pos
+    const dx = p.x - x, dy = p.y - y, dz = p.z - z
+    return dx * dx + dy * dy + dz * dz < OBS_CULL_M * OBS_CULL_M
+  }
+
+  /** 아주머니·전단지 — 제자리. 플레이어가 반경에 들면 말을 걸고, 이어폰이면 무시당한다 */
+  const syncTalker = (
+    s: GameState, rig: NpcRig, id: ObsId, at: { x: number; y: number }, rangeM: number,
+    dtSec: number,
+  ): void => {
+    if (obsOff(s, rig, id)) return
+    // OBS-06 전단지 배포원만 지상(Z1)이다 — 나머지는 대합실
+    const zz = id === 'OBS-06' ? FLOOR.L0 : FLOOR.B1
+    const p = s.player.pos
+    const d = Math.hypot(p.x - at.x, p.y - at.y)
+    // 다가오는 사람을 본다 — 등을 보이면 피할 대상으로 안 읽힌다
+    const facing = d > 0.05 ? Math.atan2(p.y - at.y, p.x - at.x) : 0
+    rig.place(at.x, at.y, zz, facing)
+
+    const visible = nearObs(s, at.x, at.y, zz)
+    rig.setVisible(visible)
     if (!visible) return
 
-    if (!aside) cp.play('CP_Idle')
-    else if (t < 1) cp.play('CP_MoveAside', true)
-    else cp.play('CP_AsideIdle')     // 없으면 원위치로 돌아가 버린다 (README ACT-06)
-    cp.update(dtSec)
+    const engaged = d <= rangeM
+    const ignored = s.flags.includes('EARBUDS_ON')
+    if (engaged && ignored) rig.play('AJ_Ignored')
+    else if (engaged) rig.play('AJ_Talk')
+    else if (d <= rangeM * 2.2) rig.play('AJ_Spot')
+    else rig.play('AJ_Idle')
+    rig.update(dtSec)
+  }
+
+  /** 좀비폰족 — 위치가 시간의 순수 함수라 렌더도 **같은 식**을 쓴다 */
+  const syncZombie = (s: GameState, dtSec: number): void => {
+    if (obsOff(s, zp, 'OBS-08')) return
+    const at = zombieAt(s.elapsedMs)
+    const prev = zombieAt(Math.max(0, s.elapsedMs - 120))
+    const facing = Math.atan2(at.y - prev.y, at.x - prev.x)
+    zp.place(at.x, at.y, FLOOR.B1, facing)
+
+    const visible = nearObs(s, at.x, at.y, FLOOR.B1)
+    zp.setVisible(visible)
+    if (!visible) return
+
+    const bumped = s.player.stallMs > 0 &&
+      Math.hypot(s.player.pos.x - at.x, s.player.pos.y - at.y) < 2.0
+    zp.play(bumped ? 'ZP_Bump' : 'ZP_Walk1H', bumped)
+    zp.update(dtSec)
+  }
+
+  /** 역무원 — 순찰도 시간의 순수 함수다(`systems/staff.ts staffAt`) */
+  const syncStaff = (s: GameState, dtSec: number): void => {
+    if (obsOff(s, ss, 'OBS-13')) return
+    const pose = staffAt(s.elapsedMs)
+    ss.place(pose.x, pose.y, FLOOR.B1, pose.facing)
+
+    const visible = nearObs(s, pose.x, pose.y, FLOOR.B1)
+    ss.setVisible(visible)
+    if (!visible) return
+
+    // 경보가 잡히면 무전을 든다 — 0.8초 유예를 **보이게** 만드는 절반이다(나머지 절반은 호루라기)
+    ss.play(s.staffAlertMs > 0 ? 'SS_RadioAlert' : 'SS_Walk')
+    ss.update(dtSec)
   }
 
   return {
@@ -240,10 +352,15 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
     sync(s, dtSec) {
       syncGrandpa(s, dtSec)
       syncCarrier(s, dtSec)
+      syncTalker(s, ajp, 'OBS-06', FLYER_AT, OBSTACLE.flyerRangeM, dtSec)
+      syncTalker(s, aj, 'OBS-07', AJUMMA_AT, OBSTACLE.ajummaRangeM, dtSec)
+      syncZombie(s, dtSec)
+      syncStaff(s, dtSec)
     },
     dispose() {
       gp.dispose()
-      cp.dispose()
+      for (const c of cps) c.dispose()
+      ajp.dispose(); aj.dispose(); zp.dispose(); ss.dispose()
     },
   }
 }

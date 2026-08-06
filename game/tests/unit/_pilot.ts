@@ -9,6 +9,7 @@
  */
 
 import { EMPTY_INPUT, type InputFrame } from '../../src/core/input'
+import { QTE } from '../../src/data/tuning'
 import { initialState } from '../../src/state/reducer'
 import type { GameState } from '../../src/state/types'
 import { tick } from '../../src/systems/tick'
@@ -107,25 +108,22 @@ export const interactAt = (
 }
 
 /**
- * 자판기 QTE 를 리듬에 맞춰 통과한다.
+ * 자판기 QTE 를 **타이밍에 맞춰** 통과한다 (P2 — 타이밍 바).
  *
- * 스트로크당 `QTE.strokeTravel` 을 `QTE.beatMs` 에 맞춰 나눠 넣는다 —
- * 사람이 실제로 하는 동작(등속 왕복)과 같은 모양이다.
+ * 마커가 성공 구간에 들어오는 프레임에만 `E` 를 누른다. `inZone` 이 순수 함수라
+ * 자동조종이 **계산해서** 누를 수 있고, 그래서 시드 200 스윕이 QTE 를 통과한다.
+ *
+ * ⚠ 상태를 보고 누르지만 **한 프레임 앞을 본다.** `pressInteract` 는 다음 tick 의
+ *   `ADVANCE` 뒤에 판정되므로, 지금 구간 안이어도 그 사이 마커가 나갈 수 있다.
+ *   구간 반폭(0.07)이 프레임당 이동(최고 속도 0.03)보다 넓어 여유가 있지만,
+ *   **구간 중앙에 가까울 때만** 눌러 그 여유를 다 쓰지 않는다.
  */
 export const playQte = (s: GameState, opts: { perfect?: boolean } = {}): GameState => {
   const perfect = opts.perfect ?? true
   let cur = s
-  let dir = 1
-  for (let stroke = 0; stroke < 8 && cur.qte.active; stroke++) {
-    // 판정창 중앙(beat 소진 직전)에 임계를 넘게 만든다. 등속 8프레임 = 133ms 는
-    // 창(±180ms) 안이므로, 남은 시간을 무입력으로 채워 위상을 맞춘다.
-    const idleMs = perfect ? 420 : 0
-    cur = wait(cur, idleMs)
-    if (!cur.qte.active) break
-    const steps = 8
-    const per = (230 / steps) * dir
-    cur = holdFor(cur, { qteDelta: per }, steps)
-    dir = -dir
+  for (let i = 0; i < 900 && cur.qte.active; i++) {
+    const near = Math.abs(cur.qte.pos - 0.5) <= QTE.zoneHalf * (perfect ? 0.5 : 3)
+    cur = tap(cur, near ? { pressInteract: true } : {})
   }
   return cur
 }

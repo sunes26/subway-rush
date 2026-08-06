@@ -11,6 +11,8 @@ export type Stage = Readonly<{
   scene: Scene
   camera: PerspectiveCamera
   resize(): void
+  /** 렌더 배율 0.25~1 — 설정의 해상도 항목 */
+  setResScale(v: number): void
   /** 존에 따라 안개·배경색을 바꾼다 — 지상은 하늘, 지하는 형광등 */
   setMood(zone: ZoneId, dt: number): void
   /**
@@ -101,10 +103,16 @@ export const createStage = (canvas: HTMLCanvasElement): Stage => {
    * 캔버스가 0×0인 상태로 부팅되거나(패널이 아직 안 열림) 컨테이너만 바뀌는 경우
    * window의 resize가 아예 안 온다. 크기 비교는 공짜다.
    */
+  /**
+   * 렌더 배율(설정의 "해상도"). 1 이 네이티브다.
+   * CSS 크기는 그대로 두고 **버퍼만** 줄인다 — UI 는 선명한 채로 3D 만 가벼워진다.
+   */
+  let resScale = 1
+
   const resize = (): void => {
     const w = Math.max(1, Math.round((canvas.clientWidth || innerWidth) * 1))
     const h = Math.max(1, Math.round((canvas.clientHeight || innerHeight) * 1))
-    const dpr = Math.min(devicePixelRatio, 2)
+    const dpr = Math.min(devicePixelRatio, 2) * resScale
     if (canvas.width === Math.round(w * dpr) && canvas.height === Math.round(h * dpr)) return
     renderer.setPixelRatio(dpr)
     renderer.setSize(w, h, false)
@@ -117,6 +125,15 @@ export const createStage = (canvas: HTMLCanvasElement): Stage => {
     scene,
     camera,
     resize,
+    setResScale(v: number) {
+      const next = Math.min(1, Math.max(0.25, v))
+      if (next === resScale) return
+      resScale = next
+      // `resize()` 는 크기가 같으면 일찍 빠져나간다. 배율만 바뀐 경우를 태우려면
+      // 캔버스 버퍼를 무효화해 비교를 실패시켜야 한다
+      canvas.width = 0
+      resize()
+    },
     setMood(zone, dt) {
       const m = MOOD[zone]
       // density → near/far 로 환산 (Fog는 선형이라 컨트롤이 예측 가능하다)

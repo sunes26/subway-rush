@@ -9,10 +9,10 @@
  */
 
 import type { InputFrame } from '../core/input'
-import { GRANDPA_ID, INTERACTABLES, byId, isVending, type InteractKind, type Interactable }
-  from '../data/interactables'
+import { CP_IDS, GRANDPA_ID, INTERACTABLES, byId, coinValue, isCoin, isVending,
+  type InteractKind, type Interactable } from '../data/interactables'
 import { itemDef } from '../data/items'
-import { CHASE, INTERACT } from '../data/tuning'
+import { CHASE, EMERGENCY, INTERACT, SLOTS, STAMINA } from '../data/tuning'
 import type { Action, Drop, GameState, ItemId } from '../state/types'
 
 export type ActCtx = Readonly<{ dtMs: number; input: InputFrame; cameraYaw: number }>
@@ -33,6 +33,10 @@ const durationOf = (kind: InteractKind): number => {
     case 'aside': return INTERACT.asideMs
     case 'talk': return 0        // 선택 UI 열기 — 즉시
     case 'scratch': return 0     // QTE 열기 — 즉시
+    // ── P2 ──
+    case 'return': return EMERGENCY.walletReturnMs
+    case 'call': return 500      // 버튼을 누르는 시간. 기다리는 −15s 는 완료 시 청구된다
+    case 'enter': return 1200
   }
 }
 
@@ -77,6 +81,7 @@ export const aimAt = (s: GameState, cameraYaw: number): Aim => {
 
   let bestAimId: string | null = null
   let bestAng = Infinity
+  let bestAimD = Infinity
   let bestNearId: string | null = null
   let bestNearD = Infinity
 
@@ -88,7 +93,19 @@ export const aimAt = (s: GameState, cameraYaw: number): Aim => {
     if (d > 1e-4) {
       const cos = (dx * dirX + dy * dirY) / d
       const ang = Math.acos(Math.max(-1, Math.min(1, cos)))
-      if (ang <= INTERACT.aimRad && ang < bestAng) { bestAng = ang; bestAimId = it.id }
+      /**
+       * 각도가 **비슷하면 가까운 쪽**이 이긴다 (P2).
+       *
+       * 순수 각도 최소는 일렬로 선 대상에서 뒤집힌다. 인파벽 3인(x 96.6/97.8/99.0)을
+       * 정면에서 볼 때 플레이어가 12 cm 만 옆으로 어긋나면 **먼 사람의 각도가 더 작아진다**
+       * (5.7° 대 2.9°) — 눈앞의 사람을 보고 `E` 를 눌렀는데 세 번째 사람이 비켜섰다.
+       * 8° 안에서는 거리로 가른다. 각도 우선이라는 원칙(P1-TECH §3.1)은 그대로다.
+       */
+      if (ang <= INTERACT.aimRad) {
+        const better = ang < bestAng - INTERACT.aimTieRad ||
+          (ang < bestAng + INTERACT.aimTieRad && d < bestAimD)
+        if (better) { bestAng = Math.min(ang, bestAng); bestAimD = d; bestAimId = it.id }
+      }
     }
     if (d <= INTERACT.nearM && d < bestNearD) { bestNearD = d; bestNearId = it.id }
   }
@@ -138,8 +155,33 @@ const complete = (s: GameState): Action[] => {
   switch (kind) {
     case 'pickup': {
       if (!it.gives) return [{ t: 'ACT_CANCEL' }]
+      /**
+       * 동전은 **슬롯을 거치지 않는다** (GDD §5.2). 잔액으로 직행하므로
+       * 교체 창도 안 뜨고, 3슬롯이 꽉 차 있어도 주울 수 있다.
+       * 이게 동전이 "아이템이 아니라 자원"이라는 뜻이다.
+       */
+      if (isCoin(id)) {
+        return [
+          { t: 'BALANCE', delta: coinValue(s.seed, id), label: '동전' },
+          { t: 'ACT_CONSUME', id },
+        ]
+      }
+      /**
+       * **자동 착용** — 정의에 `autoWear` 가 있으면 줍는 즉시 켠다(이어폰).
+       *
+       * 착용형 전체에 주지 않는 이유: 마스크·캐리어는 **대가가 있는 착용**이라
+       * 켜는 순간이 곧 판단이다. 이어폰만 대가가 "안내 LED 를 못 듣는다" 하나뿐이고
+       * 그건 줍는 자리에서 이미 감수한 것이다(디렉터 지시 2026-08-06).
+       */
+      const def = itemDef(it.gives)
+      const auto = def.autoWear && def.flag && !s.flags.includes(def.flag)
       return [
         { t: 'PICKUP', item: it.gives, slot: -1, dropId: isDrop ? id : null },
+        ...(auto && def.flag
+          ? [{ t: 'FLAG', id: def.flag, on: true } as Action,
+             { t: 'ITEM_USED', item: it.gives } as Action,
+             { t: 'FX', kind: 'toast', text: `${def.name} 착용`, lifeMs: 1400, value: 0 } as Action]
+          : []),
         ...(it.once && !isDrop ? [{ t: 'ACT_CONSUME', id } as Action] : []),
       ]
     }
@@ -184,6 +226,49 @@ const complete = (s: GameState): Action[] => {
         { t: 'ACT_CONSUME', id: GRANDPA_ID },
         { t: 'FX', kind: 'toast', text: '"3번 개찰구가 아침부터 먹통이야."', lifeMs: 2600, value: 0 },
       ]
+
+    /**
+     * [P2] 유실물 지갑 반납 — GDD 부록 A 시크릿 3.
+     * **가장 비싼 선행이자 가장 확실한 보험이다.** 2초를 쓰고 개찰구를 하나 더 얻는다.
+     */
+    case 'return': {
+      const slot = slotOf(s, 'I-11')
+      if (slot < 0) return [{ t: 'ACT_DENY', text: '맡길 유실물이 없다' }]
+      return [
+        { t: 'ITEM_SPEND', slot },
+        { t: 'ITEM_USED', item: 'I-11' },
+        { t: 'FLAG', id: 'WALLET_RETURNED', on: true },
+        { t: 'FLAG', id: 'EMERGENCY_OPEN', on: true },
+        { t: 'CONSCIENCE', delta: 2 },
+        { t: 'SECRET', id: 'wallet-returned' },
+        { t: 'ACT_CONSUME', id },
+        { t: 'FX', kind: 'toast', text: '"아이고 감사합니다 — 저쪽 비상문으로 나가세요."', lifeMs: 3000, value: 0 },
+      ]
+    }
+
+    /** [P2] 인터폰 호출 — 시크릿 8. 값은 시간으로 낸다 */
+    case 'call':
+      return [
+        { t: 'TIME_PENALTY', ms: EMERGENCY.intercomWaitMs, label: '역무원 대기' },
+        { t: 'FLAG', id: 'EMERGENCY_OPEN', on: true },
+        { t: 'SECRET', id: 'intercom' },
+        { t: 'ACT_CONSUME', id },
+        { t: 'FX', kind: 'toast', text: '"…네, 지금 나갑니다." 비상문이 열렸다', lifeMs: 2800, value: 0 },
+      ]
+
+    /** [P2] 문을 열고 들어간다 — 화장실(E-13) · 반대편 승강장(E-08) */
+    case 'enter': {
+      const toilet = id === 'OBJ-14-WC'
+      return [
+        { t: 'FLAG', id: toilet ? 'TOILET_USED' : 'OPPOSITE_SIDE', on: true },
+        { t: 'SECRET', id: toilet ? 'toilet' : 'opposite-platform' },
+        { t: 'ACT_CONSUME', id },
+        {
+          t: 'FX', kind: 'toast',
+          text: toilet ? '…살았다' : '반대편 승강장으로 넘어왔다', lifeMs: 2200, value: 0,
+        },
+      ]
+    }
 
     /** O-03 — "저기요". 3초는 이미 흘렀으므로 추가 페널티가 없다 */
     case 'aside':
@@ -269,26 +354,58 @@ const useSlot = (s: GameState, slot: number): Action[] => {
   if (!item) return []
   const def = itemDef(item)
 
+  /**
+   * 착용형은 **토글**이다 (P2). P1은 마스크를 켜기만 했다 —
+   * 캐리어(−20% 속도)·이어폰(힌트 차단)처럼 **대가가 있는 착용**이 들어오면서
+   * 끌 수 없다는 것이 곧 되돌릴 수 없는 실수가 됐다.
+   */
+  if (def.use === 'wear' && def.flag) {
+    const on = s.flags.includes(def.flag)
+    return [
+      { t: 'FLAG', id: def.flag, on: !on },
+      ...(on ? [] : [{ t: 'ITEM_USED', item } as Action]),
+      { t: 'FX', kind: 'toast', text: `${def.name} ${on ? '해제' : '착용'}`, lifeMs: 1400, value: 0 },
+    ]
+  }
+
   switch (item) {
-    /** 마스크 — 착용 지속. 슬롯을 비우지 않는다 (GDD §5.3) */
-    case 'I-06':
-      if (s.flags.includes('MASK_ON')) return [{ t: 'ACT_DENY', text: def.noTargetReason }]
+    /** 커피 — 스태미너를 되돌리고 카페인을 남긴다. 소모 */
+    case 'I-07':
       return [
-        { t: 'FLAG', id: 'MASK_ON', on: true },
+        { t: 'ITEM_SPEND', slot },
         { t: 'ITEM_USED', item },
-        { t: 'FX', kind: 'toast', text: '마스크 착용', lifeMs: 1400, value: 0 },
+        { t: 'STAMINA', value: STAMINA.max, locked: false, sinceSprintMs: 99_999 },
+        { t: 'FLAG', id: 'CAFFEINE', on: true },
+        { t: 'FX', kind: 'toast', text: '뜨겁다. 그리고 잘 뛰어진다', lifeMs: 1800, value: 0 },
       ]
+
+    /** 노선도 — 소지만으로 미니맵이 켜진다. 사용키는 **확대**를 토글한다 */
+    case 'I-13': {
+      const open = s.flags.includes('MAP_OPEN')
+      return [
+        { t: 'FLAG', id: 'MAP_OPEN', on: !open },
+        ...(open ? [] : [{ t: 'ITEM_USED', item } as Action]),
+        { t: 'FX', kind: 'toast', text: open ? '노선도를 접었다' : '노선도를 펼쳤다', lifeMs: 1200, value: 0 },
+      ]
+    }
 
     /** 우산 — O-03 인파벽 즉시 개방 */
     case 'I-09': {
-      const cp = byId('ACT-CP')
-      if (!cp || s.act.consumed.includes(cp.id) || !within(s, cp, 2.2)) {
+      // 3인 중 **가장 가까운 남은 사람**을 민다 (P2 — 인파벽 3인 복원)
+      const cp = CP_IDS
+        .map((id) => byId(id))
+        .filter((it): it is Interactable => !!it && !s.act.consumed.includes(it.id) && within(s, it, 2.2))
+        .sort((a, b) =>
+          Math.hypot(a.x - s.player.pos.x, a.y - s.player.pos.y) -
+          Math.hypot(b.x - s.player.pos.x, b.y - s.player.pos.y))[0]
+      if (!cp) {
         return [{ t: 'ACT_DENY', text: def.noTargetReason }]
       }
       return [
         { t: 'ITEM_SPEND', slot },
         { t: 'ITEM_USED', item },
         { t: 'ACT_CONSUME', id: cp.id },
+        { t: 'PUSH' },
         { t: 'FX', kind: 'toast', text: '우산으로 비켜세웠다', lifeMs: 1600, value: 0 },
       ]
     }
@@ -372,15 +489,34 @@ export const interactSystem = (s: GameState, ctx: ActCtx): Action[] => {
     const cancelled =
       f.pressCancel || (kind !== null && CANCEL_ON_MOVE.has(kind) && moveAxis(f) > INTERACT.cancelAxis)
     if (cancelled) return [...out, { t: 'ACT_CANCEL' }]
-    if (s.act.busyLeftMs <= 0) return [...out, ...complete(s)]
+    /**
+     * 완료 뒤 `ACT_CANCEL` 을 꼬리에 붙인다 — **진행 상태를 확실히 비우기 위해서다.**
+     *
+     * P1에는 이걸 `PICKUP` 이 대신하고 있었다(`act: clearBusy`). 그래서 PICKUP 을
+     * 내지 않는 분기(`aside`, 그리고 P2의 동전)는 `busyId` 가 남아 **다음 프레임에
+     * 또 완료되고, 또 완료된다.** 동전이 프레임마다 잔액을 올려 17,650원이 됐다.
+     * (P1의 `aside` 는 토스트만 반복해서 증상이 안 보였을 뿐 같은 버그다.)
+     */
+    if (s.act.busyLeftMs <= 0) return [...out, ...complete(s), { t: 'ACT_CANCEL' }]
     return out                       // 진행 중 — 새 입력은 전부 무시된다
   }
 
   // 4) QTE 중이면 상호작용 시작을 막는다 (qteSystem 이 처리)
   if (s.qte.active) return out
 
+  /**
+   * 4.5) 교체 창 (UI-14) — 슬롯 키를 **가로챈다.**
+   *
+   * 이 분기가 슬롯 사용보다 앞에 있어야 한다. 뒤에 두면 방금 주운 아이템을
+   * 옮기려고 누른 `2` 가 2번 칸 아이템을 *사용*해 버린다. 0.9초라 겹칠 일이 잦다.
+   */
+  if (s.swap.active) {
+    if (f.pressCancel) return [...out, { t: 'SWAP_CANCEL' }]
+    if (f.pressSlot >= 1 && f.pressSlot <= SLOTS) return [...out, { t: 'SWAP_TO', slot: f.pressSlot - 1 }]
+  }
+
   // 5) 슬롯 사용
-  if (f.pressSlot >= 1 && f.pressSlot <= 3) return [...out, ...useSlot(s, f.pressSlot - 1)]
+  if (f.pressSlot >= 1 && f.pressSlot <= SLOTS) return [...out, ...useSlot(s, f.pressSlot - 1)]
 
   // 6) 새 상호작용 시작
   if (f.pressInteract) {

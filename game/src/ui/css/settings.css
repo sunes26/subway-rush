@@ -1,0 +1,83 @@
+/*
+ * 설정 화면 — Figma `node 15:4`.
+ *
+ * ★ 단일 원천. 게임(`ui/settings.ts`)과 UI 킷(`/uikit.html`)이 같은 파일을 읽는다.
+ *
+ * ── 디자인과 의도적으로 다르게 간 것 ──
+ *  · 슬라이더를 **네이티브 `<input type=range>`** 로 만들었다. 디자인은 트랙+핸들을
+ *    그림으로 줬지만, 직접 만든 드래그는 키보드 접근과 터치를 다시 짜야 한다.
+ *    네이티브에 옷만 입히면 두 개가 공짜로 따라온다.
+ *  · 배경을 완전 불투명으로 덮지 않는다. 설정은 **일시정지 상태**이고, 뒤에 멈춘
+ *    화면이 비쳐야 "게임이 멈췄다"가 읽힌다. 꺼진 것과 멈춘 것은 다르다.
+ */
+
+/* z-index — 도감(5)보다 위다. 도감 위에서도 설정을 열 수 있어야 한다 */
+#settings{position:absolute;inset:0;display:none;place-items:center;z-index:6;
+  background:radial-gradient(ellipse at 50% 40%,rgba(8,9,13,.86),rgba(3,3,5,.96));
+  backdrop-filter:blur(6px);pointer-events:auto;animation:fade .18s ease both;
+  overflow:auto;padding:24px 0;font-family:var(--sans)}
+#settings.on{display:grid}
+
+#settings .panel{width:min(560px,calc(100vw - 40px));padding:26px 28px 22px;
+  border-radius:var(--r-panel);background:var(--panel);border:1px solid var(--panel-line);
+  box-shadow:var(--panel-shadow)}
+
+/* ── 헤더: 톱니 + 제목 + PAUSED 칩 ── */
+#settings .head{display:flex;align-items:center;gap:10px;padding-bottom:16px;
+  border-bottom:1px solid var(--panel-line)}
+#settings .head svg{width:20px;height:20px;display:block;color:var(--accent)}
+#settings .head h2{margin:0;font-size:19px;font-weight:800;letter-spacing:-.01em;color:#fff}
+/* PAUSED — 지금 시간이 멈췄다는 사실이 이 게임에선 정보다(3분이 심장이다) */
+#settings .paused{margin-left:auto;font-family:var(--mono);font-size:10px;font-weight:700;
+  letter-spacing:.18em;color:var(--accent);border:1px solid rgba(0,240,255,.4);
+  background:rgba(0,240,255,.09);border-radius:var(--r-pill);padding:4px 10px}
+
+/* ── 섹션: 시안 왼쪽 막대 + 라벨 ── */
+#settings .sec{margin-top:20px}
+#settings .sec>h3{margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:.06em;
+  color:var(--muted);padding-left:9px;border-left:3px solid var(--accent);line-height:1.2}
+
+/* ── 행: 라벨 · 컨트롤 · 수치 ── */
+#settings .row{display:flex;align-items:center;gap:14px;padding:9px 0}
+#settings .row>label{flex:0 0 96px;font-size:13px;color:#E7E9F2}
+#settings .row .val{flex:0 0 46px;text-align:right;font-family:var(--mono);font-size:12px;
+  color:var(--accent);font-variant-numeric:tabular-nums}
+
+/* ── 슬라이더 ── */
+#settings input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:4px;
+  border-radius:3px;background:rgba(255,255,255,.14);outline:none;cursor:pointer}
+#settings input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+  width:14px;height:14px;border-radius:50%;background:var(--accent);border:0;
+  box-shadow:0 0 8px rgba(0,240,255,.5)}
+#settings input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;
+  background:var(--accent);border:0;box-shadow:0 0 8px rgba(0,240,255,.5)}
+#settings input[type=range]:focus-visible{box-shadow:0 0 0 2px rgba(0,240,255,.35)}
+
+/* ── 토글 ── */
+#settings .sw{flex:1;display:flex}
+#settings .sw button{width:44px;height:24px;border-radius:12px;border:1px solid var(--panel-line);
+  background:rgba(255,255,255,.08);position:relative;cursor:pointer;padding:0;
+  transition:background .16s,border-color .16s}
+#settings .sw button::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;
+  border-radius:50%;background:#8A90A6;transition:transform .16s,background .16s}
+#settings .sw button[aria-checked=true]{background:rgba(0,240,255,.22);border-color:var(--accent)}
+#settings .sw button[aria-checked=true]::after{transform:translateX(20px);background:var(--accent)}
+
+/* ── 드롭다운 ── */
+#settings select{flex:1;height:32px;padding:0 10px;border-radius:6px;color:#E7E9F2;
+  background:rgba(255,255,255,.06);border:1px solid var(--panel-line);
+  font-family:var(--sans);font-size:13px;cursor:pointer}
+#settings select:focus-visible{outline:none;border-color:var(--accent)}
+#settings option{background:#14161E;color:#E7E9F2}
+
+/* ── 푸터 ── */
+#settings .foot{display:flex;align-items:center;gap:16px;margin-top:22px;padding-top:16px;
+  border-top:1px solid var(--panel-line)}
+#settings .home{padding:9px 16px;border-radius:8px;background:transparent;cursor:pointer;
+  border:1px solid rgba(229,72,77,.55);color:#F1868A;font-family:var(--sans);font-size:13px;
+  font-weight:600;transition:background .16s}
+#settings .home:hover{background:rgba(229,72,77,.14)}
+#settings .close{margin-left:auto;background:none;border:0;cursor:pointer;padding:4px 2px;
+  font-family:var(--sans);font-size:12px;color:var(--muted);text-decoration:underline;
+  text-underline-offset:3px}
+#settings .close:hover{color:#E7E9F2}

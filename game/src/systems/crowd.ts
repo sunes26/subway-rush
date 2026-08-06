@@ -12,6 +12,7 @@
  */
 
 import { makeRng } from '../core/rng'
+import { CP_IDS } from '../data/interactables'
 import { AISLE, SURGE } from '../data/tuning'
 import { FLOOR, PLATFORM, type Solid } from '../data/world'
 import type { Action, GameState } from '../state/types'
@@ -26,17 +27,26 @@ import type { Action, GameState } from '../state/types'
  */
 export type CrowdCtx = Readonly<{ dtMs: number; prev: GameState }>
 
-/** O-03 — 비켜서기 전까지 에스컬레이터 진입부를 막는다 */
+/**
+ * O-03 — 비켜서기 전까지 에스컬레이터 진입부를 막는다. **3인 1열** (P2).
+ *
+ * 사람마다 자기 칸을 막는다. 앞사람을 비켜세워도 뒷사람이 남아 있으면 못 지난다 —
+ * 그래서 15초 정체가 나오고, 우산을 세 번 쓸 이유(E-11)가 생긴다.
+ */
 export const crowdSolids = (s: GameState): Solid[] =>
-  s.act.consumed.includes('ACT-CP')
-    ? []
-    : [{
-        id: 'CROWD-CP',
-        rect: [AISLE.xMin, AISLE.yMin, AISLE.xMax, AISLE.yMax],
-        z0: FLOOR.B1,
-        h: AISLE.h,
-        look: 'prop',
-      }]
+  CP_IDS.flatMap((id, i) =>
+    s.act.consumed.includes(id)
+      ? []
+      : [{
+          id: `CROWD-${id}`,
+          rect: [
+            AISLE.xMin + i * AISLE.pitch, AISLE.yMin,
+            AISLE.xMax + i * AISLE.pitch, AISLE.yMax,
+          ] as const,
+          z0: FLOOR.B1,
+          h: AISLE.h,
+          look: 'prop' as const,
+        }])
 
 export type SurgePhase = 'idle' | 'warn' | 'active' | 'done'
 

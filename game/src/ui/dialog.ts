@@ -56,10 +56,10 @@ export const createDialog = (mount: HTMLElement): Dialog => {
     <div id="dlg"><div class="who" id="dlg-who">할아버지</div><div id="dlg-ops"></div>
       <div class="esc">ESC 그냥 지나간다</div></div>
     <div id="qte">
-      <div class="cap">자판기 밑을 긁는다 — 마우스를 좌우로</div>
+      <div class="cap">자판기 밑을 긁는다 — 가운데에서 <b>클릭</b></div>
       <div class="track"><div class="fill" id="qte-fill"></div>
         <div class="win" id="qte-win"></div><div class="mark" id="qte-mark"></div></div>
-      <div class="row"><span class="dir" id="qte-dir">↔</span>
+      <div class="row"><span class="dir" id="qte-dir">→</span>
         <div class="dots"><i id="qte-d0"></i><i id="qte-d1"></i><i id="qte-d2"></i></div>
         <span class="miss" id="qte-miss"></span></div>
     </div>`
@@ -88,7 +88,8 @@ export const createDialog = (mount: HTMLElement): Dialog => {
   let lastQte = false
 
   // 판정창 폭은 고정이다 — 한 번만 계산한다
-  qWin.style.width = `${(QTE.windowMs / QTE.beatMs) * 100}%`
+  // 성공 구간 폭은 상수다 — 난이도가 올라도 **구간은 안 좁힌다**(빨라질 뿐)
+  qWin.style.width = `${QTE.zoneHalf * 2 * 100}%`
 
   return {
     el,
@@ -141,11 +142,15 @@ export const createDialog = (mount: HTMLElement): Dialog => {
       // ── QTE
       if (s.qte.active !== lastQte) { qte.className = s.qte.active ? 'on' : ''; lastQte = s.qte.active }
       if (s.qte.active) {
-        // 마커는 박자가 남았을 때 오른쪽에서 출발해 중앙(판정창)을 지나간다
-        const pos = 1 - Math.max(-1, Math.min(1, s.qte.beatMs / QTE.beatMs)) * 0.5 - 0.5
-        qMark.style.left = `${(Math.max(0, Math.min(1, pos)) * 100).toFixed(1)}%`
-        qFill.style.width = `${Math.min(100, (s.qte.travel / QTE.strokeTravel) * 100).toFixed(1)}%`
-        qDir.textContent = s.qte.dir === 0 ? '↔' : s.qte.dir > 0 ? '→' : '←'
+        // 마커 위치는 시뮬이 들고 있다 — 렌더는 그대로 옮겨 그리기만 한다
+        qMark.style.left = `${(s.qte.pos * 100).toFixed(1)}%`
+        /**
+         * 채움은 **남은 제한시간**이다. 예전엔 스트로크 누적량이었는데 그건 점(dots)이
+         * 이미 보여 준다 — 화면에 같은 정보를 두 번 그릴 이유가 없다.
+         */
+        const left = Math.max(0, 1 - s.qte.elapsedMs / QTE.timeoutMs)
+        qFill.style.width = `${(left * 100).toFixed(1)}%`
+        qDir.textContent = s.qte.dirSign > 0 ? '→' : '←'
         for (let i = 0; i < dots.length; i++) {
           const on = i < s.qte.strokes
           const d = dots[i]

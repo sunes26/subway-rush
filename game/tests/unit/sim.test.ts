@@ -325,7 +325,7 @@ describe('S5-5~8 탑승 판정', () => {
      * 막힘 자체는 `crowd.test.ts` (S11-1)가 따로 증명한다.
      */
     const cleared = start()
-    let s = put({ ...cleared, act: { ...cleared.act, consumed: ['ACT-CP'] } }, 95.9, 2.2, FLOOR.B1)
+    let s = put({ ...cleared, act: { ...cleared.act, consumed: ['ACT-CP', 'ACT-CP2', 'ACT-CP3'] } }, 95.9, 2.2, FLOOR.B1)
     s = run(s, hold({}, 60 * 25))
     expect(s.player.pos.z).toBeCloseTo(FLOOR.B2, 1)
     expect(s.player.pos.x).toBeGreaterThan(119)

@@ -8,12 +8,13 @@
 import { clamp, formatClock } from '../core/math'
 import { makeRng } from '../core/rng'
 import { itemDef } from '../data/items'
-import { BALANCE_POOL, CHASE, FARE, GATE, INTERACT, QTE, SLOTS, SURGE, TOTAL_TIME_MS }
-  from '../data/tuning'
+import { BALANCE_POOL, CHASE, FARE, GATE, INTERACT, QTE, SLOTS, SURGE, SWAP_WINDOW_MS,
+  TOTAL_TIME_MS } from '../data/tuning'
 import { GRANDPA_ID } from '../data/interactables'
+import { rollObstacles, rollQueues, type ObsId } from '../data/obstacles'
 import { GATES, SPAWN, TRAFFIC_LIGHT, zoneAt } from '../data/world'
-import type { Action, ActState, ChaseState, GameState, Fx, ItemId, QteState, SurgeState, TallyState }
-  from './types'
+import type { Action, ActState, ChaseState, Drop, GameState, Fx, ItemId, QteState, SurgeState,
+  SwapState, TallyState } from './types'
 
 const MAX_FX = 12
 
@@ -38,9 +39,9 @@ const EMPTY_QTE: QteState = {
   active: false,
   vendorId: null,
   strokes: 0,
-  dir: 0,
-  travel: 0,
-  beatMs: 0,
+  pos: 0.5,
+  dirSign: 1,
+  speedMul: 1,
   misses: 0,
   elapsedMs: 0,
 }
@@ -59,7 +60,9 @@ const EMPTY_CHASE: ChaseState = {
 
 const EMPTY_SURGE: SurgeState = { fell: false, stallMs: 0 }
 
-const EMPTY_TALLY: TallyState = { coinsEarned: 0, itemsUsed: [], secrets: [] }
+const EMPTY_TALLY: TallyState = { coinsEarned: 0, itemsUsed: [], secrets: [], pushes: 0 }
+
+const EMPTY_SWAP: SwapState = { active: false, newSlot: 0, dropId: null, leftMs: 0 }
 
 /** 진행 중 상호작용만 비운다 — `consumed`·`dialogId` 는 건드리지 않는다 */
 const clearBusy = (a: ActState): ActState =>
@@ -89,7 +92,7 @@ export const rollSeed = (seed: number) => {
   return { workingIds, cardBalance, ledHint, ledBrokenId }
 }
 
-export const initialState = (seed: number, freeplay = false): GameState => {
+export const initialState = (seed: number, freeplay = false, allObstacles = false): GameState => {
   const roll = rollSeed(seed)
   return {
     phase: 'title',
@@ -113,6 +116,7 @@ export const initialState = (seed: number, freeplay = false): GameState => {
       rampId: null,
       moving: false,
       sprinting: false,
+      stallMs: 0,
     },
     cardBalance: roll.cardBalance,
     gates: {
@@ -144,6 +148,11 @@ export const initialState = (seed: number, freeplay = false): GameState => {
     qte: EMPTY_QTE,
     surge: EMPTY_SURGE,
     tally: EMPTY_TALLY,
+    swap: EMPTY_SWAP,
+    obstacles: rollObstacles(seed, allObstacles),
+    obsCooldown: {},
+    staffAlertMs: 0,
+    queues: rollQueues(seed),
   }
 }
 
@@ -164,6 +173,63 @@ const decayFx = (fx: readonly Fx[], dtMs: number): readonly Fx[] => {
     if (life > 0) out.push({ ...f, lifeMs: life })
   }
   return out.length === fx.length && out.every((f, i) => f.lifeMs === (fx[i] as Fx).lifeMs) ? fx : out
+}
+
+/**
+ * 플레이어 타이머 감산 — 감속 회복과 이동 봉쇄를 한 자리에서 줄인다.
+ *
+ * 감속 회복은 GDD §4.1 "+5%/s (비피격 시)" 다. **도망치면 풀린다.**
+ * 회수 연출(`seize`) 중에는 회복하지 않는다 — 2초 완전 정지가 그 구간의 내용이다.
+ */
+const decayPlayerTimers = (s: GameState, dtMs: number): GameState['player'] => {
+  const recover = s.player.speedPenalty > 0 && s.chase.phase !== 'seize'
+  const stall = s.player.stallMs > 0
+  if (!recover && !stall) return s.player
+  return {
+    ...s.player,
+    speedPenalty: recover
+      ? Math.max(0, s.player.speedPenalty - CHASE.recoverPerSec * dtMs / 1000)
+      : s.player.speedPenalty,
+    stallMs: stall ? Math.max(0, s.player.stallMs - dtMs) : s.player.stallMs,
+  }
+}
+
+/**
+ * QTE 마커 왕복 — **여기서만 움직인다**(타이머 단일 감산 규칙).
+ *
+ * 끝에 닿으면 반사한다. 한 프레임에 여러 번 튕길 만큼 빨라질 일은 없지만
+ * (최고 속도에서도 프레임당 0.03), 남은 이동량을 되접어 **프레임레이트 불변**으로 만든다.
+ */
+const advanceQte = (q: QteState, dtMs: number): QteState => {
+  // 한 주기(cycleMs)에 트랙을 2번 지난다 — 왼쪽 끝 → 오른쪽 끝 → 왼쪽 끝
+  let pos = q.pos + q.dirSign * (2 / QTE.cycleMs) * q.speedMul * dtMs
+  let dir = q.dirSign
+  for (let i = 0; i < 4 && (pos < 0 || pos > 1); i++) {
+    pos = pos < 0 ? -pos : 2 - pos
+    dir = dir === 1 ? -1 : 1
+  }
+  return {
+    ...q,
+    pos: Math.max(0, Math.min(1, pos)),
+    dirSign: dir,
+    elapsedMs: q.elapsedMs + dtMs,
+  }
+}
+
+/** 방해요소 쿨다운 — 전부 0이면 **같은 객체를 돌려준다**(렌더의 얕은 비교를 살린다) */
+const decayCooldowns = (
+  cd: GameState['obsCooldown'], dtMs: number,
+): GameState['obsCooldown'] => {
+  const keys = Object.keys(cd) as ObsId[]
+  if (keys.length === 0) return cd
+  let changed = false
+  const out: Partial<Record<ObsId, number>> = {}
+  for (const k of keys) {
+    const v = Math.max(0, (cd[k] ?? 0) - dtMs)
+    if (v !== cd[k]) changed = true
+    if (v > 0) out[k] = v
+  }
+  return changed ? out : cd
 }
 
 export const reducer = (s: GameState, a: Action): GameState => {
@@ -190,9 +256,7 @@ export const reducer = (s: GameState, a: Action): GameState => {
           busyLeftMs: Math.max(0, s.act.busyLeftMs - a.dtMs),
           denyMs: Math.max(0, s.act.denyMs - a.dtMs),
         },
-        qte: s.qte.active
-          ? { ...s.qte, elapsedMs: s.qte.elapsedMs + a.dtMs, beatMs: s.qte.beatMs - a.dtMs }
-          : s.qte,
+        qte: s.qte.active ? advanceQte(s.qte, a.dtMs) : s.qte,
         chase: {
           ...s.chase,
           phaseMs: s.chase.phaseMs + a.dtMs,
@@ -203,15 +267,17 @@ export const reducer = (s: GameState, a: Action): GameState => {
          * 감속 회복 — GDD §4.1 "+5%/s (비피격 시)". **도망치면 풀린다.**
          * 회수 연출(`seize`) 중에는 회복하지 않는다 — 2초 완전 정지가 그 구간의 내용이다.
          */
-        player: s.player.speedPenalty > 0 && s.chase.phase !== 'seize'
-          ? {
-              ...s.player,
-              speedPenalty: Math.max(0, s.player.speedPenalty - CHASE.recoverPerSec * a.dtMs / 1000),
-            }
-          : s.player,
+        player: decayPlayerTimers(s, a.dtMs),
         surge: s.surge.stallMs > 0
           ? { ...s.surge, stallMs: Math.max(0, s.surge.stallMs - a.dtMs) }
           : s.surge,
+        obsCooldown: decayCooldowns(s.obsCooldown, a.dtMs),
+        // 교체 창도 여기서만 줄어든다 (타이머 단일 감산 규칙)
+        swap: s.swap.active
+          ? (s.swap.leftMs - a.dtMs > 0
+              ? { ...s.swap, leftMs: s.swap.leftMs - a.dtMs }
+              : EMPTY_SWAP)
+          : s.swap,
         fx: decayFx(s.fx, a.dtMs),
       }
     }
@@ -367,8 +433,9 @@ export const reducer = (s: GameState, a: Action): GameState => {
       const inventory = s.inventory.map((v, i) => (i === slot ? a.item : v))
       const p = s.player.pos
       const kept = a.dropId ? s.drops.filter((d) => d.id !== a.dropId) : s.drops
+      const dropId = `drop-${s.nextDropId}`
       const drops = replaced
-        ? [...kept, { id: `drop-${s.nextDropId}`, item: replaced, x: p.x, y: p.y, z: p.z }]
+        ? [...kept, { id: dropId, item: replaced, x: p.x, y: p.y, z: p.z }]
         : kept
       return pushFx(
         {
@@ -377,8 +444,84 @@ export const reducer = (s: GameState, a: Action): GameState => {
           drops,
           nextDropId: replaced ? s.nextDropId + 1 : s.nextDropId,
           act: clearBusy(s.act),
+          // 밀려난 것이 있을 때만 교체 창이 열린다. 빈 칸에 들어갔으면 고를 것이 없다
+          swap: replaced ? { active: true, newSlot: slot, dropId, leftMs: SWAP_WINDOW_MS } : s.swap,
         },
         { kind: 'toast', text: `${itemDef(a.item).name} 획득`, lifeMs: 1400, value: 0 },
+      )
+    }
+
+    /**
+     * 교체 창 — 새 아이템을 다른 칸으로 옮긴다.
+     * 세 값이 자리를 도는 것뿐이다: 새것 · 밀려난 것(바닥) · 목표 칸에 있던 것.
+     */
+    case 'SWAP_TO': {
+      const { newSlot, dropId } = s.swap
+      if (!s.swap.active || dropId === null) return s
+      if (a.slot === newSlot || a.slot < 0 || a.slot >= SLOTS) return { ...s, swap: EMPTY_SWAP }
+      const drop = s.drops.find((d) => d.id === dropId)
+      if (!drop) return { ...s, swap: EMPTY_SWAP }
+      const fresh = s.inventory[newSlot] ?? null
+      const target = s.inventory[a.slot] ?? null
+      if (!fresh) return { ...s, swap: EMPTY_SWAP }
+      const inventory = s.inventory.map((v, i) =>
+        i === newSlot ? drop.item : i === a.slot ? fresh : v)
+      const drops: readonly Drop[] = target === null
+        ? s.drops.filter((d) => d.id !== dropId)          // 목표 칸이 비어 있었다 — 바닥에 남길 것이 없다
+        : s.drops.map((d) => (d.id === dropId ? { ...d, item: target } : d))
+      return pushFx(
+        { ...s, inventory, drops, swap: EMPTY_SWAP },
+        { kind: 'toast', text: `${itemDef(target ?? fresh).name} ↔ ${itemDef(fresh).name}`, lifeMs: 1200, value: 0 },
+      )
+    }
+
+    /** 교체 창에서 취소 — 습득 자체를 되돌린다. 새 아이템이 바닥에 남는다 */
+    case 'SWAP_CANCEL': {
+      const { newSlot, dropId } = s.swap
+      if (!s.swap.active || dropId === null) return s
+      const drop = s.drops.find((d) => d.id === dropId)
+      const fresh = s.inventory[newSlot] ?? null
+      if (!drop || !fresh) return { ...s, swap: EMPTY_SWAP }
+      return pushFx(
+        {
+          ...s,
+          inventory: s.inventory.map((v, i) => (i === newSlot ? drop.item : v)),
+          drops: s.drops.map((d) => (d.id === dropId ? { ...d, item: fresh } : d)),
+          swap: EMPTY_SWAP,
+        },
+        { kind: 'toast', text: `${itemDef(drop.item).name} 유지`, lifeMs: 1200, value: 0 },
+      )
+    }
+
+    /** 이동 봉쇄 — **누적이 아니라 최대다.** 짧은 쪽이 끝났다고 풀리면 한쪽이 공짜가 된다 */
+    case 'STALL':
+      return a.ms <= s.player.stallMs
+        ? s
+        : { ...s, player: { ...s.player, stallMs: a.ms } }
+
+    /** 우산으로 인파를 밀었다 — E-11 "에스컬레이터 참사"의 유일한 계수기 */
+    case 'PUSH':
+      return { ...s, tally: { ...s.tally, pushes: s.tally.pushes + 1 } }
+
+    case 'STAFF_ALERT':
+      return s.staffAlertMs === a.ms ? s : { ...s, staffAlertMs: a.ms }
+
+    case 'OBS_FIRE':
+      return { ...s, obsCooldown: { ...s.obsCooldown, [a.id]: a.cooldownMs } }
+
+    /** 미끄러져 떨어뜨린다 — 교체와 달리 **새 아이템이 없으므로** 교체 창도 안 연다 */
+    case 'FUMBLE': {
+      const item = s.inventory[a.slot] ?? null
+      if (!item) return s
+      const p = s.player.pos
+      return pushFx(
+        {
+          ...s,
+          inventory: s.inventory.map((v, i) => (i === a.slot ? null : v)),
+          drops: [...s.drops, { id: `drop-${s.nextDropId}`, item, x: p.x, y: p.y, z: p.z }],
+          nextDropId: s.nextDropId + 1,
+        },
+        { kind: 'toast', text: `${itemDef(item).name}을(를) 떨어뜨렸다`, lifeMs: 1800, value: 0 },
       )
     }
 
@@ -445,29 +588,28 @@ export const reducer = (s: GameState, a: Action): GameState => {
       return { ...s, flags: a.on ? [...s.flags, a.id] : s.flags.filter((f) => f !== a.id) }
     }
 
-    // ─────────────────── P1 QTE ───────────────────
+    // ─────────────────── QTE (P2 타이밍 바) ───────────────────
 
     case 'QTE_BEGIN':
       return {
         ...s,
         act: clearBusy(s.act),
-        qte: { ...EMPTY_QTE, active: true, vendorId: a.vendorId, beatMs: QTE.beatMs },
+        // 마커는 **왼쪽 끝에서 출발**한다. 중앙에서 시작하면 첫 클릭이 공짜다
+        qte: { ...EMPTY_QTE, active: true, vendorId: a.vendorId, pos: 0, dirSign: 1 },
       }
 
-    /** 프레임 입력 누적 — 방향과 누적 이동량. 판정은 시스템이 한다 */
-    case 'QTE_INPUT':
-      return s.qte.active ? { ...s, qte: { ...s.qte, dir: a.dir, travel: a.travel } } : s
-
-    /** 스트로크 1회 판정. 성공이면 다음 박자로 창을 리셋한다 */
-    case 'QTE_STROKE':
+    /**
+     * 클릭 1회 판정. 성공이면 **마커가 빨라진다** — 구간은 안 좁힌다.
+     * 좁히면 "아까 됐던 클릭이 안 되는" 억울함이 생기고, 빨라지는 건 눈에 보인다.
+     */
+    case 'QTE_HIT':
       return {
         ...s,
         qte: {
           ...s.qte,
           strokes: a.hit ? s.qte.strokes + 1 : s.qte.strokes,
           misses: a.hit ? s.qte.misses : s.qte.misses + 1,
-          travel: 0,
-          beatMs: QTE.beatMs,
+          speedMul: a.hit ? s.qte.speedMul * QTE.speedUpPerHit : s.qte.speedMul,
         },
       }
 
@@ -487,7 +629,7 @@ export const reducer = (s: GameState, a: Action): GameState => {
           hitCount: 0,
           swingCooldownMs: 0,
           pos: { x: a.x, y: a.y },
-          facing: s.chase.facing,
+          facing: a.facing,
           stuckMs: 0,
         },
       }

@@ -92,24 +92,39 @@
 #inv-h .t{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:800;color:#fff}
 #inv-h .t svg{width:16px;height:16px;display:block}
 #inv-h .c{font-size:12px;font-weight:500;color:#6B7280;font-variant-numeric:tabular-nums}
-#hud .inv{display:flex;gap:8px}
+#hud .inv{display:flex;gap:6px}
 /*
-  슬롯 72px — Figma 그대로. 3칸이라 패널 폭이 디자인(720)보다 좁아진다:
-  16 + 72*3 + 8*2 + 16 = 264. 디자인의 720 은 8칸 전제였고, 칸 수가 규칙이므로
-  **폭이 칸을 따른다**(패널을 늘려 빈 칸을 채우면 3슬롯의 압박이 사라진다).
+  슬롯 — **칸 수가 규칙이고 폭이 칸을 따른다.**
+  3칸 시절엔 Figma 원본 72px 를 그대로 썼다(패널 264px). P2 에서 10칸이 되면서
+  72px 이면 패널이 824px 라 좌우 위젯(스태미너·미니맵)과 부딪힌다 →
+  칸을 **54px** 로 줄여 10 + 8 = 644px. 칸을 줄였지 개수를 줄이지 않았다.
 */
-#hud .slot{position:relative;width:72px;height:72px;border-radius:var(--r-slot);
+#hud .slot{position:relative;width:54px;height:54px;border-radius:var(--r-slot);
   background:var(--panel);border:1px solid var(--panel-line);
-  display:grid;place-items:center;font-size:30px;line-height:1;transition:border-color .18s}
+  display:grid;place-items:center;font-size:24px;line-height:1;transition:border-color .18s}
 /* 빈 칸 — Figma 의 16px placeholder */
 #hud .slot::after{content:'';width:16px;height:16px;border-radius:2px;
   background:rgba(255,255,255,.06)}
 #hud .slot.has::after{display:none}
 /* 착용 중(마스크) — 선택 슬롯과 같은 시안 강조. Figma 의 선택 상태를 이 의미로 쓴다 */
 #hud .slot.worn{border:2px solid var(--accent);box-shadow:0 0 8px rgba(0,240,255,.4)}
-#hud .slot b{position:absolute;right:5px;bottom:5px;background:var(--chip);
-  border-radius:4px;padding:1px 4px;font-family:var(--mono);font-size:10px;
+#hud .slot b{position:absolute;right:3px;bottom:3px;background:var(--chip);
+  border-radius:4px;padding:1px 3px;font-family:var(--mono);font-size:9px;
   font-weight:700;color:var(--muted)}
+/* 교체 창(UI-14) 중 고를 수 있는 칸 — 착용 강조(시안)와 **다른 색**이어야 한다.
+   같은 색이면 "이미 착용한 칸"과 "지금 고를 수 있는 칸"이 안 갈린다 */
+#hud .slot.swappable{border:2px solid var(--gold,#ffc44d);
+  box-shadow:0 0 10px rgba(255,196,77,.45)}
+
+/* ─────────────── UI-14 교체 창 게이지 ─────────────── */
+/* 슬롯 줄 위에 붙는 얇은 띠. 모달이 아니다 — 화면을 가릴 이유가 없다 */
+#hud .swap{opacity:0;height:0;overflow:hidden;transition:opacity .12s;
+  margin:0 0 6px;text-align:right;pointer-events:none}
+#hud .swap.on{opacity:1;height:auto}
+#hud .swap i{display:block;height:3px;border-radius:2px;background:var(--gold,#ffc44d);
+  transform-origin:right center;transform:scaleX(1)}
+#hud .swap em{display:block;margin-top:3px;font-style:normal;font-size:10px;
+  letter-spacing:.02em;color:var(--muted)}
 
 /* ─────────────── 하단 중앙: 양심 게이지 ─────────────── */
 /*
@@ -186,3 +201,20 @@
 #sig.on{display:block;animation:pop .3s ease both}
 #sig.stop{color:var(--crit);border:1px solid rgba(229,72,77,.45)}
 #sig.go{color:var(--line2);border:1px solid rgba(0,168,77,.45)}
+
+/* ─────────────── UI-06 미니맵 캔버스 (P2) ───────────────
+   컨테이너(`#mini-r`)는 이미 원형이다. 캔버스는 그 안을 채우고,
+   해금 전에는 `display:none` 으로 잠금 문구가 그대로 보이게 둔다. */
+#mini-c{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:200px;height:200px;border-radius:100px;pointer-events:none}
+
+/* ─────────────── 관찰 모드 Q (P2) ───────────────
+   화면 중앙 아래. **시간은 흐르므로** 화면을 덮지 않는다 —
+   덮으면 "멈춘 것 같은데 시계는 간다"가 되어 가장 나쁜 종류의 오해가 생긴다. */
+#obs{position:absolute;left:50%;top:58%;transform:translateX(-50%);opacity:0;
+  transition:opacity .12s;pointer-events:none;text-align:center;max-width:420px}
+#obs.on{opacity:1}
+#obs b{display:block;font-size:20px;font-weight:800;letter-spacing:-.02em;
+  text-shadow:0 2px 12px rgba(0,0,0,.8)}
+#obs em{display:block;margin-top:5px;font-style:normal;font-size:13px;line-height:1.6;
+  color:var(--muted);text-shadow:0 2px 10px rgba(0,0,0,.8)}

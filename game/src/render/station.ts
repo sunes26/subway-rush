@@ -257,6 +257,25 @@ const baseColor = (m: Material | Material[]): number => {
   return one?.color ? one.color.getHex() : 0xcccccc
 }
 
+/**
+ * 씬에서 **빼는 노드** — 이름으로 지운다.
+ *
+ * `Z2_OBJ16_umb0..5` 는 우산꽂이에 꽂힌 우산 **자리표시자**다. 발광 재질(SH_GREEN)로
+ * 만들어져 있어 형광 초록 막대 여섯 개로 보였다(디렉터 지적 2026-08-06).
+ * 진짜 우산 메시(`items.glb ITM09_Umbrella`)를 `data/decor.ts` + `render/props.ts` 가
+ * **같은 좌표에** 세운다.
+ *
+ * ⚠ 왜 GLB 를 다시 굽지 않았나 — 역 GLB 재빌드는 Blender 왕복이고, 그동안 이 파일이
+ *   화면의 진실이다. 이름 하나를 여기서 빼는 편이 되돌리기도 쉽다.
+ *   대신 **이 목록이 곧 빚**이다: 다음 역 리빌드 때 노드 자체를 지우고 여기를 비운다.
+ *
+ * 이름이 사라져도(에셋 갱신) 조용히 통과한다 — 없는 것을 안 그리는 건 실패가 아니다.
+ */
+const NODE_DROP: ReadonlySet<string> = new Set([
+  'Z2_OBJ16_umb0', 'Z2_OBJ16_umb1', 'Z2_OBJ16_umb2',
+  'Z2_OBJ16_umb3', 'Z2_OBJ16_umb4', 'Z2_OBJ16_umb5',
+])
+
 // ─────────────────────────── 병합 ───────────────────────────
 
 type Bucket = { geos: BufferGeometry[]; color: number }
@@ -276,6 +295,8 @@ const collect = (
   scene.traverse((o) => {
     const m = o as Mesh
     if (!m.isMesh || !m.geometry) return
+    // 발광 판(glow)도 이 아래에서 뜬다 — 여기서 걸러야 막대의 **빛까지** 같이 사라진다
+    if (NODE_DROP.has(m.name)) return
     const matName = Array.isArray(m.material) ? m.material[0]?.name ?? '' : m.material.name
 
     if (isDynamic(m)) { dynamics.push(m); return }

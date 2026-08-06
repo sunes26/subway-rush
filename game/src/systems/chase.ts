@@ -94,7 +94,8 @@ export const chaseSystem = (s: GameState, ctx: ChaseCtx): Action[] => {
     if (s.flags.includes('GRANDPA_ANGRY') && !s.flags.includes('CHASE_DONE')) {
       const b = standPos()
       return [
-        { t: 'CHASE_START', x: b.x, y: b.y },
+        // 일어서는 순간 이미 플레이어를 본다. 이 값을 안 주면 0(동쪽)이 그대로 남는다
+        { t: 'CHASE_START', x: b.x, y: b.y, facing: Math.atan2(p.y - b.y, p.x - b.x) },
         { t: 'FX', kind: 'toast', text: '할아버지가 단소를 꺼냈다', lifeMs: 2000, value: 0 },
       ]
     }
@@ -143,14 +144,23 @@ export const chaseSystem = (s: GameState, ctx: ChaseCtx): Action[] => {
 
   const facing = Math.atan2(p.y - c.pos.y, p.x - c.pos.x)
 
-  // ── 발도 0.6s: 자세만 잡는다. 이 동안 때리지 않는다
+  /**
+   * ── 발도 0.6s · 스윙 0.32s: **제자리지만 시선은 따라간다.**
+   *
+   * 예전엔 둘 다 아무 액션도 안 냈다. 그래서 그 구간에는 `facing` 이 **얼어붙었다** —
+   * 발도 중에는 시작 시점 값(P2 이전엔 아예 0 = 동쪽)이 남고, 스윙 중에는 플레이어가
+   * 옆으로 돌아도 할아버지가 허공을 보고 때렸다. **움직이지 않는 것과 안 보는 것은 다르다.**
+   */
   if (c.phase === 'draw') {
-    return c.phaseMs >= CHASE.drawMs ? [{ t: 'CHASE_PHASE', phase: 'chase' }] : []
+    return c.phaseMs >= CHASE.drawMs
+      ? [{ t: 'CHASE_PHASE', phase: 'chase' }]
+      : [{ t: 'CHASE_MOVE', x: c.pos.x, y: c.pos.y, facing, stuckMs: c.stuckMs }]
   }
 
-  // ── 스윙 0.32s: 제자리
   if (c.phase === 'swing') {
-    return c.phaseMs >= CHASE.swingMs ? [{ t: 'CHASE_PHASE', phase: 'chase' }] : []
+    return c.phaseMs >= CHASE.swingMs
+      ? [{ t: 'CHASE_PHASE', phase: 'chase' }]
+      : [{ t: 'CHASE_MOVE', x: c.pos.x, y: c.pos.y, facing, stuckMs: c.stuckMs }]
   }
 
   // ── 추격
@@ -176,15 +186,36 @@ export const chaseSystem = (s: GameState, ctx: ChaseCtx): Action[] => {
   if (d <= CHASE.hitRangeM) return [{ t: 'CHASE_MOVE', x: c.pos.x, y: c.pos.y, facing, stuckMs: 0 }]
 
   const r = step(s, p.x, p.y, ctx.dtMs)
-  // 끼임 탈출 — 텔레포트 대신 1.5m 후퇴 후 재접근. 화면에서 순간이동하는 노인은 공포다
-  if (r.moved < CHASE.stuckEps) {
-    const stuck = c.stuckMs + ctx.dtMs
-    if (stuck >= CHASE.stuckMs) {
-      const back = step(s, c.pos.x - Math.cos(facing) * CHASE.unstuckBackM,
-        c.pos.y - Math.sin(facing) * CHASE.unstuckBackM, ctx.dtMs)
-      return [{ t: 'CHASE_MOVE', x: back.x, y: back.y, facing, stuckMs: 0 }]
-    }
-    return [{ t: 'CHASE_MOVE', x: r.x, y: r.y, facing, stuckMs: stuck }]
+  if (r.moved >= CHASE.stuckEps) return [{ t: 'CHASE_MOVE', x: r.x, y: r.y, facing, stuckMs: 0 }]
+
+  const stuck = c.stuckMs + ctx.dtMs
+  if (stuck < CHASE.stuckMs) return [{ t: 'CHASE_MOVE', x: r.x, y: r.y, facing, stuckMs: stuck }]
+
+  /**
+   * ── 끼임 탈출: **옆으로 돈다.** 뒤로 물러나지 않는다.
+   *
+   * 예전엔 `facing` 반대 방향으로 1.5m 후퇴했다. 텔레포트를 피한 것까진 옳았지만
+   * **얼굴은 플레이어를 보면서 몸만 뒤로 가는** 그림이 됐다 — 디렉터가 본 "뒤로 이동"이 이것이다.
+   * 기둥에 걸린 사람은 실제로 뒤로 걷지 않는다. 옆으로 비켜 돌아간다.
+   *
+   * 좌/우 90° 를 둘 다 시도해 **더 멀리 가는 쪽**을 쓴다. 어느 쪽으로 돌지는 기둥이 정한다.
+   * 둘 다 막히면 그때만 후퇴하되, 그때는 **가는 쪽을 본다**(뒷걸음질이 아니라 돌아서 간다).
+   */
+  const side = (sign: number): { x: number; y: number; moved: number } => {
+    const a = facing + sign * Math.PI / 2
+    return step(s, c.pos.x + Math.cos(a) * CHASE.unstuckBackM,
+      c.pos.y + Math.sin(a) * CHASE.unstuckBackM, ctx.dtMs)
   }
-  return [{ t: 'CHASE_MOVE', x: r.x, y: r.y, facing, stuckMs: 0 }]
+  const left = side(1)
+  const right = side(-1)
+  const best = left.moved >= right.moved ? left : right
+  if (best.moved >= CHASE.stuckEps) {
+    // 옆으로 도는 동안에도 시선은 플레이어에게 둔다 — 게걸음은 사람이 실제로 하는 동작이다
+    return [{ t: 'CHASE_MOVE', x: best.x, y: best.y, facing, stuckMs: 0 }]
+  }
+
+  const away = facing + Math.PI
+  const back = step(s, c.pos.x + Math.cos(away) * CHASE.unstuckBackM,
+    c.pos.y + Math.sin(away) * CHASE.unstuckBackM, ctx.dtMs)
+  return [{ t: 'CHASE_MOVE', x: back.x, y: back.y, facing: away, stuckMs: 0 }]
 }

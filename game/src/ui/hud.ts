@@ -7,7 +7,8 @@
 
 import { formatClock } from '../core/math'
 import { itemDef } from '../data/items'
-import { FARE, SLOTS, TIMER_STAGES } from '../data/tuning'
+import { createMinimap } from './minimap'
+import { FARE, SLOTS, SWAP_WINDOW_MS, TIMER_STAGES } from '../data/tuning'
 import { ledText } from '../systems/gates'
 import { lightIsGreen, lightRemainSec } from '../systems/tick'
 import { CROSSWALK, FLOOR, ZONE_NAMES } from '../data/world'
@@ -46,6 +47,8 @@ const stage = (ms: number): '' | 'warn' | 'hot' | 'crit' =>
 export type Hud = Readonly<{
   sync(s: GameState, pointerLocked: boolean): void
   setCrosshair(on: boolean): void
+  /** P2 관찰 모드 `Q` — 조준 대상의 상세를 크게 띄운다 */
+  setObserve(on: boolean, title: string, body: string): void
   el: HTMLElement
 }>
 
@@ -93,9 +96,10 @@ export const createHud = (mount: HTMLElement): Hud => {
       <div id="bal-b" class="hud-panel">
         ${iconCoin}<span class="k">잔액</span><span class="v" id="hud-bal">—</span>
       </div>
-      <div id="lockhint">화면을 클릭하면 시점이 잠깁니다 · <em>ESC 해제</em></div>
+      <div id="lockhint">화면을 클릭하면 시점이 잠깁니다 · <em>ESC 설정</em></div>
     </div>
 
+    <div id="obs"><b></b><em></em></div>
     <div id="fx"></div>
     <div id="vig"></div>
     <div id="cross"><i></i><i></i><i></i><i></i></div>
@@ -114,11 +118,17 @@ export const createHud = (mount: HTMLElement): Hud => {
   const invCount = $('inv-c')
   const coordEl = $('coord')
   const fxBox = $('fx')
+  const obs = $('obs')
+  const obsTitle = obs.querySelector('b') as HTMLElement
+  const obsBody = obs.querySelector('em') as HTMLElement
+  let lastObs = ''
   const vig = $('vig')
   const cross = $('cross')
   const sig = $('sig')
   const lockHint = $('lockhint')
   const invEl = $('hud-inv')
+  // UI-06 — 잠긴 껍데기였던 컨테이너에 실제 지도를 넣는다 (P2)
+  const minimap = createMinimap($('mini'))
   const consEl = $('cons')
   const consFill = $('cons-i')
   let firstPerson = true
@@ -127,10 +137,23 @@ export const createHud = (mount: HTMLElement): Hud => {
   const slots = Array.from({ length: SLOTS }, (_, i) => {
     const d = document.createElement('div')
     d.className = 'slot'
-    d.innerHTML = `<b>${i + 1}</b><span></span>`
+    // 키캡 표기 — 10번은 `0` 이다(`Digit0`). 숫자열 순서를 그대로 읽는다
+    d.innerHTML = `<b>${i === 9 ? 0 : i + 1}</b><span></span>`
     invEl.appendChild(d)
     return { box: d, glyph: d.querySelector('span') as HTMLElement, last: '' }
   })
+  /**
+   * UI-14 교체 창 — 슬롯 줄 바로 위에 붙는 얇은 게이지 하나.
+   * 모달 창을 띄우지 않는 이유는 `state/types.ts SwapState` 에 적혀 있다:
+   * **P1 동작이 이미 일어난 뒤의 되돌림 창**이라 화면을 가릴 이유가 없다.
+   */
+  const swapBar = document.createElement('div')
+  swapBar.className = 'swap'
+  swapBar.innerHTML = `<i></i><em>1~${SLOTS === 10 ? '0' : SLOTS} 자리 바꾸기 · ESC 되돌리기</em>`
+  invEl.parentElement?.insertBefore(swapBar, invEl)
+  const swapFill = swapBar.querySelector('i') as HTMLElement
+  let lastSwap = false
+
   let lastCons = -99
   let consLitUntil = 0
 
@@ -150,6 +173,14 @@ export const createHud = (mount: HTMLElement): Hud => {
   return {
     el,
     setCrosshair(on) { firstPerson = on; cross.className = on ? 'on' : '' },
+    setObserve(on, title, body) {
+      const key = on ? `${title}|${body}` : ''
+      if (key === lastObs) return
+      lastObs = key
+      obs.className = on ? 'on' : ''
+      obsTitle.textContent = title
+      obsBody.textContent = body
+    },
     sync(s, pointerLocked) {
       lockHint.className =
         firstPerson && !pointerLocked && (s.phase === 'playing' || s.phase === 'boarding') ? 'on' : ''
@@ -206,19 +237,44 @@ export const createHud = (mount: HTMLElement): Hud => {
 
       vig.style.opacity = s.timeLeftMs <= TIMER_STAGES.hot && s.phase === 'playing' ? '1' : '0'
 
-      // ── 인벤 3슬롯. 마스크는 착용 중이면 테두리가 녹색으로 바뀐다(슬롯은 유지)
+      minimap.sync(s)
+
+      /**
+       * ── 인벤 3슬롯. 착용 중이면 테두리가 녹색으로 바뀐다(슬롯은 유지).
+       *
+       * P1은 `item === 'I-06'` 로 마스크만 봤다. P2는 착용형이 3종이고
+       * **어느 것이 착용형인지는 `items.ts` 가 안다** — 여기서 다시 열거하면
+       * 아이템을 추가할 때 두 곳을 고쳐야 하고, 한 곳을 잊으면 조용히 안 켜진다.
+       *
+       * 교체 창이 열려 있으면 고를 수 있는 칸을 표시한다(UI-14).
+       */
+      const swapOn = s.swap.active
       for (let i = 0; i < slots.length; i++) {
         const slot = slots[i]
         if (!slot) continue
         const item = s.inventory[i] ?? null
-        const worn = item === 'I-06' && s.flags.includes('MASK_ON')
-        const key = `${item ?? ''}|${worn ? 'w' : ''}`
+        const def = item ? itemDef(item) : null
+        const worn = !!(def?.flag && s.flags.includes(def.flag))
+        const swappable = swapOn && i !== s.swap.newSlot
+        const key = `${item ?? ''}|${worn ? 'w' : ''}|${swapOn ? (swappable ? 's' : 'n') : ''}`
         if (key === slot.last) continue
-        slot.glyph.textContent = item ? itemDef(item).glyph : ''
-        slot.box.title = item ? itemDef(item).name : ''
-        slot.box.className = item ? (worn ? 'slot has worn' : 'slot has') : 'slot'
+        slot.glyph.textContent = def ? def.glyph : ''
+        slot.box.title = def ? (def.cost ? `${def.name} — ${def.cost}` : def.name) : ''
+        slot.box.className = [
+          'slot',
+          item ? 'has' : '',
+          worn ? 'worn' : '',
+          swappable ? 'swappable' : '',
+        ].filter(Boolean).join(' ')
         slot.last = key
       }
+
+      // ── UI-14 교체 창 — 0.9초 게이지. 안 누르면 P1 결과가 그대로 남는다
+      if (swapOn !== lastSwap) {
+        swapBar.className = swapOn ? 'swap on' : 'swap'
+        lastSwap = swapOn
+      }
+      if (swapOn) swapFill.style.transform = `scaleX(${s.swap.leftMs / SWAP_WINDOW_MS})`
 
       /**
        * 헤더 카운터 — Figma 는 `4 / 8` 이었다. 우리는 **3슬롯 고정**이므로 분모가 3이다

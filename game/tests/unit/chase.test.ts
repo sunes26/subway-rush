@@ -312,3 +312,85 @@ describe('S10 실질 비용 — 절도가 공짜가 아니다', () => {
     expect(GRANDPA_ID).toBe('ACT-02-GP')
   })
 })
+
+/**
+ * P2 회귀 — **제자리라고 시선까지 멈추면 안 된다.**
+ *
+ * 플레이 확인에서 나왔다: *"할아버지가 뒤로 돈 채 쫓아온다."*
+ * 원인은 둘이었다. `CHASE_START` 가 `facing` 을 안 실어서 발도 0.6초 동안 초기값 0(동쪽)이
+ * 남았고, `draw`·`swing` 구간이 아무 액션도 안 내서 그 사이 `facing` 이 얼어붙었다.
+ */
+describe('P2 — 발도·스윙 중에도 시선은 플레이어를 따라간다', () => {
+  const steal = (px: number, py: number): GameState => {
+    const s = put(start(7, { flags: ['GRANDPA_ANGRY'], inventory: ['I-01', null, null] }), px, py, FLOOR.B1)
+    return holdFor(s, {}, 2)
+  }
+
+  it('일어서는 순간 이미 플레이어를 본다 (0 = 동쪽이 남지 않는다)', () => {
+    const s = steal(42, 12.0)                 // 할아버지 남쪽에 서 있다
+    expect(s.chase.phase).toBe('draw')
+    // 남쪽을 봐야 한다 — −π/2 근처
+    expect(Math.abs(s.chase.facing + Math.PI / 2), `facing=${s.chase.facing}`).toBeLessThan(0.4)
+  })
+
+  it('서쪽에서 훔치면 서쪽을 본다 — 방향이 실제로 따라간다', () => {
+    const s = steal(38, 14.9)
+    expect(Math.abs(Math.abs(s.chase.facing) - Math.PI), `facing=${s.chase.facing}`).toBeLessThan(0.4)
+  })
+
+  it('발도 중에 플레이어가 옮겨가면 시선도 따라간다', () => {
+    const a = steal(42, 12.0)
+    expect(a.chase.phase).toBe('draw')
+    const moved = put(a, 46, 14.9, FLOOR.B1)  // 동쪽으로 순간이동
+    const b = holdFor(moved, {}, 2)
+    expect(Math.abs(b.chase.facing), `facing=${b.chase.facing}`).toBeLessThan(0.4)   // 동쪽 ≈ 0
+  })
+})
+
+/**
+ * P2 회귀 — **끼임 탈출이 뒤로 걷지 않는다.**
+ *
+ * 예전엔 `facing` 반대로 1.5m 후퇴했다. 얼굴은 플레이어를 보면서 몸만 뒤로 가는 그림이라
+ * 디렉터가 "할아버지가 뒤로 이동한다"고 지적했다. 사람은 기둥에 걸리면 옆으로 돈다.
+ */
+describe('P2 — 끼임 탈출은 옆으로 돈다', () => {
+  /** Z2 기둥(x 36, y 20) 정동쪽에 붙여 세운다 — 플레이어는 기둥 반대편 */
+  const wedged = (): GameState => {
+    const s = start(7, {
+      flags: ['GRANDPA_ANGRY'],
+      chase: {
+        ...start(7).chase, active: true, phase: 'chase', phaseMs: 900,
+        remainingMs: 25_000, pos: { x: 36.9, y: 20 }, facing: Math.PI,
+        hitCount: 0, swingCooldownMs: 0, stuckMs: CHASE.stuckMs,
+      },
+    })
+    return put(s, 34.4, 20, FLOOR.B1)          // 기둥 서쪽 — 직진하면 기둥에 막힌다
+  }
+
+  it('막히면 옆으로 이동하고, 시선은 플레이어를 유지한다', () => {
+    const a = wedged()
+    const b = holdFor(a, {}, 6)
+    const moved = Math.hypot(b.chase.pos.x - a.chase.pos.x, b.chase.pos.y - a.chase.pos.y)
+    expect(moved, '어떻게든 움직인다').toBeGreaterThan(0.01)
+    // 플레이어를 향한 방향과의 오차가 90° 안 — 등을 보이지 않는다
+    const want = Math.atan2(b.player.pos.y - b.chase.pos.y, b.player.pos.x - b.chase.pos.x)
+    let err = b.chase.facing - want
+    while (err > Math.PI) err -= 2 * Math.PI
+    while (err < -Math.PI) err += 2 * Math.PI
+    expect(Math.abs(err), `facing 오차 ${(err * 180 / Math.PI).toFixed(1)}°`)
+      .toBeLessThan(Math.PI / 2)
+  })
+
+  it('막히지 않으면 곧장 다가온다 (회귀)', () => {
+    const s = start(7, {
+      flags: ['GRANDPA_ANGRY'],
+      chase: {
+        ...start(7).chase, active: true, phase: 'chase', phaseMs: 900, remainingMs: 25_000,
+        pos: { x: 42, y: 18 }, facing: -Math.PI / 2, hitCount: 0, swingCooldownMs: 0, stuckMs: 0,
+      },
+    })
+    const a = put(s, 42, 12, FLOOR.B1)
+    const b = holdFor(a, {}, 30)
+    expect(b.chase.pos.y, '남쪽으로 다가온다').toBeLessThan(18)
+  })
+})

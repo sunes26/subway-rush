@@ -229,6 +229,15 @@ export const GATE_FUNNEL_X = { min: 58.4, max: 62.4 } as const
 export const GATE_TRIGGER_X = { min: 59.6, max: 60.3 } as const
 /** 운임구역 경계. 이 선을 넘으면 되돌아갈 수 없다 (MAP §0) */
 export const PAID_AREA_X = 62.0
+
+/**
+ * P2 — OBJ-21 비상게이트. 개찰기 뱅크 북쪽 끝(y 30)의 폭 1.4m 개구부.
+ *
+ * **요금을 안 본다.** 잔액 0원 시드에서 자판기를 다 긁어도 요금이 모자랄 수 있고,
+ * P1은 자판기 합계 보장으로 그걸 막았다. P2는 막는 대신 문을 하나 더 준다
+ * (GDD §11 "충전 루트 4개"가 여기서 완성된다).
+ */
+export const EMERGENCY_GATE = { x: 61, y: 30, halfW: 0.7 } as const
 /** 상부 표지등 고도 (부록 A: z −3.95) */
 export const GATE_LAMP_Z = -3.95
 
@@ -478,11 +487,15 @@ export const SOLIDS: readonly Solid[] = [
   //   대신 movement의 게이트 퍼널이 플레이어를 중앙으로 끌어당겨 시각적 관통을 막는다.
   ...wallWithGaps(
     'GATE-BANK', 'y', [GATE_BODY.xMin, GATE_BODY.xMax], [0, 32],
-    GATES.map((g) => [g.y - GATE_CLEARANCE(g), g.y + GATE_CLEARANCE(g)] as const),
+    [
+      ...GATES.map((g) => [g.y - GATE_CLEARANCE(g), g.y + GATE_CLEARANCE(g)] as const),
+      // P2 — 비상게이트 자리. **벽에 구멍을 뚫고 문은 동적 솔리드로 세운다**
+      // (개찰기 플랩과 같은 규약: `systems/emergency.ts emergencyDoor`).
+      // 정적 벽으로 두면 열 방법이 없다 — 정적 솔리드는 프레임마다 못 뺀다.
+      [EMERGENCY_GATE.y - EMERGENCY_GATE.halfW, EMERGENCY_GATE.y + EMERGENCY_GATE.halfW] as const,
+    ],
     FLOOR.B1, 1.15, 'gate',
   ),
-  // OBJ-21 비상게이트 (61,30) — P0 잠김
-  solid('OBJ-21-EMG', at(61, 30, 1.4, 1.4), FLOOR.B1, 1.3, 'gate'),
   solid('OBJ-22-INTERCOM', at(58.2, 30, 0.5, 0.5), FLOOR.B1, 1.4, 'prop'),
   // Z3 외벽
   parapet('Z3-S', [56, -0.4, 72, 0], FLOOR.B1, 4.0),

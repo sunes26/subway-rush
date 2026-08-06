@@ -17,6 +17,9 @@ import { setDynamicSolids } from './collision'
 import { gateFlaps, gateKnockback, gatesSystem } from './gates'
 import { interactSystem } from './interact'
 import { movementSystem } from './movement'
+import { emergencyDoor, emergencySystem } from './emergency'
+import { obstacleSystem } from './obstacles'
+import { staffSystem } from './staff'
 import { qteSystem } from './qte'
 import { psdDoors, trainAt, trainSystem } from './train'
 
@@ -37,7 +40,9 @@ export const lightRemainSec = (s: GameState): number =>
  * 벽으로 막던 것을 규칙이 아니라 **결과**로 바꾼 것이다.
  */
 export const rebuildDynamics = (s: GameState): void => {
-  setDynamicSolids([...gateFlaps(s), ...psdDoors(s), ...chaseSolids(s), ...crowdSolids(s)])
+  setDynamicSolids([
+    ...gateFlaps(s), ...psdDoors(s), ...chaseSolids(s), ...crowdSolids(s), ...emergencyDoor(s),
+  ])
 }
 
 export const tick = (state: GameState, dtMs: number, ctx: TickCtx): GameState => {
@@ -72,11 +77,20 @@ export const tick = (state: GameState, dtMs: number, ctx: TickCtx): GameState =>
    */
   s = applyAll(s, chaseSystem(s, { dtMs }))
 
+  /** 역무원도 이동 뒤다 — 추격과 같은 이유(한 프레임 늦은 위치를 보면 판정이 어긋난다) */
+  s = applyAll(s, staffSystem(s))
+
   /**
    * 인파 — 역류의 밀어내기는 `MOVE` 전량 재발행이라 반드시 이동 **뒤**여야 한다
    * (`gateKnockback` 과 같은 수법·같은 이유).
    */
   s = applyAll(s, crowdSystem(s, { dtMs, prev: before }))
+
+  /**
+   * 방해요소는 **인파 뒤**다. 인파에 밀려 물청소 구역으로 들어가는 일이 있고,
+   * 앞에 두면 밀리기 전 위치로 판정해 "분명 밟았는데 안 미끄러졌다"가 된다.
+   */
+  s = applyAll(s, obstacleSystem(s, { dtMs, prev: before }))
 
   /**
    * 상호작용 → QTE 순서다.
@@ -91,6 +105,12 @@ export const tick = (state: GameState, dtMs: number, ctx: TickCtx): GameState =>
   const gateActions = gatesSystem(s)
   s = applyAll(s, gateActions)
   s = applyAll(s, gateKnockback(s, before))
+
+  /**
+   * 비상게이트는 **개찰구 뒤**다. 같은 틱에 둘 다 `GATE_PASSED` 를 내면 나중 것이 이기고,
+   * 그러면 요금 차감 여부가 뒤바뀐다.
+   */
+  s = applyAll(s, emergencySystem(s))
 
   s = applyAll(s, trainSystem(s))
 

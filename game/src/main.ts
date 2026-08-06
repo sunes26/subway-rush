@@ -9,7 +9,8 @@ import { createSfx } from './audio/sfx'
 import { createInput, EMPTY_INPUT, type InputFrame } from './core/input'
 import { resolveSeed } from './core/rng'
 import { CAMERA, FPV, MAX_FRAME_MS, MAX_STEPS_PER_FRAME, MOVE, STEP_MS } from './data/tuning'
-import { FLOOR, GATES, GATE_BODY, GATE_LAMP_Z } from './data/world'
+import { FLOOR, GATES, GATE_BODY, GATE_LAMP_Z, ZONE_NAMES } from './data/world'
+import { byId, type InteractKind } from './data/interactables'
 import { CHAR_SCALE, loadActors, type Actors } from './render/actors'
 import { createCameraRig } from './render/camera-rig'
 import { buildTraffic, type Traffic } from './render/cars'
@@ -27,6 +28,16 @@ import { createDebug } from './ui/debug'
 import { createDialog } from './ui/dialog'
 import { createHud } from './ui/hud'
 import { createScreens } from './ui/screens'
+import { createCollection } from './ui/collection'
+import { createSettings } from './ui/settings'
+import { RES_SCALES, type Settings } from './core/settings'
+import { createAmbience } from './audio/ambience'
+import { createFootsteps } from './audio/footsteps'
+import {
+  ambienceHzOf, announceOn, heartIntensity, heartbeatIntervalMs, heartbeatOn,
+  stepCutoffOf, stepIntervalMs, stepKindOf,
+} from './audio/cues'
+import { recordEnding } from './core/save'
 
 const BASE = import.meta.env.BASE_URL
 
@@ -76,6 +87,38 @@ const hud = createHud(uiRoot)
 /** 상호작용 오버레이 — 프롬프트·진행링·사유·대화·QTE. HUD와 분리한 이유는 ui/dialog.ts 헤더 참고 */
 const dialog = createDialog(uiRoot)
 const screens = createScreens(uiRoot)
+const collection = createCollection(uiRoot)
+
+/**
+ * UI-15 설정(ESC) — **일시정지 겸 설정**.
+ *
+ * ★ 값을 실제로 먹이는 곳이 여기다. UI 는 값만 만든다(`ui/settings.ts` 헤더 참고).
+ * ★ 전체 화면 전환은 **사용자 제스처 안에서만** 허용된다. 드롭다운 change 는 제스처라
+ *   여기서 부르면 통과하지만, 부팅 직후 초기 적용에서 부르면 브라우저가 거절한다 →
+ *   `boot` 인자로 그 한 번을 건너뛴다(거절 자체는 무해하지만 콘솔이 시뻘게진다).
+ */
+const applySettings = (v: Settings, boot = false): void => {
+  sfx.setVolumes({ master: v.master, bgm: v.bgm, sfx: v.sfx })
+  input.setLook({ sens: v.sens, invertY: v.invertY })
+  stage.setResScale(RES_SCALES[v.res])
+  if (boot) return
+  const wantFull = v.screen === 'fullscreen'
+  const isFull = document.fullscreenElement !== null
+  if (wantFull && !isFull) void document.documentElement.requestFullscreen?.().catch(() => {})
+  if (!wantFull && isFull) void document.exitFullscreen?.().catch(() => {})
+}
+
+const settings = createSettings(uiRoot, {
+  onChange: (v) => { applySettings(v) },
+  onHome: () => { toTitle() },
+  onToggle: (open) => {
+    // 열리는 순간 포인터 락을 푼다 — 마우스로 슬라이더를 잡아야 한다
+    if (open && document.pointerLockElement) document.exitPointerLock()
+  },
+})
+// 저장된 설정을 부팅 즉시 먹인다 — 첫 프레임이 이미 그 해상도·감도여야 한다
+applySettings(settings.values(), true)
+
 const debug = createDebug(uiRoot, stage.renderer)
 
 /**
@@ -85,9 +128,16 @@ const debug = createDebug(uiRoot, stage.renderer)
  * 단어 경계를 넣는다는 것이 **백스페이스 문자(0x08)** 로 들어가 한 번도 안 맞았다 —
  * 눈으로는 똑같이 보여서 화면만 보고는 못 잡는다.
  */
+/**
+ * `?obs=all` — **방해요소 전량 활성 디버그 스위치.**
+ *
+ * 시드는 12종 중 8종만 켠다. 그래서 아주머니나 좀비폰족이 **통째로 없는 판**이 정상적으로
+ * 존재하는데, 화면만 보면 "구현이 안 됐다"와 구분이 안 된다. 확인할 때 다 세우는 스위치다.
+ */
+const ALL_OBS = /[?&]obs=all/.test(location.search)
 const FREEPLAY = ((q) => q.has('freeplay') || q.has('notimer'))(
   new URLSearchParams(location.search))
-let state: GameState = initialState(resolveSeed(location.search), FREEPLAY)
+let state: GameState = initialState(resolveSeed(location.search), FREEPLAY, ALL_OBS)
 let player: PlayerRig | null = null
 let station: Station | null = null
 /** P1 — 습득 프롭 + 골드 아웃라인 */
@@ -99,11 +149,33 @@ let shakeUntil = 0
 let hitCooldownMs = 0
 const HIT_COOLDOWN_MS = 1200
 
+/** 관찰 모드에서 대상 종류를 한 줄로 풀어 쓴다 — 처음 보는 사람에게 동사를 알려 준다 */
+const OBSERVE_NOTE: Readonly<Record<InteractKind, string>> = {
+  pickup: 'E — 줍는다',
+  buy: 'E — 산다',
+  talk: 'E — 말을 건다',
+  scratch: 'E — 효자손으로 긁는다',
+  aside: 'E — "저기요"',
+  give: 'E — 건넨다',
+  story: 'E — 이야기를 듣는다',
+  return: 'E — 맡긴다',
+  call: 'E — 호출한다',
+  enter: 'E — 들어간다',
+}
+
 stage.resize()
 
+/** 설정의 "홈으로 돌아가기" — 판을 새로 만들고 **타이틀로** 되돌린다 */
+const toTitle = (): void => {
+  restart()
+  state = { ...state, phase: 'title' }
+}
+
 const restart = (): void => {
+  recordedEnding = null
+  collection.close()
   const seed = (state.seed * 1664525 + 1013904223) >>> 0
-  state = initialState(seed, FREEPLAY)   // 재시작해도 자유 탐색은 유지한다
+  state = initialState(seed, FREEPLAY, ALL_OBS)   // 재시작해도 자유 탐색·디버그 스위치는 유지한다
   prevPos = state.player.pos
   rebuildDynamics(state)
 }
@@ -113,23 +185,126 @@ let prevGateState = state.gates.state
 let prevCoins = state.tally.coinsEarned
 let prevHits = state.chase.hitCount
 let prevTrainState = state.train.state
+// ── P2 ──
+const ambience = createAmbience()
+const footsteps = createFootsteps()
+let prevAlert = state.staffAlertMs
+let prevZoneHz = 0
+/** 발소리·심박은 **누적 시계**로 돈다 — 프레임레이트와 무관한 주기를 만들려면 이 방법뿐이다 */
+let stepAcc = 0
+let heartAcc = 0
 
-const playSfxFor = (s: GameState): void => {
+const playSfxFor = (s: GameState, dtMs: number): void => {
   if (s.gates.state === 'open' && prevGateState !== 'open') sfx.gate()
   if (s.tally.coinsEarned > prevCoins) sfx.coin()
   if (s.chase.hitCount > prevHits) sfx.danso()
   if (s.train.state === 'closing' && prevTrainState !== 'closing') sfx.doorWarn()
+  // P2 — 열차 접근 안내방송 · 역무원 호루라기
+  if (announceOn(s.train.state, prevTrainState)) sfx.announce()
+  if (s.staffAlertMs > 0 && prevAlert === 0) sfx.whistle()
+
+  /**
+   * 발소리 — 녹음 루프를 **이동 중에만 연다**(`audio/footsteps.ts`).
+   *
+   * 걸음마다 트리거하지 않는 이유는 소스가 단발이 아니라 연속 보행 루프이기 때문이다.
+   * 샘플 로드가 실패하면 **절차 생성 폴백**으로 돌아간다 — 오디오가 실패해도 게임은 돈다.
+   */
+  const walking = s.phase === 'playing' && s.player.moving && s.player.stallMs <= 0
+  if (footsteps.ready()) {
+    footsteps.set(walking, s.player.sprinting, stepCutoffOf(s))
+  } else if (walking) {
+    stepAcc += dtMs
+    const period = stepIntervalMs(s.player.sprinting)
+    if (stepAcc >= period) { stepAcc %= period; sfx.step(stepKindOf(s)) }
+  } else {
+    // 멈추면 다음 첫 걸음이 바로 나도록 위상을 거의 채워 둔다
+    stepAcc = stepIntervalMs(false) * 0.8
+  }
+
+  // 심박 — 잔여 30초 미만에서만
+  if (heartbeatOn(s)) {
+    heartAcc += dtMs
+    const period = heartbeatIntervalMs(s.timeLeftMs)
+    if (heartAcc >= period) { heartAcc = 0; sfx.heartbeat(heartIntensity(s.timeLeftMs)) }
+  } else {
+    heartAcc = 0
+  }
+
+  // 앰비언스 — 존 대역만 크로스페이드한다(소스를 갈면 그 순간 끊긴다)
+  const hz = ambienceHzOf(s)
+  if (hz !== prevZoneHz) { ambience.setZone(hz); prevZoneHz = hz }
+
   prevGateState = s.gates.state
   prevCoins = s.tally.coinsEarned
   prevHits = s.chase.hitCount
   prevTrainState = s.train.state
+  prevAlert = s.staffAlertMs
 }
+
+/**
+ * 엔딩 기록 — **엔딩 id 가 바뀌는 순간 한 번**만 쓴다.
+ * `phase === 'ended'` 로 판정하면 엔딩 화면이 떠 있는 내내 매 프레임 기록된다.
+ */
+let recordedEnding: string | null = null
+const recordIfEnded = (s: GameState): void => {
+  if (s.phase !== 'ended' || !s.endingId) { return }
+  if (recordedEnding === s.endingId) return
+  recordedEnding = s.endingId
+  recordEnding(s.endingId, s.boarded ? Math.max(0, s.timeLeftMs) : 0)
+}
+
+/**
+ * ESC 를 **설정으로 쓸 수 있는가**.
+ *
+ * ESC 는 이미 네 곳이 먹고 있다(대화 취소·QTE 포기·교체 되돌리기·도감 닫기).
+ * 설정은 그 **아무도 안 쓸 때**만 가져간다 — 우선순위를 뒤집으면 대화 도중 ESC 가
+ * 설정을 열어 버리고, 플레이어는 취소하려다 일시정지를 만난다.
+ */
+const escIsFree = (s: GameState): boolean =>
+  !collection.isOpen() && s.act.dialogId === null && !s.qte.active &&
+  !s.swap.active && s.act.busyId === null
+
+/**
+ * 포인터 락 중에는 **ESC 키 이벤트가 페이지에 오지 않는다.** 브라우저가 먼저 먹어
+ * 락을 풀어 버리기 때문이다(명세대로다). 그래서 "락이 풀렸다"를 ESC 로 읽는다.
+ *
+ * ⚠ 창 포커스를 잃어도 락은 풀린다. 그때까지 설정을 열면 알트탭 한 번에 게임이
+ *   멈춘 채 돌아오게 된다 → `hasFocus()` 로 갈라낸다.
+ */
+document.addEventListener('pointerlockchange', () => {
+  if (document.pointerLockElement) return
+  if (!document.hasFocus()) return
+  if (state.phase !== 'playing' && state.phase !== 'boarding') return
+  if (!escIsFree(state)) return
+  settings.open()
+})
 
 const handleMeta = (f: InputFrame): void => {
   // 첫 입력에서 오디오 컨텍스트를 깬다 — 브라우저 자동재생 정책
-  if (f.pressStart || f.pressInteract || f.pressRestart) sfx.unlock()
+  if (f.pressStart || f.pressInteract || f.pressRestart) {
+    sfx.unlock()
+    ambience.start(sfx.context(), sfx.bus())
+    void footsteps.load(sfx.context(), sfx.bus(), BASE)
+  }
+  if (f.pressMute) { const m = sfx.toggleMute(); ambience.setMuted(m) }
+  if (f.pressSlot > 0 || f.pressCollection) sfx.click()
   if (f.pressDebug) debug.toggle()
   if (f.pressToggleView) { cameraRig.toggleMode(); applyView() }
+
+  // 도감은 타이틀·엔딩에서만 연다 — 플레이 중에 열면 3분 타이머가 의미를 잃는다
+  if (f.pressCollection && (state.phase === 'title' || state.phase === 'ended')) collection.toggle()
+  if (collection.isOpen()) {
+    if (f.pressCancel) collection.close()
+    return                                   // 도감이 열려 있으면 다른 메타 입력을 먹는다
+  }
+
+  // 설정이 열려 있으면 ESC 로 닫고 **다른 메타 입력을 전부 먹는다**(멈춘 동안엔 멈춰 있어야 한다)
+  if (settings.isOpen()) {
+    if (f.pressCancel) settings.close()
+    return
+  }
+  if (f.pressCancel && escIsFree(state)) { settings.open(); return }
+
   if (state.phase === 'title' && f.pressStart) state = { ...state, phase: 'playing' }
   if (state.phase === 'ended' && f.pressRestart) restart()
 }
@@ -140,8 +315,8 @@ let prev = performance.now()
 let acc = 0
 
 /** 아직 시뮬에 전달되지 못한 원샷 입력. 아래 프레임 루프 주석 참고 */
-type Pending = Pick<InputFrame, 'pressInteract' | 'pressSlot' | 'pressCancel' | 'qteDelta'>
-const EMPTY_PENDING: Pending = { pressInteract: false, pressSlot: 0, pressCancel: false, qteDelta: 0 }
+type Pending = Pick<InputFrame, 'pressInteract' | 'pressSlot' | 'pressCancel'>
+const EMPTY_PENDING: Pending = { pressInteract: false, pressSlot: 0, pressCancel: false }
 let pending: Pending = EMPTY_PENDING
 /** 직전 시뮬 스텝의 플레이어 위치 — 렌더 보간의 시작점 */
 let prevPos = state.player.pos
@@ -161,6 +336,14 @@ const frame = (now: number): void => {
 
   const sample = input.sample()
   handleMeta(sample)
+
+  /**
+   * 설정이 열려 있으면 **시뮬을 멈춘다.** 렌더는 계속 돈다 — 뒤에 멈춘 화면이 비쳐야
+   * "꺼진 것"과 "멈춘 것"이 구분된다.
+   * 누적치도 같이 버린다. 안 버리면 닫는 순간 밀린 스텝이 한꺼번에 돌아 3분 타이머가
+   * 훅 준다(`MAX_STEPS_PER_FRAME` 이 상한을 씌우지만 몇 스텝은 그대로 흐른다).
+   */
+  if (settings.isOpen()) { acc = 0; pending = EMPTY_PENDING }
 
   /**
    * 시뮬에 넘길 시선 방향.
@@ -192,13 +375,11 @@ const frame = (now: number): void => {
     pressInteract: pending.pressInteract || sample.pressInteract,
     pressSlot: sample.pressSlot !== 0 ? sample.pressSlot : pending.pressSlot,
     pressCancel: pending.pressCancel || sample.pressCancel,
-    // 마우스 델타는 누적값이다 — 버리면 QTE 스트로크가 짧아진다
-    qteDelta: pending.qteDelta + sample.qteDelta,
   }
 
   const withOneShots: InputFrame = { ...sample, ...pending }
   const noOneShots: InputFrame = {
-    ...sample, pressInteract: false, pressSlot: 0, pressCancel: false, qteDelta: 0,
+    ...sample, pressInteract: false, pressSlot: 0, pressCancel: false,
   }
 
   let steps = 0
@@ -267,10 +448,32 @@ const frame = (now: number): void => {
   // P1 렌더는 상태를 **읽기만** 한다 — 판정은 전부 systems/ 에 있다
   props?.sync(state, dtSec, now / 1000)
   actors?.sync(state, dtSec)
-  playSfxFor(state)
+  playSfxFor(state, dtSec * 1000)
+  /**
+   * P2 관찰 모드 `Q` — 조준 대상의 상세를 띄우고 화각을 좁힌다(망원 느낌).
+   * **시간은 안 멈춘다** — 3분 게임에서 정지는 곧 무한 시간이다(`docs/P2-SPEC.md` §8.2).
+   */
+  const observing = sample.observe && state.phase === 'playing'
+  const wantFov = observing ? FPV.fovDeg - 12 : FPV.fovDeg
+  if (Math.abs(stage.camera.fov - wantFov) > 0.05) {
+    // 한 번에 튀면 멀미가 난다 — 시정수 0.12s 로 민다
+    stage.camera.fov += (wantFov - stage.camera.fov) * Math.min(1, dtSec / 0.12)
+    stage.camera.updateProjectionMatrix()
+  }
+  if (observing) {
+    const t = state.act.targetId ? byId(state.act.targetId) : null
+    const d = t ? Math.hypot(t.x - state.player.pos.x, t.y - state.player.pos.y) : 0
+    hud.setObserve(true,
+      t ? t.label : ZONE_NAMES[state.zone],
+      t ? `${OBSERVE_NOTE[t.kind] ?? ''} · ${d.toFixed(1)}m` : '조준할 대상이 없다')
+  } else {
+    hud.setObserve(false, '', '')
+  }
+
   hud.sync(state, sample.locked && cameraRig.mode() === 'fp')
   dialog.sync(state)
   screens.sync(state)
+  recordIfEnded(state)
   debug.sync(state)
 
   // 게이트 거부 화면 흔들림
@@ -360,6 +563,11 @@ declare global {
       stationStats(): { merged: number; dynamic: number } | null
       /** 오디오 컨텍스트가 실제로 살아 있는가 (E2E) */
       sfxReady(): boolean
+      /** 지금까지 재생 시도한 소리 수 (E2E — "실제로 울렸는가"의 유일한 관측점) */
+      sfxPlays(): number
+      sfxMuted(): boolean
+      /** 발소리 **샘플**이 로드·디코드됐는가 (E2E) */
+      stepsReady(): boolean
       /** 1인칭 시선을 강제한다 (E2E용 — 포인터 락 없이 시점 검증) */
       look(yaw: number, pitch?: number): void
       /** 지금 화면 안에 들어온 게이트 표지 수 (0~6) */
@@ -468,6 +676,9 @@ window.__game = {
   minFps: () => debug.minFps(),
   stationStats: () => station?.stats ?? null,
   sfxReady: () => sfx.ready(),
+  sfxPlays: () => sfx.plays(),
+  sfxMuted: () => sfx.muted(),
+  stepsReady: () => footsteps.ready(),
 }
 
 export { EMPTY_INPUT }

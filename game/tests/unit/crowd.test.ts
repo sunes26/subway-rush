@@ -14,14 +14,18 @@ import { goto, holdFor, put, start, tap, wait, yawTo } from './_pilot'
 /** ACT-CP 좌표 — `data/interactables.ts` 와 같은 값 */
 const CP = { x: 96.6, y: 2.2 }
 
+/** P2 — 인파벽이 3인 1열이 됐다. 셋을 다 비켜야 열린다 */
 const cleared = (s: GameState): GameState =>
-  ({ ...s, act: { ...s.act, consumed: [...s.act.consumed, 'ACT-CP'] } })
+  ({ ...s, act: { ...s.act, consumed: [...s.act.consumed, 'ACT-CP', 'ACT-CP2', 'ACT-CP3'] } })
 
 describe('S11-1 인파벽은 에스컬레이터를 막는다', () => {
   it('비켜서기 전에는 솔리드가 있고 후에는 없다', () => {
-    expect(crowdSolids(start(7)).length).toBe(1)
+    expect(crowdSolids(start(7)).length, 'P2 — 3인 1열').toBe(3)
     expect(crowdSolids(start(7))[0]?.h).toBe(AISLE.h)
     expect(crowdSolids(cleared(start(7))).length).toBe(0)
+    // 앞사람만 비켜도 뒤가 남는다 — 이게 15초 정체의 근거이자 E-11 의 전제다
+    const one = { ...start(7), act: { ...start(7).act, consumed: ['ACT-CP'] } }
+    expect(crowdSolids(one).length).toBe(2)
   })
 
   it('남는 통로 폭이 플레이어 지름보다 좁다 — 옆으로 빠져나갈 수 없다', () => {
@@ -53,10 +57,11 @@ describe('S11-2~S11-4 O-03 해결 3경로', () => {
   it('S11-2 우산 사용 → 즉시 개방 · 우산 소모 · 스타일 +1', () => {
     const s0 = atCp({ inventory: ['I-09', null, null] })
     const s = tap(s0, { pressSlot: 1 }, yawTo(s0, CP.x, CP.y))
-    expect(s.act.consumed, '즉시 비켜선다').toContain('ACT-CP')
+    expect(s.act.consumed, '가장 가까운 사람이 비켜선다').toContain('ACT-CP')
     expect(s.inventory.includes('I-09'), '우산은 소모된다').toBe(false)
     expect(s.scores.style, '사용 아이템 종류 +1').toBe(1)
-    expect(crowdSolids(s).length, '통로가 열렸다').toBe(0)
+    expect(s.tally.pushes, 'E-11 계수기가 는다').toBe(1)
+    expect(crowdSolids(s).length, '한 사람만 열렸다 — 둘이 남는다').toBe(2)
   })
 
   it('S11-3 "저기요" → 3.0초 뒤 개방', () => {

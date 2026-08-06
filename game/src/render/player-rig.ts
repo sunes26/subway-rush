@@ -122,7 +122,8 @@ export const loadPlayerRig = async (url: string, outline: boolean, scale = 1): P
       const pos = renderPos ?? p.pos
       root.position.set(pos.x, pos.z, -pos.y)
       // 월드 facing(+x 기준, 반시계) → three 요
-      root.rotation.y = -p.facing + Math.PI / 2
+      // `npc-rig.ts place()` 와 **같은 공식**이어야 한다. `-facing` 은 반사였다(동서 뒤집힘)
+      root.rotation.y = p.facing + Math.PI / 2
 
       // 공중은 원샷 클립보다 우선한다 — 뛰는 도중 다른 상태로 덮이면 안 된다
       if (state.phase === 'boarding') play('Board')

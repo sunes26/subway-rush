@@ -11,10 +11,24 @@ import { GATE, JUMP, MOVE, SPEED, STAMINA } from '../data/tuning'
 import { FLOOR, GATES, GATE_FUNNEL_X } from '../data/world'
 import type { Action, GameState } from '../state/types'
 import { resolveMove, sampleGround, depenetrate } from './collision'
+import { WET_ZONE } from './obstacles'
 
 export type MoveCtx = Readonly<{ dtMs: number; input: InputFrame; cameraYaw: number }>
 
 /** 램프 종류에 따른 기본 속도 (MAP §1.3) */
+/**
+ * 감속 시정수 배수 — 클수록 미끄럽다.
+ * 계단은 발을 딛으므로 잘 서고, 젖은 구역은 미끄러지고, 나머지는 기준값이다.
+ */
+const surfaceFactor = (
+  rampKind: 'stairs' | 'escalator' | null, pos: { x: number; y: number; z: number },
+): number => {
+  if (rampKind === 'stairs') return MOVE.gripStairs
+  const wet = Math.abs(pos.z - FLOOR.B1) < 2.5 &&
+    pos.x >= WET_ZONE[0] && pos.x <= WET_ZONE[2] && pos.y >= WET_ZONE[1] && pos.y <= WET_ZONE[3]
+  return wet ? MOVE.gripWet : 1
+}
+
 const baseSpeed = (rampKind: 'stairs' | 'escalator' | null, sprinting: boolean): number => {
   if (rampKind === 'escalator') return SPEED.escalatorWalk
   if (rampKind === 'stairs') return sprinting ? SPEED.stairsTwoStep : SPEED.stairsDown
@@ -73,14 +87,23 @@ export const movementSystem = (s: GameState, ctx: MoveCtx): Action[] => {
   let locked = p.sprintLocked
   let sinceSprintMs = p.sinceSprintMs
 
+  /**
+   * P2 착용·소모의 대가가 여기서 청구된다.
+   *  · 커피(CAFFEINE) — 소모 −25%. "스프린트 +5s"(GDD §5.3)를 지속시간이 아니라 **연비**로 준다.
+   *    지속시간으로 주면 또 하나의 타이머가 늘고, 그건 3분 게임에 이미 너무 많다.
+   *  · 마스크(MASK_ON) — 회복 −20%. 인파 저항의 대가다(숨이 차다).
+   */
+  const drain = STAMINA.drainPerSec * (s.flags.includes('CAFFEINE') ? 0.75 : 1)
+  const regen = STAMINA.regenPerSec * (s.flags.includes('MASK_ON') ? 0.8 : 1)
+
   if (canSprint) {
-    stamina -= STAMINA.drainPerSec * dt
+    stamina -= drain * dt
     sinceSprintMs = 0
     if (stamina <= 0) { stamina = 0; locked = true }
   } else {
     sinceSprintMs += ctx.dtMs
     if (sinceSprintMs >= STAMINA.regenDelaySec * 1000) {
-      stamina = Math.min(STAMINA.max, stamina + STAMINA.regenPerSec * dt)
+      stamina = Math.min(STAMINA.max, stamina + regen * dt)
     }
     if (locked && stamina >= STAMINA.unlockAt) locked = false
   }
@@ -88,11 +111,30 @@ export const movementSystem = (s: GameState, ctx: MoveCtx): Action[] => {
   // ── 목표 속도
   const ground0 = sampleGround(p.pos.x, p.pos.y, p.pos.z)
   const rampKind = ground0.ramp?.kind ?? null
-  const speed = baseSpeed(rampKind, canSprint) * (1 - p.speedPenalty)
+  /**
+   * 이동 배수 — 곱해서 쌓는다.
+   *  · 캐리어(CARRIER_ON) −20% (GDD §5.3 I-10)
+   *  · 관찰 모드 `Q` −40% — 멈추지 않는 이유는 `docs/P2-SPEC.md` §8.2 에 있다
+   *    (3분 게임에서 정지는 곧 무한 시간이다)
+   */
+  const carry = s.flags.includes('CARRIER_ON') ? 0.8 : 1
+  const observe = input.observe ? 0.6 : 1
+  const speed = baseSpeed(rampKind, canSprint) * (1 - p.speedPenalty) * carry * observe
   const targetX = dirX * speed
   const targetY = dirY * speed
 
-  const tau = hasInput ? MOVE.accelTau : MOVE.decelTau
+  /**
+   * P2 — **지면별 마찰 차등** (S21 · 120점 패스).
+   *
+   * P1은 어디서나 같은 감속 시정수(0.09s)였다. 젖은 바닥·계단·보도가 발밑에서
+   * 똑같이 느껴지면 "역을 다니는 감각"이 안 생긴다. 감속 쪽만 손댄다 —
+   * 가속까지 건드리면 예산표(MAP §1.3)의 이동 시간이 통째로 바뀐다.
+   *
+   * 미끄러짐은 **OBS-05 물청소와 다른 층이다.** 저건 넘어져서 못 움직이는 것이고
+   * 이건 멈추는 데 걸리는 거리다. 신문지가 있어도 바닥은 여전히 미끄럽다.
+   */
+  const surface = surfaceFactor(rampKind, p.pos)
+  const tau = hasInput ? MOVE.accelTau : MOVE.decelTau * surface
   let vx = lerpExp(p.vel.x, targetX, dt, tau)
   let vy = lerpExp(p.vel.y, targetY, dt, tau)
   // 잔속 스냅 — 이게 없으면 손을 뗀 뒤에도 0.2 m/s로 계속 흘러간다. 미끄러지는 느낌은 P0에서 금지.

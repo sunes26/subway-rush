@@ -1,9 +1,16 @@
 /**
- * 자판기 하단 긁기 QTE — GDD §5.4 "마우스 좌↔우 드래그 3회, 리듬 판정".
+ * 자판기 하단 긁기 QTE — **P2 타이밍 바.**
  *
- * 순수 함수다. 입력은 `InputFrame.qteDelta`(원본 마우스 x 델타 px) 하나뿐이라
- * 헤드리스 테스트가 손으로 스크립트를 만들 수 있다.
+ * 좌우로 왕복하는 마커가 **중앙 성공 구간**에 있을 때 클릭하면 성공. 3회 성공하면 동전을 얻는다.
  *
+ * P1은 GDD §5.4 그대로 "마우스 좌↔우 드래그 3회 + 리듬 판정"이었다. 바꾼 이유 둘:
+ *  · 누적 이동량(px)으로 판정하니 **마우스 감도·DPI 가 난이도를 바꿨다**
+ *  · 판정 이유가 화면에 없었다 — 왜 미스인지 안 보인다
+ * 타이밍 바는 규칙이 게이지에 전부 그려지고, 입력이 **클릭 한 번**이라 장비를 안 탄다.
+ * "마우스가 두 번째 동사"라는 GDD 의 의도는 그대로다 — 손목 왕복 대신 **순간 선택**이다.
+ *
+ * ★ 마커 위치는 상태(`qte.pos`)에 있고 **`ADVANCE` 에서만 움직인다.** 여기서 또 밀면
+ *   프레임당 두 번 움직여 판정이 프레임레이트를 탄다.
  * ★ 포인터 락을 **풀지 않는다.** 락을 풀면 QTE가 끝나고 다시 클릭해야 시선이 돌아온다 —
  *   3분 게임에서 그건 최악의 UX다. 대신 `qte.active` 동안 카메라가 시선 적용만 건너뛴다.
  */
@@ -56,8 +63,13 @@ export const coinFor = (seed: number, vendorId: string): number => {
   return i < 0 ? 0 : (coinPlan(seed)[i] ?? 0)
 }
 
-/** 지금 스트로크가 판정창 안인가 */
-export const inWindow = (beatMs: number): boolean => Math.abs(beatMs) <= QTE.windowMs
+/**
+ * 지금 마커가 성공 구간(중앙) 안인가.
+ *
+ * 순수 함수라 헤드리스가 **클릭 타이밍을 계산해서** 누를 수 있다 —
+ * 자동조종이 QTE 를 통과할 수 있어야 시드 200 스윕이 성립한다.
+ */
+export const inZone = (pos: number): boolean => Math.abs(pos - 0.5) <= QTE.zoneHalf
 
 const succeed = (s: GameState, vendorId: string): Action[] => {
   const coin = coinFor(s.seed, vendorId)
@@ -92,32 +104,18 @@ export const qteSystem = (s: GameState, ctx: QteCtx): Action[] => {
   if (f.pressCancel) return [{ t: 'QTE_END', success: false }]
   if (s.qte.elapsedMs >= QTE.timeoutMs) return fail()
 
-  const dx = f.qteDelta
-  const sign: -1 | 0 | 1 = dx > 0 ? 1 : dx < 0 ? -1 : 0
+  /**
+   * 입력은 **원샷 하나**다. `pressInteract` 는 `E` 와 **락 중 좌클릭**을 둘 다 받는다
+   * (`core/input.ts`) — 손이 이미 어디에 있든 누를 수 있다.
+   */
+  if (!f.pressInteract) return []
 
-  let dir = s.qte.dir
-  let travel = s.qte.travel
-
-  if (sign !== 0) {
-    if (dir === 0) { dir = sign; travel = Math.abs(dx) }
-    else if (sign === dir) travel += Math.abs(dx)
-    // 방향이 반대면 무시한다 — 스트로크가 끝나면 dir이 뒤집히므로 **왕복이 강제된다**
-  }
-
-  if (travel < QTE.strokeTravel) {
-    return dir === s.qte.dir && travel === s.qte.travel
-      ? []
-      : [{ t: 'QTE_INPUT', dir, travel }]
-  }
-
-  // 스트로크 성립 — 리듬 판정
-  const hit = inWindow(s.qte.beatMs)
+  const hit = inZone(s.qte.pos)
   const strokes = s.qte.strokes + (hit ? 1 : 0)
   const misses = s.qte.misses + (hit ? 0 : 1)
 
-  const acts: Action[] = [{ t: 'QTE_STROKE', hit }]
-  // 다음 스트로크는 반대 방향이어야 한다
-  acts.push({ t: 'QTE_INPUT', dir: (dir === 1 ? -1 : 1) as -1 | 1, travel: 0 })
+  const acts: Action[] = [{ t: 'QTE_HIT', hit }]
+  if (!hit) acts.push({ t: 'FX', kind: 'shake', text: '', lifeMs: 180, value: 0.5 })
 
   if (strokes >= QTE.need) return [...acts, ...succeed(s, vendorId)]
   if (misses >= QTE.maxMisses) return [...acts, ...fail()]

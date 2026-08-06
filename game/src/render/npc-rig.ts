@@ -50,10 +50,11 @@ export const loadNpcRig = async (
     /**
      * 모델 전방축 보정(rad).
      *
-     * `place()` 의 공식(`rotation.y = -facing + π/2`)은 **모델 전방 = 로컬 +z** 를 가정한다
-     * (`player-rig.ts` 규약). GP·CP 리그는 전방이 **−z** 로 익스포트돼 있어 그대로 쓰면
-     * 180° 돌아앉는다 — 벤치 등받이(북쪽)를 마주 보고 앉아 있었다.
-     * 에셋을 다시 뽑지 않고 여기서 한 번 돌린다. 앉은 자세뿐 아니라 **추격 방향도** 같이 고쳐진다.
+     * `place()` 의 공식(`rotation.y = facing + π/2`)은 **모델 전방 = 로컬 +z** 를 가정한다.
+     * 리그가 그렇지 않게 익스포트됐으면 여기서 한 번 돌린다.
+     *
+     * ⚠ 예전에 GP 에 π 를 준 것은 **공식의 반사 버그를 가리던 보정**이었다.
+     * 공식을 고친 뒤 실측하니 이 리포의 리그는 **전부 +z 전방**이라 보정이 0 이다.
      */
     yawOffset?: number
   },
@@ -183,7 +184,18 @@ export const loadNpcRig = async (
       // 월드(z 상) → three(y 상). 플레이어 리그와 **같은 변환**을 쓴다
       root.position.set(x, z, -y)
       // 월드 facing(+x 기준, 반시계) → three 요. `yawOffset` 은 모델 전방축 보정이다
-      root.rotation.y = -facing + Math.PI / 2 + yawOffset
+      /**
+       * ★ **회전이지 거울이 아니다.**
+       *
+       * 예전 공식은 `-facing + π/2` 였다. 그건 로컬 +Z 를 월드
+       * `(sin θ, −cos θ)` 로 보내는 three 규약과 합쳐지면 **북축 대칭 반사**가 된다:
+       * 남·북(±π/2)은 반사의 고정점이라 멀쩡해 보이고, **동·서만 180° 뒤집힌다.**
+       * 그래서 "할아버지가 뒤로 걷는다"가 동서로 달릴 때만 나왔고, x 축을 걷는
+       * 좀비폰족·역무원은 멀쩡했다. 남북으로만 검증하면 절대 안 잡힌다.
+       *
+       * 필요한 것은 `θ = facing + π/2` 다 — 그래야 로컬 +Z 가 정확히 `(cos f, sin f)` 로 간다.
+       */
+      root.rotation.y = facing + Math.PI / 2 + yawOffset
     },
     play,
     current: () => current,

@@ -6,6 +6,7 @@
  * 4축 채점이 막 들어온 단계에서 복합식을 섞으면 어느 축이 엔딩을 결정했는지 못 읽는다.
  */
 
+import { QUEUE_MARKERS } from './world'
 import type { EndingId, GameState } from '../state/types'
 
 export type EndingDef = Readonly<{
@@ -18,7 +19,21 @@ export type EndingDef = Readonly<{
   hint?: string
   tone: 'success' | 'fail' | 'hidden'
   when: (s: GameState) => boolean
+  /**
+   * 왜 이 엔딩이 나왔는가 — 엔딩 카드 1줄 (P2).
+   * 복합 조건(E-05)이 들어오면서 필요해졌다. 조건식을 노출하는 대신 **충족한 값**을 보여 준다.
+   */
+  reason?: (s: GameState) => string
 }>
+
+/**
+ * 가장 앞 대기줄(3-1)에서 탔는가 — E-03 "앉아서 간다".
+ *
+ * 승차위치는 `QUEUE_MARKERS[0]` 이고 탑승 문은 `boardedDoorX` 다.
+ * 3m 는 문 간격(16m)의 1/5 이라 옆 문과 헷갈릴 여지가 없다.
+ */
+const boardedAtFirstQueue = (s: GameState): boolean =>
+  s.boardedDoorX !== null && Math.abs(s.boardedDoorX - QUEUE_MARKERS[0].x) <= 3
 
 /** 실패 계열 공용 힌트 풀 — 매번 다른 한 줄이 나온다. 전부 "다음에 뭘 보면 되는지"만 말한다. */
 export const FAIL_HINTS: readonly string[] = [
@@ -31,6 +46,12 @@ export const FAIL_HINTS: readonly string[] = [
   '할아버지에게 말을 걸면 고장난 게이트를 알려준다.',
   '자판기는 세 대 있다. 하나만 긁고 갈 이유가 없다.',
   '훔치면 빠르다. 빠른 만큼 뒤에서 따라온다.',
+  // ── P2 추가 5줄 ──
+  '벤치 밑에 누가 지갑을 흘리고 갔다.',
+  '이어폰을 끼면 말 거는 사람이 안 보인다. 대신 안내방송도 안 들린다.',
+  '젖은 바닥은 걸어서 지나면 안 미끄러진다.',
+  '개찰구 북쪽 끝에 문이 하나 더 있다.',
+  '슬롯은 세 칸인데 주울 것은 열한 가지다.',
 ]
 
 /**
@@ -39,6 +60,30 @@ export const FAIL_HINTS: readonly string[] = [
  *   (즉사는 E-09·E-11 둘뿐이고 둘 다 P2다).
  */
 export const ENDINGS: readonly EndingDef[] = [
+  {
+    /**
+     * ⭐ TRUE 엔딩 — 이 게임에서 **유일한 복합 조건**이다.
+     *
+     * P1이 미룬 이유(*"어느 축이 엔딩을 결정했는지 못 읽는다"*)는 4축 채점이 막 들어온
+     * 시점의 이야기였다. 지금은 4축이 전부 실측으로 움직이는 것을 확인했으므로 켠다.
+     * 대신 **결정 요인을 엔딩 카드에 1줄로 적는다**(`reason`) — 못 읽는 문제를 조건을
+     * 숨기는 대신 드러내는 쪽으로 푼다.
+     */
+    id: 'E-05',
+    priority: 100,
+    title: '지하철 마스터',
+    line: '이 역은, 내가 제일 잘 안다.',
+    tone: 'hidden',
+    when: (s) =>
+      s.boarded &&
+      s.timeLeftMs >= 60_000 &&
+      s.scores.conscience >= 3 &&
+      s.tally.itemsUsed.length >= 4 &&
+      s.chase.hitCount === 0,
+    reason: (s) =>
+      `잔여 ${Math.round(s.timeLeftMs / 1000)}s · 양심 +${s.scores.conscience}` +
+      ` · 아이템 ${s.tally.itemsUsed.length}종 · 무피격`,
+  },
   {
     id: 'E-14',
     priority: 90,
@@ -49,14 +94,83 @@ export const ENDINGS: readonly EndingDef[] = [
     when: (s) => s.boarded && s.tally.coinsEarned >= 3000,
   },
   {
+    /**
+     * 🕊️ 히든 굿엔딩 — **열차를 놓친 사람에게 주는 유일한 보상이다.**
+     * `!boarded` 가 조건에 들어가는 것이 핵심이다. GDD §9.4: *"실패했지만 역무원이 급행 안내."*
+     */
+    id: 'E-12',
+    priority: 85,
+    title: '오늘도 평화로운 역',
+    line: '가끔은, 늦어도 괜찮다.',
+    tone: 'hidden',
+    when: (s) =>
+      !s.boarded &&
+      s.flags.includes('WALLET_RETURNED') &&
+      s.flags.includes('GRANDPA_HELPED') &&
+      s.flags.includes('SEAT_YIELDED'),
+  },
+  {
+    id: 'E-11',
+    priority: 84,
+    title: '에스컬레이터 참사',
+    line: '…뒤를 돌아보지 말자.',
+    hint: '우산은 길을 여는 물건이지 미는 물건이 아니다.',
+    tone: 'fail',
+    // GDD §9.4 "우산으로 인파 밀기 3회 이상". 즉사 2종 중 하나 — 명백한 고의 행동이다
+    when: (s) => s.tally.pushes >= 3,
+  },
+  {
+    /**
+     * 부정승차 적발 — **역무원이 직접 낸다**(`systems/staff.ts`).
+     * 여기 조건이 플래그 하나인 이유: 적발은 상태가 아니라 **사건**이다.
+     * `FARE_EVADED` 만 보면 도망친 사람까지 잡히고, 그건 유예 0.8초를 무의미하게 만든다.
+     */
+    id: 'E-09',
+    priority: 83,
+    title: '부정승차 적발',
+    line: '…과태료가 서른 배랍니다.',
+    hint: '비상문은 열려 있어도 요금은 따로다. 잔액이 있으면 자동으로 낸다.',
+    tone: 'fail',
+    when: (s) => s.flags.includes('BUSTED'),
+  },
+  {
     id: 'E-10',
     priority: 80,
     title: '양심 파산',
     line: '다들 왜 이렇게 쳐다보지.',
     hint: '훔치면 빠르다. 빠른 만큼 뒤에서 따라온다.',
     tone: 'fail',
-    // 효자손 절도(−3) 단독으로도 도달한다 (GDD §6.2)
+    // 효자손 절도(−3) 단독으로도 도달한다 (GDD §6.2).
+    // **즉사 2종(E-09·E-11)보다 아래다** — 그 자리에서 끝난 판을 나중 집계가 덮으면 안 된다
     when: (s) => s.scores.conscience <= -3,
+  },
+  {
+    id: 'E-13',
+    priority: 70,
+    title: '해방',
+    line: '이건 이거대로 승리다.',
+    tone: 'hidden',
+    // 열차는 갔지만 인간은 자유로워졌다 — 탑승했으면 이 엔딩이 아니다
+    when: (s) => !s.boarded && s.flags.includes('TOILET_USED'),
+  },
+  {
+    id: 'E-08',
+    priority: 60,
+    title: '반대편 탑승',
+    line: '…어? 여기 어디지?',
+    hint: '환승 통로는 건너가면 반대 방향이다. 3정거장 뒤에 깨닫는다.',
+    tone: 'fail',
+    when: (s) => s.boarded && s.flags.includes('OPPOSITE_SIDE'),
+  },
+  {
+    id: 'E-03',
+    priority: 50,
+    title: '앉아서 간다',
+    line: '오늘 하루는 잘 풀릴 것 같다.',
+    tone: 'success',
+    // "승차줄 1번" — 가장 앞 대기줄(3-1)에서 탔는가. 문 위치로 판정한다
+    when: (s) => s.boarded && s.timeLeftMs >= 45_000 && boardedAtFirstQueue(s),
+    reason: (s) => `잔여 ${Math.round(s.timeLeftMs / 1000)}s · 3-1 승차위치`,
   },
   {
     id: 'E-04',
@@ -81,6 +195,16 @@ export const ENDINGS: readonly EndingDef[] = [
     line: '…겨우 탔다.',
     tone: 'success',
     when: (s) => s.boarded,
+  },
+  {
+    id: 'E-07',
+    priority: 5,
+    title: '지각 확정',
+    line: '오늘은 아무래도 글렀다.',
+    hint: '급할수록 정직한 쪽이 빠르다. 실측으로 19초 차이가 난다.',
+    tone: 'fail',
+    // E-06(온화한 실패)과 갈리는 지점은 **양심 하나**다. GDD §9.4
+    when: (s) => !s.boarded && s.scores.conscience < 0,
   },
   {
     id: 'E-06',

@@ -32,6 +32,12 @@ export type InputFrame = Readonly<{
   pressRestart: boolean
   pressDebug: boolean
   pressToggleView: boolean
+  /** P2 — 엔딩 도감 토글 (`C`) */
+  pressCollection: boolean
+  /** P2 — 전역 음소거 토글 (`M`) */
+  pressMute: boolean
+  /** P2 — 관찰 모드 홀드 (`Q`). 원샷이 아니라 **누르고 있는 동안** 이다 */
+  observe: boolean
 
   // ── P1 ──
   /**
@@ -41,12 +47,13 @@ export type InputFrame = Readonly<{
    * 읽는 곳이 아무 데도 없었던 덕에 드러나지 않았을 뿐이다.
    */
   pressInteract: boolean
-  /** 슬롯 원샷 — 0 = 없음, 1~3. 대화·QTE 중에는 선택지 번호로 전용된다 */
-  pressSlot: 0 | 1 | 2 | 3
+  /**
+   * 슬롯 원샷 — 0 = 없음, 1~10. 대화 중에는 **1~3 만** 선택지 번호로 전용된다.
+   * `Digit1`~`Digit9` 가 1~9, `Digit0` 이 10번이다(키캡 순서 그대로).
+   */
+  pressSlot: number
   /** 취소 원샷 (`ESC`). ESC는 포인터 락도 같이 푼다 — 의도된 동작이다 */
   pressCancel: boolean
-  /** 이번 프레임 마우스 x 원본 델타(px) — QTE 전용. 감도·필터를 거치지 않는다 */
-  qteDelta: number
 }>
 
 export const EMPTY_INPUT: InputFrame = {
@@ -54,7 +61,8 @@ export const EMPTY_INPUT: InputFrame = {
   lookYaw: 0, lookPitch: 0, locked: false,
   orbitYaw: 0, orbitPitch: 0, zoom: 1,
   pressStart: false, pressRestart: false, pressDebug: false, pressToggleView: false,
-  pressInteract: false, pressSlot: 0, pressCancel: false, qteDelta: 0,
+  pressCollection: false, pressMute: false, observe: false,
+  pressInteract: false, pressSlot: 0, pressCancel: false,
 }
 
 const SENSITIVITY = FPV.sensitivity
@@ -68,6 +76,8 @@ const MOVE_KEYS = new Set([
 
 export type InputSource = {
   sample(): InputFrame
+  /** 설정 반영 — 감도 배율(1 이 기본)과 상하 반전 */
+  setLook(o: { sens: number; invertY: boolean }): void
   dispose(): void
 }
 
@@ -81,16 +91,20 @@ export const createInput = (target: HTMLElement): InputSource => {
   let pressRestart = false
   let pressDebug = false
   let pressToggleView = false
+  let pressCollection = false
+  let pressMute = false
   let lookYaw = 0
   let lookPitch = 0
   let locked = false
   let pressInteract = false
-  let pressSlot: 0 | 1 | 2 | 3 = 0
+  let pressSlot = 0
   let pressCancel = false
   /** 프레임 누적 원본 x 델타 — QTE 전용. 시선 필터(core/look)를 우회한다 */
-  let qteDelta = 0
   /** 시선 델타 필터 상태 — 스킵 원인별 처리는 core/look.ts 참고 */
   let look: LookState = EMPTY_LOOK
+  /** 설정의 감도 배율·상하 반전. 기본값에서는 예전과 완전히 같은 시선이다 */
+  let sensScale = 1
+  let pitchSign = -1
 
   const onKeyDown = (e: KeyboardEvent): void => {
     if (e.repeat) {
@@ -103,11 +117,13 @@ export const createInput = (target: HTMLElement): InputSource => {
     if (e.code === 'KeyR') pressRestart = true
     if (e.code === 'F3') { pressDebug = true; e.preventDefault() }
     if (e.code === 'KeyV') pressToggleView = true
+    if (e.code === 'KeyC') pressCollection = true
+    if (e.code === 'KeyM') pressMute = true
     // P1 — 상호작용·슬롯·취소. `KeyE`/`Digit1~3` 는 브라우저 기본 동작이 없어 preventDefault 불필요
     if (e.code === 'KeyE') pressInteract = true
-    if (e.code === 'Digit1') pressSlot = 1
-    if (e.code === 'Digit2') pressSlot = 2
-    if (e.code === 'Digit3') pressSlot = 3
+    // Digit1~9 → 1~9, Digit0 → 10. 슬롯 수를 넘는 입력은 소비처가 무시한다
+    const digit = /^Digit(\d)$/.exec(e.code)
+    if (digit) pressSlot = digit[1] === '0' ? 10 : Number(digit[1])
     if (e.code === 'Escape') pressCancel = true
     if (MOVE_KEYS.has(e.code)) e.preventDefault()
   }
@@ -164,7 +180,6 @@ export const createInput = (target: HTMLElement): InputSource => {
     if (!locked) return
     // QTE 는 원본 델타를 쓴다. 시선 필터는 스파이크를 다음 프레임으로 이월하는데,
     // 긁기 판정에는 그 이월이 곧 "방향이 늦게 뒤집히는" 오판이 된다.
-    qteDelta += e.movementX
     look = pushLook(look, -e.movementX, -e.movementY, e.timeStamp)
   }
 
@@ -199,12 +214,18 @@ export const createInput = (target: HTMLElement): InputSource => {
   }
 
   return {
+    setLook(o) {
+      sensScale = Math.min(3, Math.max(0.25, o.sens))
+      pitchSign = o.invertY ? 1 : -1
+    },
     sample(): InputFrame {
       // 이 프레임에 반영할 시선 델타를 꺼낸다. 넘치는 몫은 필터가 다음 프레임으로 이월한다.
       const r = readLook(look)
       look = r.state
-      lookYaw += r.delta.dx * SENSITIVITY
-      lookPitch += r.delta.dy * SENSITIVITY
+      lookYaw += r.delta.dx * SENSITIVITY * sensScale
+      // `pitchSign` 은 기본 -1 이다. `pushLook` 이 이미 부호를 한 번 뒤집어 놓았고
+      // 그 조합이 "마우스를 밀면 위를 본다"였다 — 반전 설정은 이 부호만 바꾼다
+      lookPitch += r.delta.dy * SENSITIVITY * sensScale * -pitchSign
       lookPitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, lookPitch))
 
       const frame: InputFrame = {
@@ -216,16 +237,18 @@ export const createInput = (target: HTMLElement): InputSource => {
         lookYaw, lookPitch, locked,
         orbitYaw, orbitPitch, zoom,
         pressStart, pressRestart, pressDebug, pressToggleView,
-        pressInteract, pressSlot, pressCancel, qteDelta,
+        pressCollection, pressMute, observe: held.has('KeyQ'),
+        pressInteract, pressSlot, pressCancel,
       }
       pressStart = false
       pressRestart = false
       pressDebug = false
       pressToggleView = false
+      pressCollection = false
+      pressMute = false
       pressInteract = false
       pressSlot = 0
       pressCancel = false
-      qteDelta = 0
       return frame
     },
     dispose(): void {

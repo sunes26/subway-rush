@@ -1,7 +1,8 @@
 /**
  * 밸런스 스윕 리포트 생성 — `npm run sweep`.
  *
- * 시드 200개 × 루트 3종을 헤드리스로 완주시켜 `docs/P1-BALANCE.md` 를 만든다.
+ * 시드 200개 × 루트 3종을 헤드리스로 완주시켜 `docs/P2-BALANCE.md` 를 만든다.
+ * (P1 시절 파일명은 `P1-BALANCE.md` 였다 — P2 부터 방해요소 셔플이 결과를 바꾸므로 이름을 올린다)
  * 유닛 스위트(`sweep.test.ts`)는 시드 24개만 본다 — 스위트가 분 단위로 늘어나면
  * 아무도 안 돌리고, 안 돌리는 테스트는 없는 테스트다. 전량은 이 스크립트의 몫이다.
  *
@@ -14,6 +15,7 @@ import { resolve } from 'node:path'
 import { FARE, TOTAL_TIME_MS } from '../src/data/tuning'
 import { start } from '../tests/unit/_pilot'
 import { asMarkdown, summarize, sweep, type SweepRow } from '../tests/unit/_sweep'
+import { COST_CAP_SEC, OBSTACLES, rollObstacles, shuffledCostOf, type ObsId } from '../src/data/obstacles'
 
 const N = Number(process.argv[2] ?? 200)
 const SEEDS = Array.from({ length: N }, (_, i) => i * 3 + 1)
@@ -60,7 +62,23 @@ const endingTable = (): string => {
     .join('\n')
 }
 
-const md = `# 지하철 러쉬 — P1 밸런스 스윕 리포트
+/** P2 — 시드별 활성 방해요소 집계 */
+const OBS_SEEDS = Array.from({ length: N }, (_, i) => i + 1)
+const OBS_SETS = OBS_SEEDS.map((sd) => rollObstacles(sd))
+
+const obstacleTable = (): string => {
+  const bins = new Map<string, number>()
+  for (const set of OBS_SETS) for (const id of set) bins.set(id, (bins.get(id) ?? 0) + 1)
+  return [...bins.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, n]) => `| ${id} ${OBSTACLES[id as ObsId].name} | ${n} | ${((n / N) * 100).toFixed(1)}% |`)
+    .join(String.fromCharCode(10))
+}
+const capViolations = (): number =>
+  OBS_SETS.filter((set) => shuffledCostOf(set) > COST_CAP_SEC).length
+const uniqueSets = (): number => new Set(OBS_SETS.map((s) => s.join(','))).size
+
+const md = `# 지하철 러쉬 — P2 밸런스 스윕 리포트
 
 > **자동 생성 문서.** \`npm run sweep\` 이 덮어쓴다. 손으로 고치지 말 것.
 > 시드 ${N}개 × 루트 3종 = ${rows.length}회 완주 시뮬 · 소요 ${(elapsedMs / 1000).toFixed(1)}s
@@ -91,7 +109,18 @@ ${endingTable()}
 > 탑승 **전** 시점의 판정이므로 성공 계열은 나오지 않는다. 절도 루트가 전부 E-10에
 > 걸리는 것이 정상이다 — 양심 −3 하나로 도달하고, 그게 GDD §6.2 의 의도다.
 
-## 5. 판정
+## 5. 방해요소 활성 분포 (P2)
+
+시드마다 12종 중 **8종**이 켜진다 (\`data/obstacles.ts rollObstacles\`).
+셔플 대상 4종의 명목 비용 합은 상한 ${COST_CAP_SEC}s 를 넘지 않는다.
+
+| 방해요소 | 활성 시드 수 | 비율 |
+|---|---:|---:|
+${obstacleTable()}
+
+> 상한 위반: ${capViolations()}건 · 서로 다른 조합: ${uniqueSets()}가지
+
+## 6. 판정
 
 - 소프트락: ${rows.filter((r) => !r.passed).length}건
 - [A] 훔치기 평균 ${summarize(rows, 'A-steal').avgSec.toFixed(1)}s · 양심 ${summarize(rows, 'A-steal').avgConscience.toFixed(2)}
@@ -103,7 +132,7 @@ ${endingTable()}
 "실질 총비용 47~65s(회피 실력 의존)" 중 실력이 0인 쪽에 가깝다.
 `
 
-const out = resolve(import.meta.dirname, '../../docs/P1-BALANCE.md')
+const out = resolve(import.meta.dirname, '../../docs/P2-BALANCE.md')
 writeFileSync(out, md, 'utf8')
 console.log(`[sweep] ${rows.length} runs · ${(elapsedMs / 1000).toFixed(1)}s → ${out}`)
 console.log(asMarkdown(rows))

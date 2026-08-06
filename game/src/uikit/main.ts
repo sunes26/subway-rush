@@ -13,6 +13,7 @@
 
 import { createDialog } from '../ui/dialog'
 import { createHud } from '../ui/hud'
+import { createSettings } from '../ui/settings'
 import { GROUPS, PRESETS, type Preset } from './presets'
 
 const $ = <T extends HTMLElement>(sel: string): T => document.querySelector<T>(sel) as T
@@ -26,6 +27,12 @@ const playBtn = $('#btn-play')
 
 const hud = createHud(stageUi)
 const dialog = createDialog(stageUi)
+/**
+ * 설정 패널 — 킷에서도 **게임과 같은 코드**가 돈다. 슬라이더를 끌면 실제 설정이 저장된다
+ * (킷에서 만진 값이 게임에 반영되는 게 맞다 — 같은 화면을 두 벌 두지 않는 것이 이 페이지의 목적이다).
+ * `onHome` 은 킷에 돌아갈 홈이 없으므로 아무것도 하지 않는다.
+ */
+const settings = createSettings(stageUi, { onChange: () => {}, onHome: () => {} })
 // 킷은 1인칭 조준점을 켜 둔다 — 프롬프트가 조준점 기준으로 배치되므로 같이 봐야 한다
 hud.setCrosshair(true)
 
@@ -74,6 +81,8 @@ const setZoom = (key: string): void => {
 
 const select = (p: Preset): void => {
   current = p
+  if (p.overlay === 'settings') settings.open()
+  else settings.close()
   t0 = performance.now()
   note.textContent = p.note
   for (const b of list.querySelectorAll<HTMLElement>('button')) {
