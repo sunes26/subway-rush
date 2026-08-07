@@ -44,6 +44,7 @@ export type FlagId =
   | 'TOILET_USED'        // Z2 화장실 진입 (E-13)
   | 'OPPOSITE_SIDE'      // Z5 반대편 승강장 도달 (E-08)
   | 'BUSTED'             // 역무원에게 적발됐다 — E-09 의 단일 조건
+  | 'GIFT_BOUGHT'        // 편의점 선물 구매 — 1회 한정. 되돌리기 없음
 
 export type GateState = 'idle' | 'tagging' | 'open' | 'reject'
 

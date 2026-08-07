@@ -11,7 +11,7 @@
 import type { InputFrame } from '../core/input'
 import { CP_IDS, GRANDPA_ID, INTERACTABLES, byId, coinValue, isCoin, isVending,
   type InteractKind, type Interactable } from '../data/interactables'
-import { itemDef } from '../data/items'
+import { GIFT_ITEMS, itemDef } from '../data/items'
 import { CHASE, EMERGENCY, INTERACT, SLOTS, STAMINA } from '../data/tuning'
 import type { Action, Drop, GameState, ItemId } from '../state/types'
 
@@ -299,7 +299,9 @@ const begin = (s: GameState, it: Interactable): Action[] => {
 
 // ─────────────────────────── 대화 분기 ───────────────────────────
 
-export type Branch = Readonly<{ key: 1 | 2 | 3; label: string; enabled: boolean; note: string }>
+export type Branch = Readonly<{
+  key: 1 | 2 | 3 | 4 | 5; label: string; enabled: boolean; note: string
+}>
 
 /** 할아버지 3분기 — UI와 시스템이 **같은 함수**를 읽는다. 회색 처리와 실제 차단이 갈라지지 않게 */
 export const grandpaBranches = (s: GameState): readonly Branch[] => [
@@ -318,6 +320,23 @@ export const grandpaBranches = (s: GameState): readonly Branch[] => [
   },
   { key: 3, label: '말을 건다', enabled: true, note: '+15s' },
 ]
+
+/**
+ * 편의점 선물 5지 — **note 를 전부 비운다.**
+ *
+ * 다른 분기는 note 로 비용·이득을 알려주지만(`'+1.5s'`) 여기서는 그것이 곧
+ * 정답 힌트가 된다. 값이 서로 다르면 "비싼 게 정답" 같은 추론이 생긴다.
+ * 힌트는 바닥 양갱(`OBJ-19-HINT*`)이 진다.
+ */
+export const giftBranches = (s: GameState): readonly Branch[] => {
+  const bought = s.flags.includes('GIFT_BOUGHT')
+  return GIFT_ITEMS.map((id, i) => ({
+    key: (i + 1) as Branch['key'],
+    label: itemDef(id).name,
+    enabled: !bought,
+    note: bought ? '이미 골랐다' : '',
+  }))
+}
 
 /** [1] 훔치기 — 즉시. 0.6초 뒤 단소가 날아온다(O-14). UI는 그걸 미리 말하지 않는다 */
 const steal = (): Action[] => [
