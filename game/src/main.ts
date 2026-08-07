@@ -161,6 +161,7 @@ const OBSERVE_NOTE: Readonly<Record<InteractKind, string>> = {
   return: 'E — 맡긴다',
   call: 'E — 호출한다',
   enter: 'E — 들어간다',
+  inspect: 'E — 살펴본다',
 }
 
 stage.resize()

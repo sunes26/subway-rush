@@ -148,6 +148,33 @@ describe('선물 증정', () => {
   })
 })
 
+describe('바닥 양갱 힌트', () => {
+  const hints = () => INTERACTABLES.filter((i) => i.kind === 'inspect')
+
+  /** "포장이 여럿"이라는 문구가 화면과 맞아야 한다 — 하나면 우연으로 읽힌다 */
+  it('벤치 근처에 3개가 있다', () => {
+    expect(hints().length).toBe(3)
+    for (const h of hints()) {
+      expect(Math.hypot(h.x - 42, h.y - 14.9)).toBeLessThan(4)
+    }
+  })
+
+  it('벤치 솔리드와 겹치지 않는다', () => {
+    // ACT-02-BENCH = rect[40.8, 14.6, 43.2, 15.4]
+    for (const h of hints()) {
+      const inside = h.x >= 40.8 && h.x <= 43.2 && h.y >= 14.6 && h.y <= 15.4
+      expect(inside).toBe(false)
+    }
+  })
+
+  it('획득되지 않고 몇 번이고 볼 수 있다', () => {
+    for (const h of hints()) {
+      expect(h.gives).toBeUndefined()
+      expect(h.once).toBe(false)
+    }
+  })
+})
+
 describe('추격 개편', () => {
   it('10초로 줄었고 회수 개념이 사라졌다', () => {
     expect(CHASE.durationMs).toBe(10_000)

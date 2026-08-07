@@ -37,6 +37,7 @@ const durationOf = (kind: InteractKind): number => {
     case 'return': return EMERGENCY.walletReturnMs
     case 'call': return 500      // 버튼을 누르는 시간. 기다리는 −15s 는 완료 시 청구된다
     case 'enter': return 1200
+    case 'inspect': return 800
   }
 }
 
@@ -196,6 +197,17 @@ const complete = (s: GameState): Action[] => {
         { t: 'PICKUP', item: it.gives, slot: -1, dropId: null },
       ]
     }
+
+    /**
+     * 바닥 양갱 — **읽기만 한다.** `gives` 가 없으므로 인벤토리에 아무것도 안 들어간다.
+     * `ACT_CONSUME` 도 내지 않는다 — 몇 번이고 다시 볼 수 있어야 힌트 구실을 한다.
+     */
+    case 'inspect':
+      return [{
+        t: 'FX', kind: 'toast',
+        text: '누군가가 먹고 바닥에 버려놨다. 포장이 여럿인 걸 보면 누군가의 최애 간식인 모양이다.',
+        lifeMs: 4000, value: 0,
+      }]
 
     /**
      * [2] 선물 — **양갱만** 효자손으로 이어진다. 양심 +1.

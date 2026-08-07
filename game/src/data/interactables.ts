@@ -27,6 +27,7 @@ export type InteractKind =
   | 'return'    // 유실물 반납 2.0s — 비상게이트가 열린다
   | 'call'      // 인터폰 호출 0.5s — 역무원을 기다리는 −15s 가 뒤따른다
   | 'enter'     // 문을 열고 들어간다 1.2s (화장실 · 반대편 승강장)
+  | 'inspect'   // 살펴본다 0.8s · 이동 가능 · 획득 없음
 
 export type Interactable = Readonly<{
   id: string
@@ -112,6 +113,28 @@ export const INTERACTABLES: readonly Interactable[] = [
     x: 42, y: 14.9, z: FLOOR.B1,
     label: '할아버지',
     once: true,           // 효자손을 한 번 넘기면 끝이다
+  },
+  /**
+   * 바닥 양갱 3개 — **정답 힌트다.**
+   *
+   * 벤치(42, 14.9) 남쪽 통행 구역에 흩는다. 벤치 솔리드
+   * `ACT-02-BENCH` = rect[40.8, 14.6, 43.2, 15.4] 밖이어야 하므로 y 를 14.6 아래로 둔다.
+   * 서로 0.6m 이상 떨어뜨려 상호작용이 서로를 가리지 않게 한다.
+   *
+   * 하나가 아니라 셋인 이유는 문구가 "포장이 여럿"이기 때문이다 —
+   * 하나만 두면 화면과 말이 어긋나고 우연으로 읽힌다.
+   */
+  {
+    id: 'OBJ-19-HINT1', kind: 'inspect',
+    x: 41.4, y: 13.9, z: FLOOR.B1, label: '빈 양갱 포장', once: false,
+  },
+  {
+    id: 'OBJ-19-HINT2', kind: 'inspect',
+    x: 42.6, y: 13.6, z: FLOOR.B1, label: '빈 양갱 포장', once: false,
+  },
+  {
+    id: 'OBJ-19-HINT3', kind: 'inspect',
+    x: 43.3, y: 14.2, z: FLOOR.B1, label: '빈 양갱 포장', once: false,
   },
   {
     id: 'OBJ-06',
