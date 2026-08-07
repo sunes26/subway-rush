@@ -32,6 +32,8 @@ const TEASER: Readonly<Record<EndingId, string>> = {
   'E-12': '급할수록 돌아가라던 말, 진짜였을까',
   'E-13': '역에는 화장실도 있다',
   'E-14': '자판기는 세 대다',
+  'E-15': '할아버지께 아무거나 드리면 안 된다',
+  'E-16': '단소는 몇 대까지 들고 다닐 수 있을까',
 }
 
 const TONE_MARK = { success: '○', fail: '✕', hidden: '★' } as const
