@@ -151,6 +151,38 @@ describe('선물 증정', () => {
   })
 })
 
+/**
+ * 회귀 — 슬롯 키(`useSlot`)의 `case 'I-12'` 가 정답 하나만 알고 있었다. 오답 4종은
+ * `default:` 로 떨어져 `ACT_DENY('드릴 사람이 없다')` 만 뜨고 아무 일도 일어나지 않았다.
+ * 할아버지 앞에서 슬롯 키를 눌러 "반응이 없으면 오답"이라는 **공짜 확인 수단**이 생겨,
+ * `E-15` 가 완전히 회피 가능해지고 구매의 실패 위험이 사라졌다 — 대화창의 [2]번(`give`)
+ * 경로와 슬롯 키 경로가 갈라져 있던 게 원인이다. 다섯 개 모두 같은 `complete()` 의
+ * `give` 핸들러로 들어가야 정답/오답이 대화창과 동일하게 갈린다.
+ */
+describe('슬롯 키로 선물 전달 — 매대 5종 전부 give 로 라우팅된다', () => {
+  const giveViaSlot = (item: ItemId): GameState => {
+    const s0 = withGift(item)
+    const pressed = tap(s0, { pressSlot: 1 })
+    return wait(pressed, INTERACT.buyMs + 200)
+  }
+
+  it('양갱을 슬롯 키로 줘도 대화창 경로와 똑같이 효자손을 얻고 게임이 계속된다', () => {
+    const s = giveViaSlot('I-12')
+    expect(s.inventory).toContain('I-01')
+    expect(s.phase).toBe('playing')
+    expect(s.endingId).toBe(null)
+  })
+
+  it('오답 4종을 슬롯 키로 줘도 아무 반응 없이 넘어가지 않고 전부 E-15 로 끝난다', () => {
+    for (const id of ['I-15', 'I-16', 'I-17', 'I-18'] as const) {
+      const s = giveViaSlot(id)
+      expect(s.phase, `${id}: 아무 일도 안 일어나면 안 된다`).toBe('ended')
+      expect(s.endingId).toBe('E-15')
+      expect(s.inventory).not.toContain('I-01')
+    }
+  })
+})
+
 describe('바닥 양갱 힌트', () => {
   const hints = () => INTERACTABLES.filter((i) => i.kind === 'inspect')
 
@@ -229,15 +261,22 @@ describe('퍼즐 우회로 차단', () => {
 
 describe('ACT-12 편의점 점원', () => {
   /**
-   * 점포는 통짜 솔리드다 — `OBJ-19-CVS` = rect[21.5, 25.7, 26.5, 30.0]. 점원은 그
-   * **안쪽**에 서야 유리 너머로 보인다. 파사드(y=25.7) 바깥에 두면 매대 앞 통로에
-   * 사람이 서 있는 그림이 된다.
+   * `OBJ-19-CVS` = rect[21.5, 25.7, 26.5, 30.0] 는 충돌 솔리드일 뿐, 점포 **내부**는
+   * 가구(카운터·곤돌라·냉장고)로 채워져 있어 이 사각형 전체가 걸어다닐 수 있는
+   * 바닥은 아니다. 이전 가드는 이 충돌 bbox 만 봐서 점원이 카운터 몸통 안(y=26.4)에
+   * 박혀 있어도 통과했다 — 구조적으로 못 잡는 회귀였다.
+   *
+   * `Z2_CONCOURSE.glb` 를 정점 단위로 확인한 실측(카운터 CVS 파트만 x<27 로 격리):
+   *   · 카운터(`Z2_SHOP_ST_COUNTER`) — x[24.55, 26.15] · y[26.05, 26.75], 바닥부터 0.95m 솔리드
+   *   · 곤돌라(x≈24.65) — x[24.23, 25.07] 까지만, 점원의 x=25.8 열에는 안 걸린다
+   *   · 냉장고 정면(VM_TRIM/VM_CAN) — y≈29.2 부터 시작
+   * 그 사이 y(26.75~29.2)가 유리 너머로 보이는 실제 통로다. 점원은 그 안에 서야 한다.
    */
-  it('점원이 점포 솔리드 안에 선다', () => {
+  it('점원이 카운터 뒤 통로에 선다 — 충돌 bbox 안이 아니라 걸어다닐 수 있는 통로 안', () => {
     expect(CLERK_POS.x).toBeGreaterThan(21.5)
     expect(CLERK_POS.x).toBeLessThan(26.5)
-    expect(CLERK_POS.y).toBeGreaterThan(25.7)
-    expect(CLERK_POS.y).toBeLessThan(30.0)
+    expect(CLERK_POS.y, '카운터 뒷면(26.75)보다 안쪽').toBeGreaterThan(26.75)
+    expect(CLERK_POS.y, '냉장고 정면(≈29.2)보다 앞쪽').toBeLessThan(29.2)
   })
 
   /** 매대(x=26.0) 정면이어야 말을 거는 그림이 된다 — x 로 1.5m 안 */

@@ -442,6 +442,29 @@ const useSlot = (s: GameState, slot: number): Action[] => {
     ]
   }
 
+  /**
+   * 선물 5종 — 할아버지가 근처면 전달로 직행한다 (선택 UI를 다시 열지 않는다).
+   *
+   * ★ **다섯 개를 전부 여기서 받는다.** 예전엔 `I-12`(정답) 하나만 이 분기를 타고
+   *   나머지 넷은 아래 `switch` 의 `default:` 로 떨어져 `ACT_DENY(def.noTargetReason)`
+   *   만 뜨고 끝났다. 그러면 "할아버지 앞에서 슬롯 키를 눌러 봤는데 아무 반응이 없다
+   *   = 오답"이라는 **공짜 확인 수단**이 생겨, 잘못 산 선물을 실제로 건네 `E-15` 를
+   *   보는 사람이 아무도 없어진다 — 구매의 실패 위험이 사라지면 5지 선택이 의미를
+   *   잃는다. 정답/오답 판정은 여기서 하지 않는다: `complete()` 의 `give` 핸들러가
+   *   `GIFT_CORRECT` 와 비교해 정답이면 효자손을, 오답이면 `E-15` 를 낸다. 대화창의
+   *   [2]번과 이 슬롯 경로가 항상 같은 곳으로 모이게 하는 게 핵심이다.
+   */
+  if (GIFT_ITEMS.includes(item)) {
+    const gp = byId(GRANDPA_ID)
+    if (!gp || s.act.consumed.includes(gp.id) || !within(s, gp, 2.2)) {
+      return [{ t: 'ACT_DENY', text: def.noTargetReason }]
+    }
+    return [
+      { t: 'DIALOG', id: null },
+      { t: 'ACT_BEGIN', id: GRANDPA_ID, kind: 'give', totalMs: durationOf('give') },
+    ]
+  }
+
   switch (item) {
     /** 커피 — 스태미너를 되돌리고 카페인을 남긴다. 소모 */
     case 'I-07':
@@ -481,18 +504,6 @@ const useSlot = (s: GameState, slot: number): Action[] => {
         { t: 'ACT_CONSUME', id: cp.id },
         { t: 'PUSH' },
         { t: 'FX', kind: 'toast', text: '우산으로 비켜세웠다', lifeMs: 1600, value: 0 },
-      ]
-    }
-
-    /** 붕어빵 — 할아버지가 근처면 전달로 직행한다 (선택 UI를 다시 열지 않는다) */
-    case 'I-12': {
-      const gp = byId(GRANDPA_ID)
-      if (!gp || s.act.consumed.includes(gp.id) || !within(s, gp, 2.2)) {
-        return [{ t: 'ACT_DENY', text: def.noTargetReason }]
-      }
-      return [
-        { t: 'DIALOG', id: null },
-        { t: 'ACT_BEGIN', id: GRANDPA_ID, kind: 'give', totalMs: durationOf('give') },
       ]
     }
 
