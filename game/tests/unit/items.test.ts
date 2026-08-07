@@ -5,9 +5,10 @@
 import { describe, expect, it } from 'vitest'
 import { DECOR } from '../../src/data/decor'
 import { INTERACTABLES, coinValue, isCoin } from '../../src/data/interactables'
-import { ITEMS, SLOT_ITEMS, WEARABLES, itemDef } from '../../src/data/items'
+import { GIFT_ITEMS, ITEMS, SLOT_ITEMS, WEARABLES, itemDef } from '../../src/data/items'
 import { COIN, SLOTS, SWAP_WINDOW_MS } from '../../src/data/tuning'
 import { FLOOR } from '../../src/data/world'
+import { PLACEHOLDER_ITEMS } from '../../src/render/props'
 import type { GameState, ItemId } from '../../src/state/types'
 import { put, start, tap, wait, yawTo } from './_pilot'
 
@@ -54,7 +55,7 @@ describe('S15-1 신규 7종 습득', () => {
   })
 
   it('11종이 전부 슬롯 점유이고 동전·카드만 미점유다', () => {
-    expect(SLOT_ITEMS.length).toBe(11)
+    expect(SLOT_ITEMS.length).toBe(15)
     expect(ITEMS['I-02']?.slot).toBe(false)
     expect(ITEMS['I-04']?.slot).toBe(false)
   })
@@ -295,8 +296,11 @@ describe('S15-6 P1 회귀 — 떨군 것은 되찾을 수 있다', () => {
 
 describe('아이템 표 정합성', () => {
   it('정의 없는 ID 는 자리표시자를 돌려주고 던지지 않는다', () => {
-    expect(() => itemDef('I-15')).not.toThrow()
-    expect(itemDef('I-15').name).toBe('I-15')
+    // I-15 는 편의점 선물 태스크에서 실제 정의를 받았다 — 더 이상 미정의 예시가 아니다.
+    // 유니온 밖의 값으로 미정의 경로만 따로 검증한다.
+    const undefinedId = 'I-99' as ItemId
+    expect(() => itemDef(undefinedId)).not.toThrow()
+    expect(itemDef(undefinedId).name).toBe('I-99')
   })
 
   it('배치된 gives 는 전부 정의가 있다', () => {
@@ -304,5 +308,26 @@ describe('아이템 표 정합성', () => {
       if (!it.gives) continue
       expect(ITEMS[it.gives], `${it.id} 가 주는 ${it.gives} 정의 없음`).toBeDefined()
     }
+  })
+})
+
+describe('편의점 선물 5종', () => {
+  it('5종이 전부 정의돼 있고 노드 이름이 GLB 와 맞는다', () => {
+    expect(GIFT_ITEMS).toEqual(['I-12', 'I-15', 'I-16', 'I-17', 'I-18'])
+    expect(GIFT_ITEMS.map((i) => itemDef(i).node)).toEqual([
+      'ITM12_Yanggaeng', 'ITM12_BananaMilk', 'ITM12_Chocolate',
+      'ITM12_Soda', 'ITM12_SnackBag',
+    ])
+  })
+
+  it('정답만 OBS-14 를 무효화한다', () => {
+    expect(itemDef('I-12').negates).toEqual(['OBS-14'])
+    for (const id of ['I-15', 'I-16', 'I-17', 'I-18'] as const) {
+      expect(itemDef(id).negates ?? []).toEqual([])
+    }
+  })
+
+  it('정답은 더 이상 자리표시자가 아니다', () => {
+    expect(PLACEHOLDER_ITEMS.has('I-12')).toBe(false)
   })
 })

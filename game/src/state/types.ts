@@ -21,6 +21,7 @@ export type EndingId =
 export type ItemId =
   | 'I-01' | 'I-02' | 'I-04' | 'I-05' | 'I-06' | 'I-07' | 'I-08'
   | 'I-09' | 'I-10' | 'I-11' | 'I-12' | 'I-13' | 'I-14' | 'I-15'
+  | 'I-16' | 'I-17' | 'I-18'
 
 export type FlagId =
   | 'GRANDPA_ANGRY'      // 절도 — O-14 발동원

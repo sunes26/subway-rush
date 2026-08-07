@@ -57,8 +57,8 @@ const PULSE_AMP = 0.15
  *
  * 여기 없는 id 가 노드를 못 찾으면 그건 여전히 에러다(에셋 갱신 사고 감지선).
  */
-const PLACEHOLDER_ITEMS: ReadonlySet<ItemId> =
-  new Set<ItemId>(['I-02', 'I-05', 'I-07', 'I-08', 'I-10', 'I-11', 'I-12', 'I-14'])
+export const PLACEHOLDER_ITEMS: ReadonlySet<ItemId> =
+  new Set<ItemId>(['I-02', 'I-05', 'I-07', 'I-08', 'I-10', 'I-11', 'I-14'])
 
 /** 아이템별 자리표시자 색 — 실루엣만으로 구분되게. 전부 회색이면 뭘 주웠는지 모른다 */
 const PLACEHOLDER_LOOK: Readonly<Partial<Record<ItemId, { c: number; w: number; h: number; d: number }>>> = {
@@ -68,8 +68,6 @@ const PLACEHOLDER_LOOK: Readonly<Partial<Record<ItemId, { c: number; w: number; 
   'I-08': { c: 0xe8e4d8, w: 0.26, h: 0.04, d: 0.19 },   // 접힌 신문
   'I-10': { c: 0x2f5d8a, w: 0.36, h: 0.55, d: 0.22 },   // 캐리어
   'I-11': { c: 0x8a3b2f, w: 0.12, h: 0.09, d: 0.03 },   // 지갑
-  // 붕어빵 — P1 은 효자손 메시를 빌려 썼다. 자리표시자가 **덜 틀리다**
-  'I-12': { c: 0xc98a3c, w: 0.16, h: 0.05, d: 0.08 },
   'I-14': { c: 0x3c3f46, w: 0.14, h: 0.14, d: 0.14 },   // EMP
 }
 
