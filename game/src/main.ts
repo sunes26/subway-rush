@@ -15,6 +15,7 @@ import { CHAR_SCALE, loadActors, type Actors } from './render/actors'
 import { createCameraRig } from './render/camera-rig'
 import { buildTraffic, type Traffic } from './render/cars'
 import { createGuideArrows } from './render/guide-arrows'
+import { loadHeld, type Held } from './render/held'
 import { loadPlayerRig, type PlayerRig } from './render/player-rig'
 import { loadProps, type Props } from './render/props'
 import { createStage } from './render/scene'
@@ -144,6 +145,8 @@ let station: Station | null = null
 let props: Props | null = null
 /** P1 — 할아버지(GP) · 캐리어 승객(CP) */
 let actors: Actors | null = null
+/** 손에 든 물건 — 카메라의 자식이다 (`render/held.ts`) */
+let held: Held | null = null
 let shakeUntil = 0
 /** 차에 치인 뒤 재판정을 막는 쿨다운(ms). 0 이면 판정 가능. */
 let hitCooldownMs = 0
@@ -455,6 +458,8 @@ const frame = (now: number): void => {
     }
   }
   player?.sync(state, dtSec, renderPos)
+  // 손에 든 물건은 **1인칭에서만** 뜬다 — 3인칭에서는 카메라에 붙은 물건이 허공에 떠 보인다
+  held?.sync(state, dtSec, cameraRig.mode() === 'fp')
   // P1 렌더는 상태를 **읽기만** 한다 — 판정은 전부 systems/ 에 있다
   props?.sync(state, dtSec, now / 1000)
   actors?.sync(state, dtSec)
@@ -504,12 +509,14 @@ const frame = (now: number): void => {
 // ─────────────────── 기동 ───────────────────
 
 const boot = async (): Promise<void> => {
-  const [stationResult, playerResult, propsResult, actorsResult] = await Promise.allSettled([
-    loadStation(BASE, stage.camera, (d, t) => screens.setLoading(`역사 로딩 ${d} / ${t}`)),
-    loadPlayerRig(`${BASE}models/mc_character_rigged.glb`, false, CHAR_SCALE),
-    loadProps(BASE),
-    loadActors(BASE),
-  ])
+  const [stationResult, playerResult, propsResult, actorsResult, heldResult] =
+    await Promise.allSettled([
+      loadStation(BASE, stage.camera, (d, t) => screens.setLoading(`역사 로딩 ${d} / ${t}`)),
+      loadPlayerRig(`${BASE}models/mc_character_rigged.glb`, false, CHAR_SCALE),
+      loadProps(BASE),
+      loadActors(BASE),
+      loadHeld(BASE),
+    ])
 
   if (stationResult.status === 'fulfilled') {
     station = stationResult.value
@@ -542,6 +549,21 @@ const boot = async (): Promise<void> => {
     stage.scene.add(actors.root)
   } else {
     console.error('[actors] NPC GLB 로드 실패 — 할아버지·승객 없이 진행합니다', actorsResult.reason)
+  }
+
+  /**
+   * 손에 든 물건 — 카메라에 붙인다.
+   *
+   * ★ `scene.add(camera)` 가 **필수다.** three 는 씬 그래프에 없는 오브젝트의 자식을
+   *   렌더하지 않는다. 카메라는 보통 씬에 안 넣어도 되지만(렌더러가 따로 받는다)
+   *   자식을 매달면 얘기가 달라진다 — 이걸 빼면 콘솔에 아무 말도 없이 안 보인다.
+   */
+  if (heldResult.status === 'fulfilled') {
+    held = heldResult.value
+    stage.scene.add(stage.camera)
+    stage.camera.add(held.root)
+  } else {
+    console.error('[held] 뷰모델 로드 실패 — 손에 아무것도 안 보입니다', heldResult.reason)
   }
 
   // 차는 **기동 경로에서 뺀다.** 배경이라 늦게 나타나도 무방한데, 로딩을 여기에 묶으면

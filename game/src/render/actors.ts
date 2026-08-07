@@ -1,5 +1,5 @@
 /**
- * NPC 배치·상태 동기 — 할아버지(GP) · 인파 3인(CP) · P2 방해요소 액터 4종.
+ * NPC 배치·상태 동기 — 할아버지(GP) · 인파 3인(CP) · 에스컬레이터 승객(장식) · P2 방해요소 액터 4종.
  *
  * 이 파일은 **게임 규칙을 담지 않는다.** 무엇이 소진됐는지·누가 화났는지는 시뮬이 정하고
  * 여기서는 그 결과를 읽어 클립과 좌표로 옮긴다. 그래서 상태를 되짚어 쓰는 코드가 없고,
@@ -10,10 +10,12 @@
  */
 
 import { Group } from 'three'
+import { RIDER_SPOTS } from '../data/crowd'
 import { CP_IDS, GRANDPA_ID, byId } from '../data/interactables'
-import { OBSTACLE } from '../data/tuning'
-import { FLOOR } from '../data/world'
+import { OBSTACLE, UMBRELLA } from '../data/tuning'
+import { ESCALATOR, FLOOR } from '../data/world'
 import type { GameState, ObsId } from '../state/types'
+import { rampZ } from '../systems/collision'
 import { AJUMMA_AT, FLYER_AT, zombieAt } from '../systems/obstacles'
 import { staffAt } from '../systems/staff'
 import { loadNpcRig, type NpcRig } from './npc-rig'
@@ -178,6 +180,31 @@ export const CLERK_POS = { x: 25.8, y: 27.1, z: FLOOR.B1 } as const
  */
 const CL_FACING = -Math.PI / 2
 
+/**
+ * 에스컬레이터 승객 — **장식이지만 우산은 맞는다** (디렉터 지시 2026-08-07:
+ * "에스컬레이터를 빼곡히 채워줘" → *"다른 승객은 우산에 닿았을때 안 날라가는디?"*).
+ *
+ * 인파벽 3인(`CP_IDS`)과 역할이 다르다. 그 셋은 **경로 판정**이다 — 비켜세우거나 날려야
+ * 길이 열린다(15초 정체·E-11 전제). 여기 있는 승객들은 그 판정에 안 걸린다 — 충돌을
+ * 주면 3인 규칙이 무의미해진다. 하지만 **우산 훑기**(`systems/umbrella.ts`)는 걸린다 —
+ * 좌표를 `data/crowd.ts` 로 옮겨 판정과 렌더가 같은 표를 읽게 한 이유가 그것이다.
+ *
+ * ⚠ **리그 루트 이름을 반드시 새로 붙인다.** `loadNpcRig` 는 이름을 URL 파일명에서
+ *   따온다 — 같은 `cp_character_rigged.glb` 를 또 로드하면 루트 이름이 기존 3인과
+ *   똑같이 `npc:cp_character_rigged.glb` 가 된다. `p1.spec.ts` 의 `__leanDot('npc:cp', …)`
+ *   는 이 접두어로 씬 전체를 훑어 **마지막으로 매치된 것 하나**의 머리·엉덩이를 쓴다.
+ *   장식 승객은 진행 방향(`RIDER_FACING = 0`)을 보고 인파벽 3인(`CP_FACING = π`)은
+ *   반대를 보므로, 장식 승객이 마지막에 걸리면 그 e2e 가 부호를 놓친다.
+ *   그래서 로드 직후 `root.name` 을 `npc:esc-rider` 로 덮어써 그 접두어에서 아예 뺀다.
+ *
+ * 개수(5행 × 2줄 = 10명) 근거: 스킨드 메시라 인스턴싱이 안 되고 한 명이 **14,464
+ * 삼각형**이다(실측). 처음엔 7행(14명)으로 채웠더니 Z4·Z5 삼각형 예산(470k)이
+ * 435k·418k 까지 차 여유가 7~11%로 떨어졌다. 10명으로 줄이면 380k 대로 내려와
+ * 여유가 다시 20% 안팎이 된다.
+ */
+/** 이동 방향(+x, 하강 방향)을 그대로 본다 — 에스컬레이터에 서 있으면 가는 쪽을 본다 */
+const RIDER_FACING = 0
+
 const loadOr = async (url: string, tag: string, yawOffset: number): Promise<NpcRig> => {
   try {
     return await loadNpcRig(url, { scale: CHAR_SCALE, yawOffset })
@@ -195,7 +222,7 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
    * `loadNpcRig` 이 스켈레톤까지 복제하므로 셋이 각자 움직인다(얕은 복제는 본을 공유한다).
    * 브라우저가 같은 URL 을 캐시하므로 네트워크 비용은 1회다.
    */
-  const [gp, cp0, cp1, cp2, ajp, aj, zp, ss, cl] = await Promise.all([
+  const [gp, cp0, cp1, cp2, ajp, aj, zp, ss, cl, ...riders] = await Promise.all([
     loadOr(`${dir}gp_character_rigged.glb`, 'GP', YAW_FIX.gp),
     loadOr(`${dir}cp_character_rigged.glb`, 'CP0', YAW_FIX.cp),
     loadOr(`${dir}cp_character_rigged.glb`, 'CP1', YAW_FIX.cp),
@@ -205,12 +232,18 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
     loadOr(`${dir}${OBS_ACTORS[2].file}`, 'ZP', YAW_FIX.zp),
     loadOr(`${dir}${OBS_ACTORS[3].file}`, 'SS', YAW_FIX.ss),
     loadOr(`${dir}cl_character_rigged.glb`, 'CL', YAW_FIX.cl),
+    ...RIDER_SPOTS.map((_, i) => loadOr(`${dir}cp_character_rigged.glb`, `RIDER${i}`, YAW_FIX.cp)),
   ])
   const cps = [cp0, cp1, cp2] as const
+  // 이름 충돌 회피 — 위 헤더 주석 참고
+  for (const r of riders) r.root.name = 'npc:esc-rider'
+  const riderAnchors: readonly Anchor[] = RIDER_SPOTS.map((spot) =>
+    ({ x: spot.x, y: spot.y, z: rampZ(ESCALATOR, spot.x, spot.y) ?? FLOOR.B1 }))
 
   const root = new Group()
   root.name = 'actors'
   root.add(gp.root, cp0.root, cp1.root, cp2.root, ajp.root, aj.root, zp.root, ss.root, cl.root)
+  for (const r of riders) root.add(r.root)
 
   const gpHome = anchorOf(GRANDPA_ID)
   const cpHomes = CP_IDS.map((id) => anchorOf(id))
@@ -218,6 +251,10 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
   /** 발도 이후 경과(s). 화가 풀리는 경로는 없으므로 되돌리지 않는다 */
   /** 비켜선 이후 경과(s) — 횡이동 보간의 유일한 입력 */
   const cpAsideSec: number[] = [0, 0, 0]
+  /** 우산에 맞은 이후 경과(s) — 포물선 궤적의 유일한 입력 */
+  const cpKnockSec: number[] = [0, 0, 0]
+  /** 에스컬레이터 승객용 — 같은 방식, 인원수만 다르다 */
+  const riderKnockSec: number[] = RIDER_SPOTS.map(() => 0)
 
   /** 프롭 토글은 상태가 바뀐 프레임에만 — 매 프레임 traverse 결과를 다시 쓰지 않는다 */
   let propHyojason: boolean | null = null
@@ -281,7 +318,40 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
       const rig = cps[i]
       const home = cpHomes[i]
       if (!rig || !home) continue
-      const aside = s.act.consumed.includes(CP_IDS[i] as string)
+      const id = CP_IDS[i] as string
+      const aside = s.act.consumed.includes(id)
+
+      /**
+       * 펼친 우산에 맞았으면 **비켜서는 게 아니라 날아간다** (디렉터 지시 2026-08-07).
+       *
+       * 소진 처리(`consumed`)는 두 경로가 공유하지만 그림은 완전히 다르다 — 어느 쪽인지는
+       * `state.knocks` 에 방향이 남아 있는가로 가른다. 방향만 시뮬이 정하고 **경과는 여기서
+       * 센다**(`cpAsideSec` 와 같은 방식) — 이미 끝난 판정의 연출을 상태에 얹을 이유가 없다.
+       */
+      const knock = s.knocks.find((k) => k.id === id)
+      if (knock) {
+        cpKnockSec[i] = (cpKnockSec[i] ?? 0) + dtSec
+        const t = Math.min(1, (cpKnockSec[i] ?? 0) / (UMBRELLA.knockMs / 1000))
+        // 거리는 감속(easeOut) — 맞는 순간이 제일 빠르다
+        const d = UMBRELLA.knockM * (1 - (1 - t) * (1 - t))
+        // 높이는 포물선. t=0.5 에서 정점, 착지에서 정확히 0으로 돌아온다
+        const lift = UMBRELLA.knockLiftM * 4 * t * (1 - t)
+        const at: Anchor = { x: home.x + knock.dx * d, y: home.y + knock.dy * d, z: home.z + lift }
+        rig.place(at.x, at.y, at.z, Math.atan2(knock.dy, knock.dx))
+        /**
+         * 구르는 회전. `place()` 는 `rotation.y` 만 건드리므로 x 를 여기서 덮어써도 안전하다.
+         * 끝값 π/2 는 **널브러진 자세**다 — 다 돌고 나서 다시 벌떡 서면 맞은 것이 안 읽힌다.
+         */
+        rig.root.rotation.x = (Math.PI * 2 + Math.PI / 2) * t
+
+        const visible = near(s, at)
+        rig.setVisible(visible)
+        if (!visible) continue
+        rig.play('CP_MoveAside', true)
+        rig.update(dtSec)
+        continue
+      }
+
       if (aside) cpAsideSec[i] = (cpAsideSec[i] ?? 0) + dtSec
 
       // 자세 클립에 좌표 이동을 얹는다 — 클립 자체는 제자리다
@@ -296,6 +366,47 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
       if (!aside) rig.play('CP_Idle')
       else if (t < 1) rig.play('CP_MoveAside', true)
       else rig.play('CP_AsideIdle')   // 없으면 원위치로 돌아가 버린다 (README ACT-06)
+      rig.update(dtSec)
+    }
+  }
+
+  /**
+   * 에스컬레이터 승객 동기화.
+   *
+   * 자리는 로드 시 한 번 계산해 둔 `riderAnchors` 로 고정이지만, **우산에 맞으면**
+   * `syncCarrier` 의 인파벽 넉백과 똑같은 포물선을 그린다 — 판정(`state.knocks`)이
+   * `data/crowd.ts` 의 같은 id 로 들어오므로 그림도 같은 코드를 그대로 재사용한다.
+   */
+  const syncRiders = (s: GameState, dtSec: number): void => {
+    for (let i = 0; i < riders.length; i++) {
+      const rig = riders[i]
+      const at = riderAnchors[i]
+      const spot = RIDER_SPOTS[i]
+      if (!rig || !at || !spot) continue
+
+      const knock = s.knocks.find((k) => k.id === spot.id)
+      if (knock) {
+        riderKnockSec[i] = (riderKnockSec[i] ?? 0) + dtSec
+        const t = Math.min(1, (riderKnockSec[i] ?? 0) / (UMBRELLA.knockMs / 1000))
+        const d = UMBRELLA.knockM * (1 - (1 - t) * (1 - t))
+        const lift = UMBRELLA.knockLiftM * 4 * t * (1 - t)
+        const kAt: Anchor = { x: at.x + knock.dx * d, y: at.y + knock.dy * d, z: at.z + lift }
+        rig.place(kAt.x, kAt.y, kAt.z, Math.atan2(knock.dy, knock.dx))
+        rig.root.rotation.x = (Math.PI * 2 + Math.PI / 2) * t
+
+        const visible = near(s, kAt)
+        rig.setVisible(visible)
+        if (!visible) continue
+        rig.play('CP_MoveAside', true)
+        rig.update(dtSec)
+        continue
+      }
+
+      rig.place(at.x, at.y, at.z, RIDER_FACING)
+      const visible = near(s, at)
+      rig.setVisible(visible)
+      if (!visible) continue
+      rig.play('CP_Idle')
       rig.update(dtSec)
     }
   }
@@ -394,6 +505,7 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
     sync(s, dtSec) {
       syncGrandpa(s, dtSec)
       syncCarrier(s, dtSec)
+      syncRiders(s, dtSec)
       syncTalker(s, ajp, 'OBS-06', FLYER_AT, OBSTACLE.flyerRangeM, dtSec)
       syncTalker(s, aj, 'OBS-07', AJUMMA_AT, OBSTACLE.ajummaRangeM, dtSec)
       syncZombie(s, dtSec)
@@ -403,6 +515,7 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
     dispose() {
       gp.dispose()
       for (const c of cps) c.dispose()
+      for (const r of riders) r.dispose()
       ajp.dispose(); aj.dispose(); zp.dispose(); ss.dispose()
       cl.dispose()
     },

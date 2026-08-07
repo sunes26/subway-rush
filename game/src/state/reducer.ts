@@ -13,8 +13,8 @@ import { BALANCE_POOL, CHASE, FARE, GATE, INTERACT, QTE, SLOTS, SURGE, SWAP_WIND
 import { GRANDPA_ID } from '../data/interactables'
 import { rollObstacles, rollQueues, type ObsId } from '../data/obstacles'
 import { GATES, SPAWN, TRAFFIC_LIGHT, zoneAt } from '../data/world'
-import type { Action, ActState, ChaseState, Drop, GameState, Fx, ItemId, QteState, SurgeState,
-  SwapState, TallyState } from './types'
+import type { Action, ActState, ChaseState, Drop, GameState, Fx, HandState, ItemId, QteState,
+  SurgeState, SwapState, TallyState } from './types'
 
 const MAX_FX = 12
 
@@ -63,6 +63,23 @@ const EMPTY_SURGE: SurgeState = { fell: false, stallMs: 0 }
 const EMPTY_TALLY: TallyState = { coinsEarned: 0, itemsUsed: [], secrets: [], pushes: 0 }
 
 const EMPTY_SWAP: SwapState = { active: false, newSlot: 0, dropId: null, leftMs: 0 }
+
+const EMPTY_HAND: HandState = { item: null, slot: -1, open: false }
+
+/**
+ * 손과 인벤토리를 맞춘다 — **모든 액션 뒤에 한 번씩** 돈다(`applyAll`).
+ *
+ * 손을 놓게 만드는 경로가 여섯이다: 소모(`ITEM_SPEND`) · 낙하(`FUMBLE`) · 습득으로 밀려남
+ * (`PICKUP`) · 교체 창의 두 갈래(`SWAP_TO`/`SWAP_CANCEL`) · 추격 반납(`CHASE_END`).
+ * 각 케이스에서 따로 비우면 **하나를 잊는 순간 없는 물건을 든 채로 남는다** — 우산이라면
+ * 인벤에 없는데 화면에서 계속 돌아간다. 여섯 군데 대신 여기 한 군데서 잠근다.
+ */
+const syncHand = (s: GameState): GameState => {
+  const h = s.hand
+  if (h.item === null) return h.open ? { ...s, hand: EMPTY_HAND } : s
+  if (s.inventory[h.slot] === h.item) return s
+  return { ...s, hand: EMPTY_HAND }
+}
 
 /** 진행 중 상호작용만 비운다 — `consumed`·`dialogId` 는 건드리지 않는다 */
 const clearBusy = (a: ActState): ActState =>
@@ -148,6 +165,8 @@ export const initialState = (seed: number, freeplay = false, allObstacles = fals
     qte: EMPTY_QTE,
     surge: EMPTY_SURGE,
     tally: EMPTY_TALLY,
+    hand: EMPTY_HAND,
+    knocks: [],
     swap: EMPTY_SWAP,
     obstacles: rollObstacles(seed, allObstacles),
     obsCooldown: {},
@@ -499,6 +518,33 @@ export const reducer = (s: GameState, a: Action): GameState => {
     case 'PUSH':
       return { ...s, tally: { ...s.tally, pushes: s.tally.pushes + 1 } }
 
+    /**
+     * 손에 든다 / 놓는다.
+     *
+     * 손을 바꾸면 우산은 **무조건 접힌다.** 펼침은 우산 고유의 상태라 다른 물건으로
+     * 넘어갈 때 들고 갈 것이 아니고, 같은 우산을 다시 들었을 때 펼쳐진 채로 나오면
+     * "언제 폈지"가 된다.
+     */
+    case 'EQUIP': {
+      const item = a.item
+      if (item === null) return s.hand.item === null ? s : { ...s, hand: EMPTY_HAND }
+      // 없는 칸·빈 칸·엉뚱한 아이템은 조용히 무시한다 — 손이 인벤토리를 앞지르면 안 된다
+      if (a.slot < 0 || a.slot >= SLOTS || s.inventory[a.slot] !== item) return s
+      return { ...s, hand: { item, slot: a.slot, open: false } }
+    }
+
+    /** 우산 펼치기/접기. 우산을 안 들었으면 아무 일도 없다 */
+    case 'UMBRELLA':
+      return s.hand.item !== 'I-09' || s.hand.open === a.open
+        ? s
+        : { ...s, hand: { ...s.hand, open: a.open } }
+
+    /** 날아갔다 — 같은 사람을 두 번 날리지 않는다 */
+    case 'KNOCK':
+      return s.knocks.some((k) => k.id === a.id)
+        ? s
+        : { ...s, knocks: [...s.knocks, { id: a.id, dx: a.dx, dy: a.dy }] }
+
     case 'STAFF_ALERT':
       return s.staffAlertMs === a.ms ? s : { ...s, staffAlertMs: a.ms }
 
@@ -731,8 +777,13 @@ export const reducer = (s: GameState, a: Action): GameState => {
   }
 }
 
+/**
+ * 액션 하나마다 손을 인벤토리에 맞춘다 (`syncHand` 주석 참고).
+ * `reducer` 자체를 감싸지 않고 여기서 도는 이유는 **재귀를 피하려는 것**이다 —
+ * 리듀서 안에서 자기 결과를 다시 정규화하면 케이스마다 두 번 도는 경로가 생긴다.
+ */
 export const applyAll = (s: GameState, actions: readonly Action[]): GameState =>
-  actions.reduce(reducer, s)
+  actions.reduce((acc, a) => syncHand(reducer(acc, a)), s)
 
 /** 디버그 표시용 */
 export const describe = (s: GameState): string =>

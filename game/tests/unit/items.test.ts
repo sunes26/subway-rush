@@ -79,6 +79,21 @@ describe('S22-4 우산꽂이 장식 · 벽 노선도 (디렉터 지시)', () => 
     }
   })
 
+  /**
+   * 다섯 자루가 **같은 메시**를 빌려 쓴다. 방향 값이 갈리면 한 통 안에서 서로 반대로
+   * 꽂힌 그림이 나온다 — 눈에는 바로 띄지만 코드에서는 조용하다.
+   *
+   * π 인 이유: 메시 원점이 "손잡이 쥐는 자리"라 갈고리가 아래·페룰이 위로 저작돼 있다
+   * (`tools/items_build.py` ITM-09). 밑면 접지 규약을 그대로 태우면 거꾸로 꽂힌다.
+   */
+  it('습득 우산과 장식 우산이 같은 방향으로 꽂힌다', () => {
+    const pickup = spotOf('OBJ-16')
+    expect(pickup.propPitch).toBe(Math.PI)
+    const umbrellas = DECOR.filter((d) => d.item === 'I-09')
+    expect(umbrellas.length).toBeGreaterThan(0)
+    for (const d of umbrellas) expect(d.pitch, d.id).toBe(pickup.propPitch)
+  })
+
   it('노선도는 남쪽 벽에 붙어 있고 인쇄면이 대합실을 본다', () => {
     const map = spotOf('OBJ-15-MAP')
     expect(map.gives).toBe('I-13')

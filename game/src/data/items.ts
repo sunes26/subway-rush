@@ -117,7 +117,12 @@ const DEFS: readonly ItemDef[] = [
     name: '우산',
     node: 'ITM09_Umbrella',
     slot: true,
-    consumable: true,
+    /**
+     * **소모되지 않는다** (디렉터 지시 2026-08-07). 예전엔 한 번 쓰면 사라졌는데,
+     * 맵에 우산이 한 자루뿐이라 E-11("우산 밀기 3회")이 도달 불가능한 엔딩이었다.
+     * 지금은 들고 · 펼치고 · 인파를 훑는다 (`systems/umbrella.ts`).
+     */
+    consumable: false,
     use: 'use',
     negates: ['OBS-03'],
     glyph: '☂',

@@ -9,7 +9,7 @@
  */
 
 import type { InputFrame } from '../core/input'
-import { CP_IDS, GIFT_STALL_ID, GRANDPA_ID, INTERACTABLES, byId, coinValue, isCoin, isVending,
+import { GIFT_STALL_ID, GRANDPA_ID, INTERACTABLES, byId, coinValue, isCoin, isVending,
   type InteractKind, type Interactable } from '../data/interactables'
 import { GIFT_CORRECT, GIFT_ITEMS, itemDef } from '../data/items'
 import { CHASE, EMERGENCY, INTERACT, SLOTS, STAMINA } from '../data/tuning'
@@ -418,14 +418,44 @@ const dialogPick = (s: GameState, key: Branch['key']): Action[] => {
 // ─────────────────────────── 슬롯 사용 ───────────────────────────
 
 /**
- * `1``2``3` — 들고 있는 것을 **여기서** 쓴다.
+ * 손에 든다 / 놓는다 — **대상이 없을 때 슬롯 키가 하는 일** (디렉터 지시 2026-08-07).
+ *
+ * 같은 칸을 다시 누르면 놓는다. 토글인 이유: 들기 전용 키를 따로 만들면 손을 비우는
+ * 방법이 없어지고, 우산을 든 채로는 좌클릭이 우산에 묶이므로(아래 `interactSystem`)
+ * **되돌릴 방법이 반드시 손 닿는 곳에 있어야 한다.**
+ *
+ * 토스트에 `noTargetReason` 을 얹는다 — 예전엔 이 문구가 거부 사유였다. 거부가 사라져도
+ * "이건 어디서 쓰는 물건인가"라는 정보는 남겨야 한다. 거부가 아니라 **안내**로 바뀐 것이다.
+ */
+const equipToggle = (s: GameState, slot: number, item: ItemId): Action[] => {
+  const def = itemDef(item)
+  const held = s.hand.slot === slot && s.hand.item === item
+  if (held) {
+    return [
+      { t: 'EQUIP', slot: -1, item: null },
+      { t: 'FX', kind: 'toast', text: `${def.name}을(를) 넣었다`, lifeMs: 1200, value: 0 },
+    ]
+  }
+  return [
+    { t: 'EQUIP', slot, item },
+    {
+      t: 'FX', kind: 'toast',
+      text: `${def.name}을(를) 들었다 — ${def.noTargetReason}`,
+      lifeMs: 1600, value: 0,
+    },
+  ]
+}
+
+/**
+ * `1`~`0` — 들고 있는 것을 **여기서** 쓴다. 쓸 대상이 없으면 `null` 을 돌려준다.
  *
  * 대상 판정을 조준이 아니라 거리(2.0m)로 하는 이유: 아이템을 쓸 때 플레이어는
  * 이미 대상 앞에 서 있다. 거기서 조준까지 요구하면 "왜 안 되지"가 된다.
+ *
+ * ★ **`null` 과 빈 배열은 다르다.** `null` 은 "쓸 데가 없다"(→ 손에 든다)이고,
+ *   빈 배열은 "썼는데 낼 액션이 없다"이다. 지금 후자는 없지만 구분을 열어 둔다.
  */
-const useSlot = (s: GameState, slot: number): Action[] => {
-  const item = s.inventory[slot] ?? null
-  if (!item) return []
+const contextUse = (s: GameState, slot: number, item: ItemId): Action[] | null => {
   const def = itemDef(item)
 
   /**
@@ -456,9 +486,7 @@ const useSlot = (s: GameState, slot: number): Action[] => {
    */
   if (GIFT_ITEMS.includes(item)) {
     const gp = byId(GRANDPA_ID)
-    if (!gp || s.act.consumed.includes(gp.id) || !within(s, gp, 2.2)) {
-      return [{ t: 'ACT_DENY', text: def.noTargetReason }]
-    }
+    if (!gp || s.act.consumed.includes(gp.id) || !within(s, gp, 2.2)) return null
     return [
       { t: 'DIALOG', id: null },
       { t: 'ACT_BEGIN', id: GRANDPA_ID, kind: 'give', totalMs: durationOf('give') },
@@ -486,26 +514,17 @@ const useSlot = (s: GameState, slot: number): Action[] => {
       ]
     }
 
-    /** 우산 — O-03 인파벽 즉시 개방 */
-    case 'I-09': {
-      // 3인 중 **가장 가까운 남은 사람**을 민다 (P2 — 인파벽 3인 복원)
-      const cp = CP_IDS
-        .map((id) => byId(id))
-        .filter((it): it is Interactable => !!it && !s.act.consumed.includes(it.id) && within(s, it, 2.2))
-        .sort((a, b) =>
-          Math.hypot(a.x - s.player.pos.x, a.y - s.player.pos.y) -
-          Math.hypot(b.x - s.player.pos.x, b.y - s.player.pos.y))[0]
-      if (!cp) {
-        return [{ t: 'ACT_DENY', text: def.noTargetReason }]
-      }
-      return [
-        { t: 'ITEM_SPEND', slot },
-        { t: 'ITEM_USED', item },
-        { t: 'ACT_CONSUME', id: cp.id },
-        { t: 'PUSH' },
-        { t: 'FX', kind: 'toast', text: '우산으로 비켜세웠다', lifeMs: 1600, value: 0 },
-      ]
-    }
+    /**
+     * 우산 — **여기서는 아무것도 안 한다.** 항상 `null` 이라 슬롯 키는 곧 "든다"다.
+     *
+     * 예전엔 이 자리에서 가장 가까운 인파 한 명을 밀고 우산을 소모했다. 그 경로를
+     * 지운 이유는 `data/tuning.ts UMBRELLA` 헤더에 있다 — 요약하면 우산이 한 자루뿐이라
+     * E-11 이 도달 불가능했고, 화면에 아무 일도 안 일어났다.
+     * 지금은 들고(여기) → 좌클릭으로 펼치고(`interactSystem`) → 훑는다(`systems/umbrella.ts`).
+     * **인파를 미는 경로는 그 하나뿐이다** — 둘로 두면 `PUSH` 계수가 경로마다 갈린다.
+     */
+    case 'I-09':
+      return null
 
     /**
      * 효자손 — 자판기가 근처면 QTE.
@@ -526,13 +545,26 @@ const useSlot = (s: GameState, slot: number): Action[] => {
       }
       const vend = INTERACTABLES.find(
         (it) => isVending(it.id) && !s.act.consumed.includes(it.id) && within(s, it, 2.2))
-      if (!vend) return [{ t: 'ACT_DENY', text: def.noTargetReason }]
+      if (!vend) return null
       return [{ t: 'QTE_BEGIN', vendorId: vend.id }]
     }
 
     default:
-      return [{ t: 'ACT_DENY', text: def.noTargetReason }]
+      return null
   }
+}
+
+/**
+ * 슬롯 키 한 번의 전부 — **쓸 데가 있으면 쓰고, 없으면 든다.**
+ *
+ * 이 순서가 뒤집히면(항상 들고, 쓰려면 한 번 더) 자판기 앞에서 효자손을 두 번 눌러야 하고
+ * 할아버지 앞에서 선물을 두 번 눌러야 한다 — P1부터의 조작이 통째로 한 박자 늘어난다.
+ * "언제든 장착"은 **아무 데서나 들 수 있다**는 뜻이지 쓰기를 없애라는 뜻이 아니다.
+ */
+const useSlot = (s: GameState, slot: number): Action[] => {
+  const item = s.inventory[slot] ?? null
+  if (!item) return []
+  return contextUse(s, slot, item) ?? equipToggle(s, slot, item)
 }
 
 // ─────────────────────────── 시스템 본체 ───────────────────────────
@@ -606,8 +638,25 @@ export const interactSystem = (s: GameState, ctx: ActCtx): Action[] => {
   // 6) 새 상호작용 시작
   if (f.pressInteract) {
     const id = aim.id
-    if (!id) return out
-    const it = resolve(s, id)
+    const it = id ? resolve(s, id) : null
+    /**
+     * **우산을 들고 있으면 좌클릭(=`E`)이 우산을 편다** (디렉터 지시 2026-08-07).
+     *
+     * 단, **조준한 대상이 있으면 상호작용이 이긴다.** 조준(`aimed`)은 화면 중앙에
+     * 대상을 둔 것이므로 그건 의도다 — 우산을 들었다는 이유로 눈앞의 사람을 못 부르게
+     * 되면 "왜 저게 안 되지"가 된다. 근접 폴백(`aimed === false`)은 시선 밖의 대상이라
+     * 의도로 안 보고 우산에게 넘긴다.
+     *
+     * 그래서 인파를 정면으로 보고 서면 우산이 안 펴진다 — **떨어져서 펴고 밀고 들어간다**가
+     * 이 동사의 모양이다. 그게 훑는 감각의 전부다.
+     */
+    if (s.hand.item === 'I-09' && !(it && aim.aimed)) {
+      return [...out, { t: 'UMBRELLA', open: !s.hand.open }, {
+        t: 'FX', kind: 'toast',
+        text: s.hand.open ? '우산을 접었다' : '우산을 펼쳤다',
+        lifeMs: 1200, value: 0,
+      }]
+    }
     if (!it) return out
     return [...out, ...begin(s, it)]
   }
