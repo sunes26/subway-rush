@@ -28,6 +28,7 @@ CODE = "itm"
 VIEWS = ["front", "q34", "side", "back"]
 LABEL = {
     "ITM01_Backscratcher": ("ITM-01", "효자손", "자판기 하단 긁기 해금 · 할아버지 분기 열쇠"),
+    "ITM02_Coin": ("ITM-02", "동전", "습득 즉시 잔액 흡수 · 슬롯 미점유 · 바닥 6곳 중 2~3개 활성"),
     "ITM04_Card": ("ITM-04", "교통카드", "개찰구 통과 · 시작 상시 소지"),
     "ITM06_Mask": ("ITM-06", "마스크", "인파 밀림 저항 +50%"),
     "ITM06_MaskFolded": ("ITM-06B", "마스크 (접힌 상태)", "편의점 매대 진열용"),
@@ -41,7 +42,7 @@ LABEL = {
     "ITM13_RouteMap": ("ITM-13", "노선도", "안내판 획득 · 미니맵 + 열차 문 위치"),
     "FURN_Locker": ("FURN", "물품보관소", "독립형 모듈 · 4열×5행 20칸(큰 290 / 작은 139mm) · 문 분리 · 사용 램프 · 배치 존 미정"),
 }
-ORDER = ["ITM01_Backscratcher", "ITM04_Card", "ITM06_Mask", "ITM06_MaskFolded",
+ORDER = ["ITM01_Backscratcher", "ITM02_Coin", "ITM04_Card", "ITM06_Mask", "ITM06_MaskFolded",
          "ITM09_Umbrella", "ITM09_UmbrellaOpen",
          "ITM12_Yanggaeng", "ITM12_BananaMilk", "ITM12_Chocolate",
          "ITM12_Soda", "ITM12_SnackBag", "ITM13_RouteMap",

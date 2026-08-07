@@ -367,6 +367,93 @@ for _p in _parts:
     shade(_p, False)
 ITEMS["ITM04_Card"] = finish("ITM04_Card", _parts)
 
+# ============================================== ITM-02 동전 (P1)
+# GDD 초안은 동전을 3D 소품 없이 "이펙트로 대체"하기로 했었다 — 여기서
+# 뒤집는다. 바닥에 흩어진 동전은 달리는 중에 실루엣만 보고 찾아야 하는
+# 물건이라(MAP-LAYOUT §4.5, "C1 홀 남측 눈에 띔") 실제로 보일 무언가가
+# 필요하다.
+#
+# 손에 드는 소품이 아니라 **선 채로 바닥에 놓여 찾아지는** 소품이다.
+# plate() 는 폭·높이를 지름 하나로 맞추면(r = 지름/2) 네 귀퉁이가 서로
+# 맞물려 그대로 원판이 된다(hw=hh=0) — 카드와 같은 함수를 그대로 쓴다.
+#
+# 색은 카드의 옐로 계열과 겹치지 않는 골드로 따로 잡는다. 카드·마스크·
+# 우산 세 소품이 공유하는 세트 신호를 흐리지 않기 위해서다.
+#
+# 원점은 바닥 접지점(하단 중앙) — ITM-12 다섯 상품과 같은 규약이다. 손에
+# 붙는 소품이 아니라 바닥에 놓인 채로 사라지는 소품이라서다.
+COIN_D = 0.046                 # 지름 — 실물 500원(26.5mm)의 1.7배.
+                                # 카드(1.5배 과장)보다 더 키운다: 달리는 중
+                                # 원거리 실루엣으로 찾아야 해서다.
+COIN_T = 0.0034                # 두께 — 실물(1.9~2.0mm) 대비 같은 비율로 확대
+COIN_SEG = 11                  # 4*11=44변 — 저해상도에서도 원으로 읽히는 선
+
+M_COIN = new_mat("ITM_CoinBody", "D9A039", 0.40, metallic=0.55)         # 본체 골드
+M_COIN_LIT = new_mat("ITM_CoinLit", "F2C766", 0.30, metallic=0.55)      # 베벨 모서리(빛 받는 면)
+M_COIN_FIELD = new_mat("ITM_CoinField", "FADD8F", 0.26, metallic=0.48)  # 도드라진 안쪽 판
+M_COIN_DEEP = new_mat("ITM_CoinDeep", "A9752A", 0.46, metallic=0.55)    # 옆면(테두리) — 가장 어두운 골드, 검정 아님
+
+_body = plate("coin_body", COIN_D, COIN_D, COIN_D / 2.0, COIN_T, M_COIN,
+             seg=COIN_SEG, edge_mat=M_COIN_DEEP, cz=COIN_D / 2.0)
+_body.data.materials.append(M_COIN_LIT)          # 슬롯 2 = 깎인 모서리
+bevel(_body, BEVEL_S * 0.8, 2, mat_index=2)
+_parts = [_body]
+
+# 안쪽 판 — 앞뒤 양면 모두. 표면과 같은 높이로 읽혀야 하므로 FLAT 만큼만 띄운다.
+# 두 판의 중심은 코인 자체와 같은 높이(COIN_D/2)에 둬야 동심원이 된다.
+_coin_fd = COIN_D * 0.64
+_parts.append(plate("coin_field_f", _coin_fd, _coin_fd, _coin_fd / 2.0, FLAT * 2, M_COIN_FIELD,
+                    seg=COIN_SEG, y=-COIN_T / 2.0 - FLAT, cz=COIN_D / 2.0))
+_parts.append(plate("coin_field_b", _coin_fd, _coin_fd, _coin_fd / 2.0, FLAT * 2, M_COIN_FIELD,
+                    seg=COIN_SEG, y=COIN_T / 2.0 + FLAT, cz=COIN_D / 2.0))
+for _p in _parts:
+    shade(_p, False)                     # 몸통·안쪽 판은 저해상도 각짐 그대로
+
+# 가운데 $ 표식 — 안쪽 판보다 한 겹 더 튀어나온 골드 와이어다. 사인 곡선
+# 하나로 훑었더니 룬 문자처럼 보였다(실측) — 진짜 S 자는 사인파가 아니라
+# **반원 둘을 이어 붙인 모양**이다(위 반원은 오른쪽으로, 아래 반원은
+# 왼쪽으로 부푼다).
+#
+# 반지름을 그냥 키우면 이음매(가운데, x=0)가 안 맞아 끊어진다 — z 는
+# 반지름 그대로(h/4) 두고 **x 만 따로 넓힌다**. cos(±90°)=0 이라 이음매는
+# x=0 그대로 유지되면서 굴곡만 커진다. 기울임은 전혀 안 섞는다 — x 가
+# 항상 좌우 대칭이라 기울 수가 없다.
+_g_h = _coin_fd * 0.62                   # 표식 전체 높이
+_g_ra = _g_h / 4.0                       # z 진행용 반지름 — 이걸 바꾸면 이음매가 어긋난다
+_g_width = 1.6                           # 굴곡(가로 폭) 배수 — z 와 분리해서 이것만 키운다
+_g_r = _g_h * 0.050                      # 와이어 굵기
+_g_over = _g_h * 0.16                    # 세로 막대가 S 위아래로 튀어나오는 길이
+_g_cz = COIN_D / 2.0                     # 코인 중심 높이 — 필드 판과 같은 중심
+_G_N = 16                                # 반원 하나당 표본 수 — 늘려서 매끈하게
+
+def _s_half(center_z, a0_deg, a1_deg, n):
+    out = []
+    for i in range(n + 1):
+        a = math.radians(a0_deg + (a1_deg - a0_deg) * i / n)
+        out.append((_g_ra * _g_width * math.cos(a), center_z + _g_ra * math.sin(a)))
+    return out
+
+# 위 반원 — 중심 +h/4, 90°(꼭대기)→−90°(가운데)로 오른쪽을 지나며 부푼다.
+# 아래 반원 — 중심 −h/4, 90°(가운데, 위 반원 끝과 겹침)→270°(바닥)로 왼쪽을 지나며 부푼다.
+_S_XZ = (_s_half(_g_h / 4.0, 90.0, -90.0, _G_N)
+         + _s_half(-_g_h / 4.0, 90.0, 270.0, _G_N)[1:])   # 가운데 겹침점 하나는 버린다
+_S_PTS = [(x, 0.0, _g_cz + z) for x, z in _S_XZ]
+_BAR_PTS = [(0.0, 0.0, _g_cz + _g_h * 0.5 + _g_over),
+            (0.0, 0.0, _g_cz - _g_h * 0.5 - _g_over)]
+_dollar_parts = []
+# 뒷면은 앞면과 같은 좌표를 그대로 쓰면 **뒤에서 봤을 때 좌우가 뒤집힌 $** 로 읽힌다
+# (거울에 비친 것과 같은 이치) — 뒷면만 x 를 반전해서 제 방향으로 읽히게 한다.
+for _side, _gy, _mirror in (("f", -COIN_T / 2.0 - FLAT * 3, 1.0), ("b", COIN_T / 2.0 + FLAT * 3, -1.0)):
+    _s_pts = [(x * _mirror, _gy, z) for x, _, z in _S_PTS]
+    _bar_pts = [(x * _mirror, _gy, z) for x, _, z in _BAR_PTS]
+    _dollar_parts.append(tube("coin_dollar_s%s" % _side, _s_pts, _g_r, 14, M_COIN_DEEP))
+    _dollar_parts.append(tube("coin_dollar_bar%s" % _side, _bar_pts, _g_r * 0.85, 10, M_COIN_DEEP))
+for _p in _dollar_parts:
+    shade(_p, True)                      # 표식만 매끈하게 — 둥근 와이어로 읽혀야 한다
+_parts += _dollar_parts
+
+ITEMS["ITM02_Coin"] = finish("ITM02_Coin", _parts)
+
 # ============================================== ITM-06 마스크 (P1)
 # 실루엣을 다시 잡았다. 직사각 격자를 휘기만 해서는 '휘어진 천 조각'이지
 # 마스크가 아니다. 얼굴에 걸리는 구조가 실루엣에 있어야 한다 —

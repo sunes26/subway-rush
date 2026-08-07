@@ -34,8 +34,8 @@ const SCALE = 1.6
  */
 const VISIBLE_M = 26
 /**
- * 작은 것은 더 일찍 지운다. 동전은 지름 10cm 라 12m 밖에서 **1~2 픽셀**이다 —
- * 그리는 값(드로우 콜 1)이 보이는 값보다 크다.
+ * 작은 것은 더 일찍 지운다. 동전은 실지름 7.4cm(SCALE 적용 후) 라 12m 밖에서
+ * **1~2 픽셀**이다 — 그리는 값(드로우 콜 1)이 보이는 값보다 크다.
  */
 const VISIBLE_M_SMALL = 12
 const SMALL_ITEMS: ReadonlySet<ItemId> = new Set<ItemId>(['I-02'])
@@ -51,18 +51,18 @@ const PULSE_SEC = 1.6
 const PULSE_AMP = 0.15
 
 /**
- * P2 신규 7종은 **전용 메시가 없다** — `docs/P2-SPEC.md` §10 이 P3로 미룬 항목이다.
+ * P2 신규 6종은 **전용 메시가 없다** — `docs/P2-SPEC.md` §10 이 P3로 미룬 항목이다.
  * 없는 노드를 조용히 넘기면 화면에 아무것도 안 서고, `console.error` 로 알리면
  * E2E 의 "콘솔 에러 0건" 어서션이 깨진다. **의도된 부재는 자리표시자로 그린다.**
  *
  * 여기 없는 id 가 노드를 못 찾으면 그건 여전히 에러다(에셋 갱신 사고 감지선).
+ * I-02(동전)는 `items_build.py ITM02_Coin` 으로 실제 메시가 생겨 여기서 빠졌다.
  */
 export const PLACEHOLDER_ITEMS: ReadonlySet<ItemId> =
-  new Set<ItemId>(['I-02', 'I-05', 'I-07', 'I-08', 'I-10', 'I-11', 'I-14'])
+  new Set<ItemId>(['I-05', 'I-07', 'I-08', 'I-10', 'I-11', 'I-14'])
 
 /** 아이템별 자리표시자 색 — 실루엣만으로 구분되게. 전부 회색이면 뭘 주웠는지 모른다 */
 const PLACEHOLDER_LOOK: Readonly<Partial<Record<ItemId, { c: number; w: number; h: number; d: number }>>> = {
-  'I-02': { c: 0xf2c14e, w: 0.10, h: 0.10, d: 0.02 },   // 동전 — 납작한 원반 대용
   'I-05': { c: 0xf4f4f2, w: 0.09, h: 0.06, d: 0.09 },   // 이어폰 케이스
   'I-07': { c: 0x6b4a34, w: 0.09, h: 0.20, d: 0.09 },   // 텀블러
   'I-08': { c: 0xe8e4d8, w: 0.26, h: 0.04, d: 0.19 },   // 접힌 신문
@@ -79,7 +79,7 @@ const placeholderFor = (item: ItemId): Object3D => {
   const look = PLACEHOLDER_LOOK[item] ?? { c: 0x9aa0a6, w: 0.14, h: 0.14, d: 0.14 }
   const mesh = new Mesh(
     new BoxGeometry(look.w, look.h, look.d),
-    new MeshStandardMaterial({ color: look.c, roughness: 0.7, metalness: item === 'I-02' ? 0.6 : 0.05 }),
+    new MeshStandardMaterial({ color: look.c, roughness: 0.7, metalness: 0.05 }),
   )
   mesh.name = `placeholder:${item}`
   // 밑면을 y=0 으로 — makeProp 이 박스 min.y 로 접지시키므로 원점 규약을 맞춰 둔다
