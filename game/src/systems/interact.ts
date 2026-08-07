@@ -348,7 +348,18 @@ const steal = (): Action[] => [
   { t: 'FX', kind: 'toast', text: '"이놈이!"', lifeMs: 2000, value: 0 },
 ]
 
+/**
+ * `1``2``3` 는 지금 열린 대화창이 **할아버지 것일 때만** 그의 분기를 태운다.
+ *
+ * 'talk' 종류가 할아버지 하나뿐이던 시절엔 "대화창이 열려 있다 = 할아버지다"가
+ * 성립해서 이 검사가 없어도 안전했다. 편의점 매대(`OBJ-19-GIFT`)가 두 번째
+ * 'talk' 이 되면서 그 가정이 깨졌다 — 매대 대화에서 `1`을 누르면 거리와 무관하게
+ * `steal()`이 실행되고 할아버지가 소진돼 버렸다. 매대 자신의 5지 분기는
+ * 아직 여기 연결하지 않는다(다음 작업에서 `branchesFor` 로 라우팅한다) — 그래서
+ * 매대 대화 중에는 숫자키가 지금은 의도적으로 아무것도 하지 않는다.
+ */
 const dialogPick = (s: GameState, key: 1 | 2 | 3): Action[] => {
+  if (s.act.dialogId !== GRANDPA_ID) return []
   const b = grandpaBranches(s).find((x) => x.key === key)
   if (!b) return []
   if (!b.enabled) return [{ t: 'ACT_DENY', text: b.note }]
