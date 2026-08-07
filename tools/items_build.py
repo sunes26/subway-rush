@@ -452,6 +452,16 @@ for _p in _dollar_parts:
     shade(_p, True)                      # 표식만 매끈하게 — 둥근 와이어로 읽혀야 한다
 _parts += _dollar_parts
 
+# 눕힌다 — `plate()`는 로컬 XZ 평면(수직으로 선 판)을 만든다. 카드처럼 세워
+# 드는 물건은 그대로 쓰지만, 동전은 바닥에 누워 있어야 달리며 내려다볼 때
+# 원판 면($ 각인)이 보인다. 세운 채로 두면 얇은 옆면만 보여 실측(인게임
+# 스크린샷)에서 사각형 실루엣으로 읽혔다.
+# X 축 -90도 — front 면(거울 안 된 $, 법선 -Y)이 +Z(위)로 돌아간다.
+for _p in _parts:
+    set_active(_p)
+    _p.rotation_euler = (math.radians(-90.0), 0.0, 0.0)
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+
 ITEMS["ITM02_Coin"] = finish("ITM02_Coin", _parts)
 
 # ============================================== ITM-06 마스크 (P1)
