@@ -1,9 +1,12 @@
 /**
  * O-14 단소 추격 🎋 — GDD §4.1.
  *
- * 절도 루트는 원래 "시간을 아끼는 대신 양심을 잃는" 거래였다. 그런데 양심 페널티는
- * **엔딩 화면에서야 청구서가 온다.** 너무 늦다. 이 시스템은 그 청구서를 3초 뒤에 보낸다.
- * 8초 아끼려고 훔쳤는데 감속 때문에 20초를 잃는다 → 도덕이 아니라 **산수로 손해**.
+ * 절도 루트는 **도박**이다. 10초를 버티면 효자손을 그대로 챙기고, 두 대 맞으면
+ * 그 자리에서 런이 끝난다. 예전에는 5대 누적으로 효자손을 회수당하는 "산수로 손해"
+ * 구조였는데, 즉사로 바꾸면서 성격이 달라졌다 — 시간 손해가 아니라 판돈이다.
+ *
+ * 도망은 성립한다: 스프린트 8.3 대 할아버지 5.0, 벤치(x=42)에서 개찰구(x=56)까지 14m,
+ * 스태미너 100/초당 22 ≈ 4.5초면 37m 를 달린다.
  *
  * 톤 가드레일: 폭력이 아니라 슬랩스틱이다. 피 없음 · 데미지 수치 없음 · 3등신 SD ·
  * 타격음은 "딱!" 목탁 계열 · 대사는 훈계가 아니라 잔소리.
@@ -113,17 +116,6 @@ export const chaseSystem = (s: GameState, ctx: ChaseCtx): Action[] => {
     }]
   }
 
-  // ── 회수 연출: 2초 완전 정지 뒤 효자손을 잃는다
-  if (c.phase === 'seize') {
-    if (c.phaseMs >= CHASE.seizeMs) {
-      return [
-        { t: 'CHASE_END', reason: 'seize' },
-        { t: 'FX', kind: 'toast', text: '"내 효자손!" — 회수당했다', lifeMs: 2600, value: 0 },
-      ]
-    }
-    return []
-  }
-
   if (!c.active) return []
 
   // ── 해제 조건 (우선순위 순)
@@ -137,10 +129,20 @@ export const chaseSystem = (s: GameState, ctx: ChaseCtx): Action[] => {
   if (c.remainingMs <= 0) {
     return [
       { t: 'CHASE_END', reason: 'timeout' },
-      { t: 'FX', kind: 'toast', text: '할아버지가 숨이 찼다', lifeMs: 2000, value: 0 },
+      { t: 'FX', kind: 'toast', text: '"늙었더니 몸이 내맘 같지 않구먼"', lifeMs: 2600, value: 0 },
     ]
   }
-  if (c.hitCount >= CHASE.seizeHits) return [{ t: 'CHASE_PHASE', phase: 'seize' }]
+
+  /**
+   * 2대째 — 쓰러진다. **1대는 경고다**(감속 0.2 + "딱!").
+   * `swingCooldownMs`(1.5s)가 연타 즉사를 막으므로 한 번 맞고도 도망칠 창이 있다.
+   */
+  if (c.hitCount >= 2) {
+    return [
+      { t: 'FX', kind: 'toast', text: '눈앞이 하얘졌다', lifeMs: 2000, value: 0 },
+      { t: 'END', endingId: 'E-16' },
+    ]
+  }
 
   const facing = Math.atan2(p.y - c.pos.y, p.x - c.pos.x)
 

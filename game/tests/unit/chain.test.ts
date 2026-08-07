@@ -276,8 +276,23 @@ describe('S9-11 잔액 900 시드에서 체인 완주 → 개찰구 통과', () 
     s = pick(s, 1).s
     expect(s.inventory.includes('I-01')).toBe(true)
 
-    // 2) 자판기 A 로 걸어가 긁는다
-    const r = goto(s, VEND_A.x, VEND_A.y - 1.1, { r: 0.6, maxSec: 25 })
+    /**
+     * 2) 개편 후 2대째는 즉사다(E-16). 자판기 A(x=13)는 개찰구(x≥56)와 정반대 방향이라,
+     * "훔치고 바로 자판기로, 자판기에서 다시 개찰구로" 왕복하면 걸어오는 길에 할아버지와
+     * 정면으로 마주친다 — 걷기 속도가 같아서(5.0m/s) 스프린트를 아무리 아껴도 안전하지 않다.
+     *
+     * 실제로 살아남는 수는 하나뿐이다: **먼저 개찰구 안전지대(x≥56)로 스프린트해
+     * 추격을 완전히 끊는다.** `CHASE.safeX` 진입은 해제 1순위라 무조건적이고, 한 번
+     * 해제되면 `CHASE_DONE` 이 재발동을 막는다 — 그 다음부터는 자판기 왕복도 걷기로
+     * 완전히 안전하다. 이게 개편된 시스템에서 "체인이 완주된다"의 실제 의미다.
+     */
+    const esc = goto(s, 60, 14, { maxSec: 15, sprint: true })
+    expect(esc.ok, '개찰구 안전지대까지 스프린트로 도달한다').toBe(true)
+    expect(esc.s.chase.active, '추격 해제 — 이제부터 안전하다').toBe(false)
+    s = esc.s
+
+    // 3) 자판기 A 로 걸어가 긁는다 — 추격이 이미 풀렸으니 걷기로 충분하다
+    const r = goto(s, VEND_A.x, VEND_A.y - 1.1, { r: 0.6, maxSec: 30 })
     expect(r.ok, '자판기까지 걸어갈 수 있다').toBe(true)
     const yaw = yawTo(r.s, VEND_A.x, VEND_A.y)
     s = playQte(tap(r.s, { pressInteract: true }, yaw))
@@ -285,7 +300,7 @@ describe('S9-11 잔액 900 시드에서 체인 완주 → 개찰구 통과', () 
     expect(s.cardBalance, `900 + ${coin}`).toBe(900 + coin)
     expect(s.cardBalance, '요금을 낼 수 있게 됐다').toBeGreaterThanOrEqual(FARE)
 
-    // 3) 개찰구까지 가서 통과
+    // 4) 개찰구까지 되돌아가 통과 — 추격은 이미 끝났다
     const gy = GATES.find((g) => g.id === s.gates.workingIds[0])?.y ?? 14
     const g1 = goto(s, 55, 14, { maxSec: 25 })
     const g2 = goto(g1.s, 58.6, gy, { r: 0.8, maxSec: 20 })

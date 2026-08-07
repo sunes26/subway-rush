@@ -91,7 +91,12 @@ describe('S12-2~S12-3 우선순위', () => {
 
 describe('S12-4~S12-6 채점 축', () => {
   it('S12-4 양심은 −5~+5를 절대 벗어나지 않는다 (누적 강제 주입)', () => {
-    // 절도(−3) + 피격 5회(−5) + 회수(−2) = −10 → 하한에서 묶인다
+    /**
+     * 절도(−3) + 피격 2회(−2) = −5 → 하한과 정확히 일치한다.
+     * 회수 단계가 사라져 2대째가 곧 런의 끝(E-16)이므로, 5대까지 밀어붙이던
+     * 예전 시나리오는 더 이상 성립하지 않는다 — 루프는 8회 그대로 두어 게임
+     * 종료 이후의 강제 주입도 하한을 넘지 않는지(클램프) 같이 검증한다.
+     */
     let s = put(start(7), 42, 13.7, FLOOR.B1)
     const yaw = yawTo(s, 42, 14.9)
     s = tap(tap(s, { pressInteract: true }, yaw), { pressSlot: 1 }, yaw)
@@ -101,7 +106,6 @@ describe('S12-4~S12-6 채점 축', () => {
         pos: { x: s.player.pos.x - 0.5, y: s.player.pos.y } } }
       s = wait(s, 40)
     }
-    s = wait(s, CHASE.seizeMs + 200)
     expect(s.scores.conscience).toBe(-5)
     expect(s.scores.conscience).toBeGreaterThanOrEqual(-5)
   })

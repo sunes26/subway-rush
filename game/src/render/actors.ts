@@ -232,7 +232,6 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
       switch (s.chase.phase) {
         case 'draw': gp.play('GP_Draw', true); break
         case 'swing': gp.play('GP_Swing', true); break
-        case 'seize': gp.play('GP_Recover', true); break
         case 'return': gp.play('GP_Chase'); break
         case 'idle': gp.play('GP_SitIdle'); break
         default: gp.play('GP_Chase')

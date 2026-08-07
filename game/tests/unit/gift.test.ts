@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { ENDINGS } from '../../src/data/endings'
-import { INTERACT, SLOTS } from '../../src/data/tuning'
+import { CHASE, INTERACT, SLOTS } from '../../src/data/tuning'
 import { FLOOR } from '../../src/data/world'
 import type { GameState, ItemId } from '../../src/state/types'
 import { put, start, tap, wait, yawTo } from './_pilot'
 import { branchesFor, giftBranches, grandpaBranches } from '../../src/systems/interact'
+import { chaseSystem } from '../../src/systems/chase'
 import { GIFT_STALL_ID, GRANDPA_ID, INTERACTABLES } from '../../src/data/interactables'
 
 describe('선물 퍼즐 엔딩', () => {
@@ -144,5 +145,24 @@ describe('선물 증정', () => {
   it('선물이 있으면 열린다', () => {
     const b = grandpaBranches(withGift('I-17')).find((x) => x.key === 2)!
     expect(b.enabled).toBe(true)
+  })
+})
+
+describe('추격 개편', () => {
+  it('10초로 줄었고 회수 개념이 사라졌다', () => {
+    expect(CHASE.durationMs).toBe(10_000)
+    expect('seizeHits' in CHASE).toBe(false)
+  })
+
+  it('2대째에 E-16 으로 끝난다', () => {
+    const s = start(1)
+    const hit1 = {
+      ...s, phase: 'playing' as const,
+      chase: { ...s.chase, active: true, phase: 'chase' as const, hitCount: 1, remainingMs: 5000 },
+    }
+    const hit2 = { ...hit1, chase: { ...hit1.chase, hitCount: 2 } }
+    expect(chaseSystem(hit1, { dtMs: 16 }).some((a) => a.t === 'END')).toBe(false)
+    expect(chaseSystem(hit2, { dtMs: 16 })
+      .some((a) => a.t === 'END' && a.endingId === 'E-16')).toBe(true)
   })
 })
