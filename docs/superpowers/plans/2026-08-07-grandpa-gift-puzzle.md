@@ -277,7 +277,12 @@ Expected: FAIL — `ENDINGS.length` 14 ≠ 16
 
 - [ ] **Step 4: 엔딩 2종을 더한다**
 
-`src/data/endings.ts` 의 `ENDINGS` 배열에서 **fallback(`when: () => true`) 앞에** 넣는다.
+`src/data/endings.ts` 의 `ENDINGS` 배열에서 **`E-07`(priority 5) 과 fallback `E-06`(priority 0) 사이에** 넣는다.
+
+⚠ 배열은 **priority 내림차순으로 정렬돼 있어야 하고**(`tests/unit/ending14.test.ts:88`)
+priority 는 **유일해야 한다**(`tests/unit/ending6.test.ts:81`). 강제 엔딩은 `when` 이
+항상 거짓이라 priority 가 선택에 쓰이지 않으므로, fallback 바로 위 최하위를 준다.
+`85` 는 이미 `E-12` 가 쓰고 있어 충돌한다.
 
 ```ts
   /**
@@ -289,7 +294,7 @@ Expected: FAIL — `ENDINGS.length` 14 ≠ 16
    */
   {
     id: 'E-15',
-    priority: 85,
+    priority: 4,
     title: '이걸 누가 먹어',
     line: '"이놈아, 내가 이런 걸 먹게 생겼냐?"',
     hint: '벤치 근처 바닥을 살펴보면 뭘 드셨는지 알 수 있다.',
@@ -298,7 +303,7 @@ Expected: FAIL — `ENDINGS.length` 14 ≠ 16
   },
   {
     id: 'E-16',
-    priority: 86,
+    priority: 3,
     title: '딱!',
     line: '눈앞이 하얘졌다.',
     hint: '단소는 두 대까지다. 개찰구를 넘으면 멈추신다.',
@@ -312,10 +317,20 @@ Expected: FAIL — `ENDINGS.length` 14 ≠ 16
 Run: `npm test -- gift`
 Expected: PASS
 
-- [ ] **Step 6: 커밋**
+- [ ] **Step 6: 엔딩 개수를 세던 기존 유닛을 고친다**
+
+`ENDINGS.length` 를 14 로 박아 둔 곳이 둘 있다. 16 으로 고친다.
+
+- `tests/unit/ending6.test.ts:54`
+- `tests/unit/ending14.test.ts` (같은 단언이 있으면)
+
+Run: `npm test`
+Expected: 전체 통과
+
+- [ ] **Step 7: 커밋**
 
 ```bash
-git add src/state/types.ts src/data/endings.ts tests/unit/gift.test.ts
+git add src/state/types.ts src/data/endings.ts tests/unit/gift.test.ts        tests/unit/ending6.test.ts tests/unit/ending14.test.ts
 git commit -m "feat: 엔딩 2종 — 오답 증정(E-15) · 단소 피격(E-16)"
 ```
 
