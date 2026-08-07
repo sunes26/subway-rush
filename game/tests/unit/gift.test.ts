@@ -8,6 +8,7 @@ import { branchesFor, giftBranches, grandpaBranches } from '../../src/systems/in
 import { chaseSystem } from '../../src/systems/chase'
 import { GIFT_STALL_ID, GRANDPA_ID, INTERACTABLES } from '../../src/data/interactables'
 import { DECOR } from '../../src/data/decor'
+import { GIFT_ITEMS } from '../../src/data/items'
 
 describe('선물 퍼즐 엔딩', () => {
   it('E-15 · E-16 이 등록돼 있다', () => {
@@ -209,6 +210,19 @@ describe('바닥 양갱 힌트', () => {
     for (const d of DECOR) {
       expect(Math.hypot(d.x - cx, d.y - cy)).toBeLessThan(DECOR_VISIBLE_M)
     }
+  })
+})
+
+describe('퍼즐 우회로 차단', () => {
+  /**
+   * 선물은 **편의점에서만** 얻는다. 다른 곳에서 선물 5종 중 하나라도 살 수 있으면
+   * 5지 선택이 의미를 잃는다 — 정답만 골라 사면 그만이기 때문이다.
+   */
+  it('편의점 매대 말고는 선물을 주는 상호작용이 없다', () => {
+    const givers = INTERACTABLES.filter(
+      (i) => i.gives !== undefined && GIFT_ITEMS.includes(i.gives),
+    )
+    expect(givers.map((i) => i.id)).toEqual([])
   })
 })
 

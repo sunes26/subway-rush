@@ -165,9 +165,16 @@ describe('S8-7 조건 미충족은 사유만 낸다', () => {
     expect(wait(s, 1500, yaw).act.denyMs).toBe(0)
   })
 
-  it('잔액 부족이면 붕어빵을 못 산다 (Z1 노점)', () => {
-    let s = put(start(7, { cardBalance: 300 }), -50, 30.0, FLOOR.L0)
-    const yaw = yawTo(s, -50, 31.1)
+  /**
+   * 원래 대상은 Z1 붕어빵 노점(`OBJ-03`)이었다. `I-12` 가 양갱으로 재정의되며
+   * 노점에서 정답을 직접 사는 우회로가 생겨 상호작용을 걷어냈다(Task 10,
+   * `tests/unit/gift.test.ts` "퍼즐 우회로 차단"). `buy` 종류의 잔액 부족 거부는
+   * 여전히 지켜야 하는 계약이므로 남은 `buy` 대상인 텀블러 커피로 옮긴다.
+   */
+  it('잔액 부족이면 못 산다 (buy 종류 — 편의점 텀블러 커피)', () => {
+    const COFFEE = { x: 29.5, y: 25.55 }
+    let s = put(start(7, { cardBalance: 300 }), COFFEE.x, COFFEE.y - 1.0, FLOOR.B1)
+    const yaw = yawTo(s, COFFEE.x, COFFEE.y)
     s = tap(s, { pressInteract: true }, yaw)
     expect(s.act.denyText).toBe('돈이 부족하다')
     expect(s.cardBalance, '차감 0').toBe(300)

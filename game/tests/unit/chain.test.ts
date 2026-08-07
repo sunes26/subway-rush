@@ -18,7 +18,8 @@ import { goto, holdFor, playQte, put, start, tap, wait, yawTo } from './_pilot'
 
 const GP = { x: 42, y: 14.9 }
 const VEND_A = { x: 13.03, y: 4.15 }
-const CART = { x: -50, y: 31.1 }
+/** 편의점 텀블러 커피 `OBJ-18-COFFEE` — 아래 `buy` 종류 계약 검증에 쓴다 */
+const COFFEE = { x: 29.5, y: 25.55 }
 
 /** 할아버지 앞에 서서 선택 UI를 연다 */
 const openDialog = (s0: GameState): GameState => {
@@ -147,34 +148,42 @@ describe('S9-4 대화는 취소할 수 있고 시간은 환불되지 않는다',
   })
 })
 
-describe('S9-5 붕어빵 구매 (Z1 노점)', () => {
+/**
+ * 원래 이 자리는 Z1 붕어빵 노점(`OBJ-03`)을 대상으로 했다. `I-12` 가 양갱으로
+ * 재정의되며 노점에서 정답을 500원에 직접 사는 우회로가 생겨 상호작용 자체를
+ * 걷어냈다(Task 10, `tests/unit/gift.test.ts` "퍼즐 우회로 차단"). 노점이 사라져도
+ * `buy` 종류의 계약 — 정확한 차감·잔액 부족 거부·이동 취소 — 은 여전히 지켜야
+ * 하므로, 남아 있는 `buy` 대상인 편의점 텀블러 커피(`OBJ-18-COFFEE`, 700원)로
+ * 옮겨 검증을 이어간다.
+ */
+describe('S9-5 buy 종류 구매 (편의점 텀블러 커피)', () => {
   const buy = (balance: number): GameState => {
-    const s = put(start(7, { cardBalance: balance }), CART.x, CART.y - 1.0, FLOOR.L0)
-    const yaw = yawTo(s, CART.x, CART.y)
+    const s = put(start(7, { cardBalance: balance }), COFFEE.x, COFFEE.y - 1.0, FLOOR.B1)
+    const yaw = yawTo(s, COFFEE.x, COFFEE.y)
     return wait(tap(s, { pressInteract: true }, yaw), INTERACT.buyMs + 200, yaw)
   }
 
-  it('500원이 차감되고 붕어빵이 들어온다', () => {
+  it('700원이 차감되고 커피가 들어온다', () => {
     const s = buy(1250)
-    expect(s.inventory.includes('I-12')).toBe(true)
-    expect(s.cardBalance).toBe(750)
+    expect(s.inventory.includes('I-07')).toBe(true)
+    expect(s.cardBalance).toBe(550)
   })
 
-  it('잔액 0원 시드에서는 살 수 없다 — [2] 루트가 원천 봉쇄된다', () => {
+  it('잔액이 모자라면 살 수 없다 — 사유만 뜨고 차감되지 않는다', () => {
     const s = buy(0)
-    expect(s.inventory.includes('I-12')).toBe(false)
+    expect(s.inventory.includes('I-07')).toBe(false)
     expect(s.cardBalance).toBe(0)
     expect(s.act.denyText).toBe('돈이 부족하다')
   })
 
   it('구매는 이동으로 취소되고 잔액은 안 빠진다', () => {
-    const s0 = put(start(7, { cardBalance: 1250 }), CART.x, CART.y - 1.0, FLOOR.L0)
-    const yaw = yawTo(s0, CART.x, CART.y)
+    const s0 = put(start(7, { cardBalance: 1250 }), COFFEE.x, COFFEE.y - 1.0, FLOOR.B1)
+    const yaw = yawTo(s0, COFFEE.x, COFFEE.y)
     let s = tap(s0, { pressInteract: true }, yaw)
     s = holdFor(s, { moveY: -1 }, 4, yaw)
     s = wait(s, 1600, yaw)
     expect(s.cardBalance, '차감 0').toBe(1250)
-    expect(s.inventory.includes('I-12')).toBe(false)
+    expect(s.inventory.includes('I-07')).toBe(false)
   })
 })
 
