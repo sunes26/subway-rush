@@ -1203,3 +1203,91 @@ git add game/tools/copy-assets.mjs game/src/render/actors.ts \
         game/public/models/npc/cl_character_rigged.glb game/tests/unit/gift.test.ts
 git commit -m "feat: ACT-12 편의점 점원 배치 — 카운터 뒤 CL_Idle"
 ```
+
+---
+
+### Task 10: OBJ-03 붕어빵 노점 — 퍼즐 우회로 차단
+
+> **스펙 정정.** 스펙 §8은 `OBJ-03` 을 "상호작용 없는 배경 소품으로 유지"라며 범위 밖에 뒀다.
+> 문서(v0.3)는 그렇게 정해 뒀지만 **코드가 안 따라갔다** — `OBJ-03` 은 여전히
+> `kind: 'buy'`, `gives: 'I-12'`, `cost: 500`, `once: false` 인 판매대다.
+>
+> `I-12` 를 양갱으로 재정의한 순간 이것이 두 가지를 망가뜨렸다.
+> **첫째,** Z1 붕어빵 노점이 양갱을 판다. **둘째,** 플레이어가 Z1 에서 정답을
+> 500원에 직접 사서 편의점 5지 퍼즐을 통째로 건너뛴다 — 이 기능의 존재 이유가 사라진다.
+>
+> `I-12` 의 의미를 바꾼 것이 원인이므로 범위 안이다.
+
+**Files:**
+- Modify: `game/src/data/interactables.ts` (`OBJ-03` 항목)
+- Test: `game/tests/unit/gift.test.ts`
+
+**Interfaces:**
+- Consumes: Task 1의 `GIFT_ITEMS`
+- Produces: 없음
+
+- [ ] **Step 1: 실패하는 테스트를 쓴다**
+
+`game/tests/unit/gift.test.ts` 에 더한다.
+
+```ts
+describe('퍼즐 우회로 차단', () => {
+  /**
+   * 선물은 **편의점에서만** 얻는다. 다른 곳에서 선물 5종 중 하나라도 살 수 있으면
+   * 5지 선택이 의미를 잃는다 — 정답만 골라 사면 그만이기 때문이다.
+   */
+  it('편의점 매대 말고는 선물을 주는 상호작용이 없다', () => {
+    const givers = INTERACTABLES.filter(
+      (i) => i.gives !== undefined && GIFT_ITEMS.includes(i.gives),
+    )
+    expect(givers.map((i) => i.id)).toEqual([])
+  })
+})
+```
+
+임포트에 `GIFT_ITEMS` 를 더한다.
+
+```ts
+import { GIFT_ITEMS } from '../../src/data/items'
+```
+
+- [ ] **Step 2: 실패를 확인한다**
+
+Run: `npm test -- gift`
+Expected: FAIL — `['OBJ-03']` 이 나온다
+
+- [ ] **Step 3: 노점의 상호작용을 걷어낸다**
+
+`game/src/data/interactables.ts` 의 `OBJ-03` 항목을 **통째로 지운다.**
+
+솔리드 `OBJ-03-CART`(`data/world.ts`)는 **그대로 둔다** — 배경 소품으로 남는 것이
+문서 v0.3 의 결정이다(`docs/OBJECT-MANIFEST.md`). 지운 자리에 근거를 남긴다.
+
+```ts
+  // ───────────── Z1 (L0) ─────────────
+  /**
+   * 붕어빵 노점(`OBJ-03-CART`)은 **상호작용이 없다** — 배경 소품이다(v0.3).
+   *
+   * P1 에서는 여기서 `I-12`(붕어빵)를 500원에 팔았다. `I-12` 가 양갱이 되면서
+   * 두 가지가 깨졌다: 붕어빵 노점이 양갱을 팔고, Z1 에서 정답을 직접 사면
+   * 편의점 5지 선택이 통째로 무의미해진다. 판매대를 걷어내고 수레만 남긴다.
+   */
+```
+
+- [ ] **Step 4: 통과를 확인한다**
+
+Run: `npm test -- gift`
+Expected: PASS
+
+Run: `npm test`
+Expected: 전체 통과. `OBJ-03` 을 경유하던 경로 테스트가 있으면 여기서 드러난다
+
+Run: `npm run typecheck`
+Expected: 에러 없음
+
+- [ ] **Step 5: 커밋**
+
+```bash
+git add game/src/data/interactables.ts game/tests/unit/gift.test.ts
+git commit -m "fix: 붕어빵 노점 판매 제거 — Z1 에서 정답을 직접 사던 우회로"
+```
