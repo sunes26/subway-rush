@@ -9,6 +9,7 @@ import { chaseSystem } from '../../src/systems/chase'
 import { GIFT_STALL_ID, GRANDPA_ID, INTERACTABLES } from '../../src/data/interactables'
 import { DECOR } from '../../src/data/decor'
 import { GIFT_ITEMS } from '../../src/data/items'
+import { CLERK_POS } from '../../src/render/actors'
 
 describe('선물 퍼즐 엔딩', () => {
   it('E-15 · E-16 이 등록돼 있다', () => {
@@ -223,6 +224,25 @@ describe('퍼즐 우회로 차단', () => {
       (i) => i.gives !== undefined && GIFT_ITEMS.includes(i.gives),
     )
     expect(givers.map((i) => i.id)).toEqual([])
+  })
+})
+
+describe('ACT-12 편의점 점원', () => {
+  /**
+   * 점포는 통짜 솔리드다 — `OBJ-19-CVS` = rect[21.5, 25.7, 26.5, 30.0]. 점원은 그
+   * **안쪽**에 서야 유리 너머로 보인다. 파사드(y=25.7) 바깥에 두면 매대 앞 통로에
+   * 사람이 서 있는 그림이 된다.
+   */
+  it('점원이 점포 솔리드 안에 선다', () => {
+    expect(CLERK_POS.x).toBeGreaterThan(21.5)
+    expect(CLERK_POS.x).toBeLessThan(26.5)
+    expect(CLERK_POS.y).toBeGreaterThan(25.7)
+    expect(CLERK_POS.y).toBeLessThan(30.0)
+  })
+
+  /** 매대(x=26.0) 정면이어야 말을 거는 그림이 된다 — x 로 1.5m 안 */
+  it('매대 정면에 선다', () => {
+    expect(Math.abs(CLERK_POS.x - 26.0)).toBeLessThan(1.5)
   })
 })
 

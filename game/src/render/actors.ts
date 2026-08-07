@@ -140,7 +140,7 @@ export const CHAR_SCALE = 1.6
  *   멀쩡해 보인다 — 실제로 남북으로만 확인하다 두 번 놓쳤다.
  *   `tests/e2e/p2.spec.ts` 의 "네 방향" 테스트가 이걸 잠근다.
  */
-const YAW_FIX = { gp: 0, cp: 0, aj: 0, ajp: 0, zp: 0, ss: 0 } as const
+const YAW_FIX = { gp: 0, cp: 0, aj: 0, ajp: 0, zp: 0, ss: 0, cl: 0 } as const
 
 /**
  * 앉은 자세 보정(m) — **실척 가구와 축소 캐릭터의 간극**을 메운다.
@@ -151,6 +151,24 @@ const YAW_FIX = { gp: 0, cp: 0, aj: 0, ajp: 0, zp: 0, ss: 0 } as const
  * 캐릭터를 더 키우면 문·개찰구 비율이 깨지므로, 앉는 순간만 들어올린다.
  */
 const GP_SEAT_LIFT = 0.08
+
+/**
+ * ACT-12 편의점 점원 — 카운터 뒤 고정.
+ *
+ * `OBJ-19-CVS` = rect[21.5, 25.7, 26.5, 30.0] 는 **통짜 솔리드**다(P0에 입장이 없다).
+ * 점원을 파사드(y=25.7) 바깥에 두면 매대 앞 통로에 사람이 서 있는 그림이 되므로
+ * 안쪽 0.7m 에 둔다. x 는 매대(`OBJ-19-GIFT` x=26.0) 정면에 맞춘다.
+ *
+ * 고정 액터라 충돌을 올리지 않는다 — 플레이어는 어차피 점포 솔리드에 막힌다.
+ */
+export const CLERK_POS = { x: 25.8, y: 26.4, z: FLOOR.B1 } as const
+
+/**
+ * 점원이 보는 방향 — 매대(파사드, y 작은 쪽) 쪽인 남쪽(−y).
+ * 등을 보이면 말 걸 대상으로 안 읽힌다(GP_FACING 과 같은 근거).
+ * `YAW_FIX.cl` 이 0 이 아니면 실측 후 이 값이 아니라 그쪽을 고친다.
+ */
+const CL_FACING = -Math.PI / 2
 
 const loadOr = async (url: string, tag: string, yawOffset: number): Promise<NpcRig> => {
   try {
@@ -169,7 +187,7 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
    * `loadNpcRig` 이 스켈레톤까지 복제하므로 셋이 각자 움직인다(얕은 복제는 본을 공유한다).
    * 브라우저가 같은 URL 을 캐시하므로 네트워크 비용은 1회다.
    */
-  const [gp, cp0, cp1, cp2, ajp, aj, zp, ss] = await Promise.all([
+  const [gp, cp0, cp1, cp2, ajp, aj, zp, ss, cl] = await Promise.all([
     loadOr(`${dir}gp_character_rigged.glb`, 'GP', YAW_FIX.gp),
     loadOr(`${dir}cp_character_rigged.glb`, 'CP0', YAW_FIX.cp),
     loadOr(`${dir}cp_character_rigged.glb`, 'CP1', YAW_FIX.cp),
@@ -178,12 +196,13 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
     loadOr(`${dir}${OBS_ACTORS[1].file}`, 'AJ', YAW_FIX.aj),
     loadOr(`${dir}${OBS_ACTORS[2].file}`, 'ZP', YAW_FIX.zp),
     loadOr(`${dir}${OBS_ACTORS[3].file}`, 'SS', YAW_FIX.ss),
+    loadOr(`${dir}cl_character_rigged.glb`, 'CL', YAW_FIX.cl),
   ])
   const cps = [cp0, cp1, cp2] as const
 
   const root = new Group()
   root.name = 'actors'
-  root.add(gp.root, cp0.root, cp1.root, cp2.root, ajp.root, aj.root, zp.root, ss.root)
+  root.add(gp.root, cp0.root, cp1.root, cp2.root, ajp.root, aj.root, zp.root, ss.root, cl.root)
 
   const gpHome = anchorOf(GRANDPA_ID)
   const cpHomes = CP_IDS.map((id) => anchorOf(id))
@@ -346,6 +365,22 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
     ss.update(dtSec)
   }
 
+  /**
+   * 점원 — 카운터 뒤 고정, 게임 상태에 좌우되지 않는다(YAGNI: 이번 범위는 배치뿐).
+   * 그래도 매 프레임 `place`+`update` 를 부르는 이유는 믹서 때문이다 —
+   * `update` 를 안 돌리면 `CL_Idle` 이 T 포즈로 굳는다.
+   */
+  const syncClerk = (s: GameState, dtSec: number): void => {
+    cl.place(CLERK_POS.x, CLERK_POS.y, CLERK_POS.z, CL_FACING)
+
+    const visible = near(s, CLERK_POS)
+    cl.setVisible(visible)
+    if (!visible) return
+
+    cl.play('CL_Idle')
+    cl.update(dtSec)
+  }
+
   return {
     root,
     sync(s, dtSec) {
@@ -355,11 +390,13 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
       syncTalker(s, aj, 'OBS-07', AJUMMA_AT, OBSTACLE.ajummaRangeM, dtSec)
       syncZombie(s, dtSec)
       syncStaff(s, dtSec)
+      syncClerk(s, dtSec)
     },
     dispose() {
       gp.dispose()
       for (const c of cps) c.dispose()
       ajp.dispose(); aj.dispose(); zp.dispose(); ss.dispose()
+      cl.dispose()
     },
   }
 }

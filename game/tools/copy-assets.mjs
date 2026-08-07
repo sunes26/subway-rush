@@ -24,6 +24,12 @@ const FILES = [
   ['assets/zp_character_rigged.glb', 'npc/zp_character_rigged.glb'],
   ['assets/ss_character_rigged.glb', 'npc/ss_character_rigged.glb'],
   ['assets/items.glb', 'items.glb'],
+  /**
+   * ACT-12 편의점 점원. 클립 4종: `CL_Idle`·`CL_Walk`·`CL_Talk`·`CL_Sell`
+   * (커밋 `7cfe88b`). 정적 배치라 `CL_Idle` 만 쓴다 — 나머지는 훗날 매대
+   * 연출용으로 이미 들어 있다.
+   */
+  ['assets/cl_character_rigged.glb', 'npc/cl_character_rigged.glb'],
 ]
 
 let n = 0
