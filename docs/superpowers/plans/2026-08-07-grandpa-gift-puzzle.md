@@ -1019,6 +1019,14 @@ git commit -m "feat: 바닥 양갱 힌트 3개 — inspect 상호작용"
 Run: `npm run verify`
 Expected: typecheck 통과 · 전체 테스트 통과 · build 통과
 
+⚠ **`verify` 는 E2E 를 안 돌린다** — `typecheck && test && build` 뿐이고
+Playwright 는 `test:e2e` 로 따로 있다(`package.json:14,17`). 엔딩 개수처럼
+화면에 드러나는 수치는 `tests/e2e/p2.spec.ts` 가 하드코딩하고 있어
+vitest 만으로는 회귀가 안 잡힌다. 반드시 둘 다 돌린다.
+
+Run: `npm run test:e2e`
+Expected: 전체 통과
+
 실패하면 고치고 다시 돌린다. 특히 `seize`·`I-12`·`Branch['key']` 를 참조하던
 기존 테스트가 여기서 드러난다.
 
