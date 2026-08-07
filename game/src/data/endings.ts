@@ -1,6 +1,6 @@
 /**
  * 엔딩 데이터 — 우선순위 내림차순 조건식 배열 (GDD §9.4).
- * 위에서부터 첫 매치를 채택한다. **P1은 6종**, P2에서 14종까지 항목만 추가한다.
+ * 위에서부터 첫 매치를 채택한다. **P1은 6종**, P2에서 16종까지 항목만 추가한다.
  *
  * 조건식은 전부 **단일 비교식**으로 유지한다. 복합 조건(E-05 TRUE)은 P2까지 미룬다 —
  * 4축 채점이 막 들어온 단계에서 복합식을 섞으면 어느 축이 엔딩을 결정했는지 못 읽는다.
@@ -206,6 +206,33 @@ export const ENDINGS: readonly EndingDef[] = [
     // E-06(온화한 실패)과 갈리는 지점은 **양심 하나**다. GDD §9.4
     when: (s) => !s.boarded && s.scores.conscience < 0,
   },
+  /**
+   * 강제 엔딩 2종 — `when` 이 **항상 거짓**이다.
+   *
+   * `resolveEnding` 은 열차 출발 경로에서만 쓰인다(`systems/tick.ts:124-128`).
+   * 이 둘은 시스템이 `{ t: 'END', endingId }` 로 직접 발행하므로 조건식이 필요 없다.
+   * 참이 될 수 있으면 열차 출발 시 오검출되므로 거짓으로 고정하고, `priority` 는
+   * 선택에 관여하지 않으니 그 값의 유일한 역할은 정렬·유일성 불변식을 지키는 것이다 —
+   * 그래서 실제 엔딩과 절대 경합하지 않는 자리, fallback(E-06) 바로 위 최하단에 둔다.
+   */
+  {
+    id: 'E-15',
+    priority: 4,
+    title: '이걸 누가 먹어',
+    line: '"이놈아, 내가 이런 걸 먹게 생겼냐?"',
+    hint: '벤치 근처 바닥을 살펴보면 뭘 드셨는지 알 수 있다.',
+    tone: 'fail',
+    when: () => false,
+  },
+  {
+    id: 'E-16',
+    priority: 3,
+    title: '딱!',
+    line: '눈앞이 하얘졌다.',
+    hint: '단소는 두 대까지다. 개찰구를 넘으면 멈추신다.',
+    tone: 'fail',
+    when: () => false,
+  },
   {
     id: 'E-06',
     priority: 0,
@@ -220,7 +247,7 @@ export const ENDINGS: readonly EndingDef[] = [
  * 우선순위 정렬은 **모듈 로드 시 한 번**만 한다.
  *
  * 예전엔 `resolveEnding` 이 매 호출마다 `.sort()` 를 했다. 6종이면 비용은 무해하지만
- * **엔딩 화면이 매 프레임 이 함수를 부른다**(`ui/screens.ts`). 14종이 되면 그게 그대로 쌓인다.
+ * **엔딩 화면이 매 프레임 이 함수를 부른다**(`ui/screens.ts`). 16종이 되면 그게 그대로 쌓인다.
  */
 const BY_PRIORITY: readonly EndingDef[] = [...ENDINGS].sort((a, b) => b.priority - a.priority)
 

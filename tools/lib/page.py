@@ -174,9 +174,18 @@ def run(spec, after=None, page=None):
     src, _ = _cut_block(src, '<div class="detail" data-char="%s">' % code)
 
     prev, nxt = _neighbours(code, src)
-    # 엔트리는 '다음 캐릭터' 앞에 넣는다. 없으면 지도 항목 앞이 마지막 자리다.
-    anchor = ('<button class="entry" data-go="%s">' % nxt) if nxt else \
-        '<button class="entry" data-go="map">'
+    # 엔트리는 '다음 캐릭터' 앞에 넣는다. 다음 캐릭터가 없으면 **캐릭터가 아닌
+    # 첫 항목**(아이템·지도) 앞이 마지막 자리다. 예전처럼 무조건 map 앞에 넣으면
+    # 아이템 섹션 **뒤로** 밀려 캐릭터 묶음이 끊긴다 — 상세 블록은 앞 캐릭터
+    # 뒤에 붙으므로 목록과 상세의 순서가 서로 어긋나기까지 한다(실측).
+    if nxt:
+        anchor = '<button class="entry" data-go="%s">' % nxt
+    else:
+        codes = re.findall(r'<button class="entry" data-go="([a-z]+)">', src)
+        tail = [c for c in codes if c not in PAGE_ORDER]
+        if not tail:
+            raise RuntimeError("no non-character entry to anchor %s before" % code)
+        anchor = '<button class="entry" data-go="%s">' % tail[0]
     if anchor not in src:
         raise RuntimeError("entry anchor not found: %r" % anchor)
     src = src.replace(anchor, entry + "\n" + anchor, 1)

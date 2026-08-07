@@ -1,7 +1,7 @@
 /**
- * 아이템 정의 — P2는 11종(슬롯 점유) + 미점유 2종.
+ * 아이템 정의 — P2는 15종(슬롯 점유) + 미점유 2종.
  *
- * ID는 GDD §5.3과 **완전히 같다.** 결번(I-03 삭제·I-15 미사용)은 여기 없다.
+ * ID는 GDD §5.3과 **완전히 같다.** 결번은 I-03 삭제뿐이다. I-15는 이제 정의되어 있다.
  * I-02 동전·I-04 교통카드는 **슬롯을 쓰지 않으므로** 정의는 있고 `slot: false` 다.
  *
  * P1은 4종이었다. P2가 11종으로 늘리면서 생긴 진짜 변화는 개수가 아니라
@@ -149,13 +149,59 @@ const DEFS: readonly ItemDef[] = [
   },
   {
     id: 'I-12',
-    name: '붕어빵',
-    node: 'ITM12_Fishbread',
+    name: '양갱',
+    node: 'ITM12_Yanggaeng',
     slot: true,
     consumable: true,
     use: 'use',
     negates: ['OBS-14'],
-    glyph: '🐟',
+    glyph: '🍡',
+    noTargetReason: '드릴 사람이 없다',
+  },
+  /**
+   * 오답 4종 — 편의점 매대의 나머지. **`negates` 를 비워 둔다.**
+   * 오답으로도 추격이 막히면 퍼즐이 성립하지 않는다.
+   * 바나나우유·초콜릿은 "헷갈리는 오답", 탄산음료·새우깡은 "명확한 오답"이다
+   * (`docs/OBJECT-MANIFEST.md:184-187`).
+   */
+  {
+    id: 'I-15',
+    name: '바나나우유',
+    node: 'ITM12_BananaMilk',
+    slot: true,
+    consumable: true,
+    use: 'use',
+    glyph: '🥛',
+    noTargetReason: '드릴 사람이 없다',
+  },
+  {
+    id: 'I-16',
+    name: '초콜릿',
+    node: 'ITM12_Chocolate',
+    slot: true,
+    consumable: true,
+    use: 'use',
+    glyph: '🍫',
+    noTargetReason: '드릴 사람이 없다',
+  },
+  {
+    id: 'I-17',
+    name: '탄산음료',
+    node: 'ITM12_Soda',
+    slot: true,
+    consumable: true,
+    use: 'use',
+    glyph: '🥤',
+    noTargetReason: '드릴 사람이 없다',
+  },
+  {
+    id: 'I-18',
+    name: '새우깡',
+    node: 'ITM12_SnackBag',
+    slot: true,
+    consumable: true,
+    use: 'use',
+    glyph: '🍤',
     noTargetReason: '드릴 사람이 없다',
   },
   {
@@ -230,6 +276,15 @@ export const itemDef = (id: ItemId): ItemDef => ITEMS[id] ?? {
 
 /** 슬롯을 점유하는 아이템만 — 인벤토리에 들어갈 수 있는 것들 */
 export const SLOT_ITEMS: readonly ItemId[] = DEFS.filter((d) => d.slot).map((d) => d.id)
+
+/**
+ * 편의점 선물 후보 — **첫 항목이 정답이다.**
+ * 순서가 매대 선택창의 키 순서(`1`~`5`)와 같아야 한다.
+ */
+export const GIFT_ITEMS: readonly ItemId[] = ['I-12', 'I-15', 'I-16', 'I-17', 'I-18']
+
+/** 정답 — 할아버지가 받는 유일한 선물 */
+export const GIFT_CORRECT: ItemId = 'I-12'
 
 /** 착용형 — HUD가 켜짐/꺼짐을 표시한다 */
 export const WEARABLES: readonly ItemDef[] = DEFS.filter((d) => d.use === 'wear')

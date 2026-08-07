@@ -43,7 +43,7 @@
   text-transform:uppercase;color:#FFB020;margin-bottom:14px}
 #collection h1{font-size:clamp(26px,4.4vw,42px);margin:0 0 6px;font-weight:800;letter-spacing:-.04em}
 #collection .sub{font-family:var(--mono);font-size:12px;opacity:.6;margin-bottom:22px;letter-spacing:.14em}
-/* 14칸 — 폭에 따라 4→3→2열. 칸 수가 규칙이므로 열 수가 폭을 따른다 */
+/* 16칸 — 폭에 따라 4→3→2열. 칸 수가 규칙이므로 열 수가 폭을 따른다 */
 #collection .grid{list-style:none;margin:0;padding:0;display:grid;gap:10px;
   grid-template-columns:repeat(auto-fill,minmax(210px,1fr));text-align:left}
 #collection .cell{border-radius:10px;padding:11px 13px;border:1px solid rgba(255,255,255,.12);

@@ -80,6 +80,9 @@ export type Interactable = Readonly<{
  */
 export const GRANDPA_ID = 'ACT-02-GP'
 
+/** 편의점 선물 매대 — 5지 선택 대화(`giftBranches`)를 여는 `talk` 대상 */
+export const GIFT_STALL_ID = 'OBJ-19-GIFT'
+
 /** 자판기 3대 — `OBJ-06/07/08-VEND*` 솔리드 중심과 **같은 좌표**다 */
 export const VENDING_IDS = ['OBJ-06', 'OBJ-07', 'OBJ-08'] as const
 export type VendingId = (typeof VENDING_IDS)[number]
@@ -164,6 +167,19 @@ export const INTERACTABLES: readonly Interactable[] = [
     label: '마스크',
     gives: 'I-06',
     once: true,
+  },
+  {
+    /**
+     * 편의점 선물 매대 — 마스크와 같은 파사드 규칙(y 는 슬랩 25.4 와 유리벽 25.7 사이).
+     * 마스크(x=24.0)에서 동쪽으로 2m 떨어뜨린다. 상호작용 반경(1.5m)끼리는 겹치지만
+     * 대상 판정이 근접이 아니라 조준(각도) 기준이라 헷갈리지 않는다 — 둘을 구분해
+     * 보고 고를 수 있을 만큼만 떨어뜨리면 된다.
+     */
+    id: GIFT_STALL_ID,
+    kind: 'talk',
+    x: 26.0, y: 25.55, z: FLOOR.B1,
+    label: '편의점 매대',
+    once: false,
   },
 
   // ───────────── Z4 (B1) ─────────────
