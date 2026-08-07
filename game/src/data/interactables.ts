@@ -27,6 +27,7 @@ export type InteractKind =
   | 'return'    // 유실물 반납 2.0s — 비상게이트가 열린다
   | 'call'      // 인터폰 호출 0.5s — 역무원을 기다리는 −15s 가 뒤따른다
   | 'enter'     // 문을 열고 들어간다 1.2s (화장실 · 반대편 승강장)
+  | 'inspect'   // 살펴본다 0.8s · 이동 가능 · 획득 없음
 
 export type Interactable = Readonly<{
   id: string
@@ -92,18 +93,13 @@ export const CP_IDS = ['ACT-CP', 'ACT-CP2', 'ACT-CP3'] as const
 
 export const INTERACTABLES: readonly Interactable[] = [
   // ───────────── Z1 (L0) ─────────────
-  {
-    // 붕어빵 노점 — `OBJ-03-CART` at(−50, 32, 2.4, 1.6). 남쪽 면이 y=31.2 이므로
-    // 플레이어는 y≈30.5에 서서 산다. 스폰(−58, 24)에서 9m — 왕복 4초.
-    id: 'OBJ-03',
-    kind: 'buy',
-    x: -50, y: 31.1, z: FLOOR.L0,
-    label: '붕어빵 (500원)',
-    gives: 'I-12',
-    cost: 500,
-    needReason: '돈이 부족하다',
-    once: false,          // 여러 개 살 수 있다 — 슬롯이 알아서 막는다
-  },
+  /**
+   * 붕어빵 노점(`OBJ-03-CART`)은 **상호작용이 없다** — 배경 소품이다(v0.3).
+   *
+   * P1 에서는 여기서 `I-12`(붕어빵)를 500원에 팔았다. `I-12` 가 양갱이 되면서
+   * 두 가지가 깨졌다: 붕어빵 노점이 양갱을 팔고, Z1 에서 정답을 직접 사면
+   * 편의점 5지 선택이 통째로 무의미해진다. 판매대를 걷어내고 수레만 남긴다.
+   */
 
   // ───────────── Z2 (B1) ─────────────
   {
@@ -112,6 +108,28 @@ export const INTERACTABLES: readonly Interactable[] = [
     x: 42, y: 14.9, z: FLOOR.B1,
     label: '할아버지',
     once: true,           // 효자손을 한 번 넘기면 끝이다
+  },
+  /**
+   * 바닥 양갱 3개 — **정답 힌트다.**
+   *
+   * 벤치(42, 14.9) 남쪽 통행 구역에 흩는다. 벤치 솔리드
+   * `ACT-02-BENCH` = rect[40.8, 14.6, 43.2, 15.4] 밖이어야 하므로 y 를 14.6 아래로 둔다.
+   * 서로 0.6m 이상 떨어뜨려 상호작용이 서로를 가리지 않게 한다.
+   *
+   * 하나가 아니라 셋인 이유는 문구가 "포장이 여럿"이기 때문이다 —
+   * 하나만 두면 화면과 말이 어긋나고 우연으로 읽힌다.
+   */
+  {
+    id: 'OBJ-19-HINT1', kind: 'inspect',
+    x: 41.4, y: 13.9, z: FLOOR.B1, label: '빈 양갱 포장', once: false,
+  },
+  {
+    id: 'OBJ-19-HINT2', kind: 'inspect',
+    x: 42.6, y: 13.6, z: FLOOR.B1, label: '빈 양갱 포장', once: false,
+  },
+  {
+    id: 'OBJ-19-HINT3', kind: 'inspect',
+    x: 43.3, y: 14.2, z: FLOOR.B1, label: '빈 양갱 포장', once: false,
   },
   {
     id: 'OBJ-06',

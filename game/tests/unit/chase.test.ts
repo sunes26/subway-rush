@@ -4,7 +4,8 @@
  * 체크리스트 출처: `docs/P1-TECH-PLAN.md` §4 S10-1~S10-10
  * (S10-11 톤 가드레일은 코드 리뷰 항목)
  *
- * 여기서 재는 것은 "쫓아온다"가 아니라 **"8초 아끼려다 20초를 잃는가"** 다.
+ * 여기서 재는 것은 "쫓아온다"가 아니라 **"도망이 실제로 성립하는가, 그리고 2대째가
+ * 정말로 그 자리에서 런을 끝내는가"** 다. 회수 단계(5대 누적)는 개편으로 사라졌다.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -152,25 +153,25 @@ describe('S10-3~S10-6 피격', () => {
     expect(s.scores.conscience, '절도 −3 + 피격 −1').toBe(-4)
   })
 
-  it('S10-6 5대 맞으면 효자손을 회수당하고 양심 하한에 걸린다', () => {
+  /**
+   * 개편 — **회수 단계가 사라졌다.** 예전엔 5대까지 버티면 효자손만 잃고
+   * 게임은 계속됐다. 지금은 2대째가 그대로 런의 끝이다 (E-16). `CHASE_END` 를
+   * 거치지 않으므로 `chase.active` 나 `phase: 'return'` 같은 해제 절차도 없다 —
+   * `chaseSystem` 이 `END` 를 직접 낸다.
+   */
+  it('S10-6 2대째에 맞으면 그 자리에서 런이 끝난다 (E-16, 회수 단계 없음)', () => {
     let s = afterSteal()
     s = wait(s, CHASE.drawMs + 60)
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 2; i++) {
       s = { ...s, chase: { ...s.chase, swingCooldownMs: 0, phase: 'chase',
         pos: { x: s.player.pos.x - 0.5, y: s.player.pos.y } } }
       s = wait(s, 40)
     }
-    expect(s.chase.hitCount).toBe(CHASE.seizeHits)
-
-    s = wait(s, 60)
-    expect(s.chase.phase, '회수 연출').toBe('seize')
-    expect(s.player.speedPenalty, '완전 정지').toBe(1)
-
-    s = wait(s, CHASE.seizeMs + 100)
-    expect(s.inventory.includes('I-01'), '효자손 회수당했다').toBe(false)
-    expect(s.scores.conscience, '하한 −5에서 묶인다').toBe(-5)
-    expect(s.chase.active, '추격 종료').toBe(false)
-    expect(s.phase, '게임은 계속된다 — 즉사가 아니다').toBe('playing')
+    expect(s.chase.hitCount, '2대').toBe(2)
+    expect(s.phase, '즉시 게임 오버 — 회수 연출을 기다리지 않는다').toBe('ended')
+    expect(s.endingId).toBe('E-16')
+    expect(s.scores.conscience, '절도 −3 + 피격 2회 −2, 하한과 일치').toBe(-5)
+    expect(s.inventory.includes('I-01'), '효자손은 손에 쥔 채로 끝난다 — 회수되지 않는다').toBe(true)
   })
 })
 
@@ -228,9 +229,28 @@ describe('S10-9~S10-10 몸통과 끼임', () => {
     expect(solids[0]?.id).toBe('CHASE-GP')
   })
 
-  it('S10-9 기둥 사이 20초 추격에서 끼여 멈추지 않는다', () => {
-    let s = afterSteal()
-    s = wait(s, CHASE.drawMs + 60)
+  /**
+   * 개편 후 2대째는 즉사(E-16)다. `afterSteal()` 은 할아버지 바로 앞(≈0.1m)에서 시작해
+   * 발도 0.6초를 빼면 사실상 붙어서 추격이 시작되므로, 걸어서 5개 기둥 구간(20초 상당)을
+   * 다 돌기 전에 반드시 두 대를 맞고 런이 끝난다 — 예전엔 5대까지 버텨도 됐지만 지금은
+   * 아니다. 이 테스트가 재는 건 "끼임 없이 실제로 움직이는가"이지 "생존"이 아니므로,
+   * 기둥밭(y 10~20) 밖에서 스프린트로 출발하는 별도 시나리오로 간격을 확보한다
+   * (`start`로 상태를 직접 구성 — P2 `wedged()` 와 같은 방식). 도중에 죽어도 그 전까지
+   * 낸 이동량으로 판정한다 — 완주가 목적이 아니다.
+   */
+  it('S10-9 기둥 사이를 스프린트로 지그재그해도 끼여 멈추지 않는다', () => {
+    let s = start(7, {
+      flags: ['GRANDPA_ANGRY'],
+      chase: {
+        ...start(7).chase, active: true, phase: 'chase', phaseMs: 900,
+        // `CHASE.durationMs`(10_000)보다 훨씬 길게 잡은 값이다 — 일부러다. 이 테스트는
+        // "생존"이 아니라 "기둥 사이에서 끼임 없이 실제로 움직이는가"를 재는 이동 프로브라
+        // 도중에 시간 제한이나 즉사로 잘려 지그재그 구간을 다 못 도는 걸 피하려는 것뿐이다.
+        remainingMs: 30_000, pos: { x: 30, y: 25 }, facing: 0,
+        hitCount: 0, swingCooldownMs: 0, stuckMs: 0,
+      },
+    })
+    s = put(s, 30, 17, FLOOR.B1)
     let stuckPeak = 0
     let moved = 0
     let prev = { ...s.chase.pos }
@@ -241,13 +261,13 @@ describe('S10-9~S10-10 몸통과 끼임', () => {
         const dx = tx - s.player.pos.x
         const dy = ty - s.player.pos.y
         const m = Math.hypot(dx, dy) || 1
-        s = holdFor(s, { moveY: dx / m, moveX: -dy / m }, 1)
+        s = holdFor(s, { moveY: dx / m, moveX: -dy / m, sprint: true }, 1)
         stuckPeak = Math.max(stuckPeak, s.chase.stuckMs)
         moved += Math.hypot(s.chase.pos.x - prev.x, s.chase.pos.y - prev.y)
         prev = { ...s.chase.pos }
-        if (!s.chase.active) break
+        if (s.phase !== 'playing') break
       }
-      if (!s.chase.active) break
+      if (s.phase !== 'playing') break
     }
     expect(stuckPeak, `끼임 누적 최대 ${stuckPeak.toFixed(0)}ms — 탈출 임계 미만`)
       .toBeLessThan(CHASE.stuckMs)

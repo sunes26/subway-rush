@@ -9,9 +9,9 @@
  */
 
 import type { InputFrame } from '../core/input'
-import { CP_IDS, GRANDPA_ID, INTERACTABLES, byId, coinValue, isCoin, isVending,
+import { CP_IDS, GIFT_STALL_ID, GRANDPA_ID, INTERACTABLES, byId, coinValue, isCoin, isVending,
   type InteractKind, type Interactable } from '../data/interactables'
-import { GIFT_ITEMS, itemDef } from '../data/items'
+import { GIFT_CORRECT, GIFT_ITEMS, itemDef } from '../data/items'
 import { CHASE, EMERGENCY, INTERACT, SLOTS, STAMINA } from '../data/tuning'
 import type { Action, Drop, GameState, ItemId } from '../state/types'
 
@@ -37,6 +37,7 @@ const durationOf = (kind: InteractKind): number => {
     case 'return': return EMERGENCY.walletReturnMs
     case 'call': return 500      // 버튼을 누르는 시간. 기다리는 −15s 는 완료 시 청구된다
     case 'enter': return 1200
+    case 'inspect': return 800
   }
 }
 
@@ -197,13 +198,37 @@ const complete = (s: GameState): Action[] => {
       ]
     }
 
-    /** [2] 붕어빵 — 효자손을 **정당하게** 얻는다. 양심 +1 */
+    /**
+     * 바닥 양갱 — **읽기만 한다.** `gives` 가 없으므로 인벤토리에 아무것도 안 들어간다.
+     * `ACT_CONSUME` 도 내지 않는다 — 몇 번이고 다시 볼 수 있어야 힌트 구실을 한다.
+     */
+    case 'inspect':
+      return [{
+        t: 'FX', kind: 'toast',
+        text: '누군가가 먹고 바닥에 버려놨다. 포장이 여럿인 걸 보면 누군가의 최애 간식인 모양이다.',
+        lifeMs: 4000, value: 0,
+      }]
+
+    /**
+     * [2] 선물 — **양갱만** 효자손으로 이어진다. 양심 +1.
+     *
+     * 구매가 1회 한정(`GIFT_BOUGHT`)이라 소지한 선물은 항상 최대 하나다.
+     * 어느 것을 드릴지 다시 고를 필요가 없어 인벤토리의 첫 선물이 곧 답이다.
+     */
     case 'give': {
-      const slot = slotOf(s, 'I-12')
-      if (slot < 0) return [{ t: 'ACT_DENY', text: '붕어빵이 필요하다' }]
+      const held = GIFT_ITEMS.find((i) => slotOf(s, i) >= 0)
+      if (held === undefined) return [{ t: 'ACT_DENY', text: '선물이 필요하다' }]
+      const slot = slotOf(s, held)
+      if (held !== GIFT_CORRECT) {
+        return [
+          { t: 'ITEM_SPEND', slot },
+          { t: 'FX', kind: 'toast', text: '"이놈아, 내가 이런 걸 먹게 생겼냐?"', lifeMs: 2600, value: 0 },
+          { t: 'END', endingId: 'E-15' },
+        ]
+      }
       return [
         { t: 'ITEM_SPEND', slot },
-        { t: 'ITEM_USED', item: 'I-12' },
+        { t: 'ITEM_USED', item: held },
         { t: 'PICKUP', item: 'I-01', slot: -1, dropId: null },
         { t: 'CONSCIENCE', delta: 1 },
         { t: 'FLAG', id: 'GRANDPA_HELPED', on: true },
@@ -314,9 +339,9 @@ export const grandpaBranches = (s: GameState): readonly Branch[] => [
   },
   {
     key: 2,
-    label: '붕어빵을 드린다',
-    enabled: hasItem(s, 'I-12'),
-    note: hasItem(s, 'I-12') ? '+1.5s' : '붕어빵이 필요하다',
+    label: '선물을 드린다',
+    enabled: GIFT_ITEMS.some((i) => hasItem(s, i)),
+    note: GIFT_ITEMS.some((i) => hasItem(s, i)) ? '+1.5s' : '선물이 없다',
   },
   { key: 3, label: '말을 건다', enabled: true, note: '+15s' },
 ]
@@ -338,6 +363,24 @@ export const giftBranches = (s: GameState): readonly Branch[] => {
   }))
 }
 
+/** 대화 상대 → 분기표. UI 와 시스템이 **같은 함수**를 읽는다 */
+export const branchesFor = (s: GameState, dialogId: string): readonly Branch[] =>
+  dialogId === GRANDPA_ID ? grandpaBranches(s)
+    : dialogId === GIFT_STALL_ID ? giftBranches(s)
+      : []
+
+/** 선물 구매 — 1회 한정. 되돌리기가 없으므로 여기서 플래그를 못 박는다 */
+const buyGift = (_s: GameState, key: Branch['key']): Action[] => {
+  const item = GIFT_ITEMS[key - 1]
+  if (!item) return []
+  return [
+    { t: 'DIALOG', id: null },
+    { t: 'PICKUP', item, slot: -1, dropId: null },
+    { t: 'FLAG', id: 'GIFT_BOUGHT', on: true },
+    { t: 'FX', kind: 'toast', text: `${itemDef(item).name}을(를) 샀다`, lifeMs: 1800, value: 0 },
+  ]
+}
+
 /** [1] 훔치기 — 즉시. 0.6초 뒤 단소가 날아온다(O-14). UI는 그걸 미리 말하지 않는다 */
 const steal = (): Action[] => [
   { t: 'DIALOG', id: null },
@@ -349,20 +392,21 @@ const steal = (): Action[] => [
 ]
 
 /**
- * `1``2``3` 는 지금 열린 대화창이 **할아버지 것일 때만** 그의 분기를 태운다.
- *
- * 'talk' 종류가 할아버지 하나뿐이던 시절엔 "대화창이 열려 있다 = 할아버지다"가
- * 성립해서 이 검사가 없어도 안전했다. 편의점 매대(`OBJ-19-GIFT`)가 두 번째
- * 'talk' 이 되면서 그 가정이 깨졌다 — 매대 대화에서 `1`을 누르면 거리와 무관하게
- * `steal()`이 실행되고 할아버지가 소진돼 버렸다. 매대 자신의 5지 분기는
- * 아직 여기 연결하지 않는다(다음 작업에서 `branchesFor` 로 라우팅한다) — 그래서
- * 매대 대화 중에는 숫자키가 지금은 의도적으로 아무것도 하지 않는다.
+ * `1`~`5` 를 지금 열린 대화창의 **상대**에 따라 갈라 보낸다 — `branchesFor` 가 정한
+ * 그 상대의 분기표에서 찾는다. 예전엔 이 함수가 할아버지의 분기만 알고 있어서
+ * "대화창이 열려 있다 = 할아버지다"라는 가정이 깔려 있었다. 편의점 매대
+ * (`OBJ-19-GIFT`)가 두 번째 'talk' 이 되면서 그 가정이 깨져, 매대 대화에서 `1`을
+ * 누르면 거리와 무관하게 `steal()`이 실행되고 할아버지가 소진돼 버렸다(회귀 —
+ * `tests/unit/gift.test.ts` 의 "매대 대화에서 1을 눌러도…" 가 그걸 지킨다).
+ * 이제는 대화 상대별 분기표를 직접 찾으므로 그 가정이 필요 없다.
  */
-const dialogPick = (s: GameState, key: 1 | 2 | 3): Action[] => {
-  if (s.act.dialogId !== GRANDPA_ID) return []
-  const b = grandpaBranches(s).find((x) => x.key === key)
+const dialogPick = (s: GameState, key: Branch['key']): Action[] => {
+  const id = s.act.dialogId
+  if (!id) return []
+  const b = branchesFor(s, id).find((x) => x.key === key)
   if (!b) return []
   if (!b.enabled) return [{ t: 'ACT_DENY', text: b.note }]
+  if (id === GIFT_STALL_ID) return buyGift(s, key)
   if (key === 1) return steal()
   const kind: InteractKind = key === 2 ? 'give' : 'story'
   return [
@@ -395,6 +439,29 @@ const useSlot = (s: GameState, slot: number): Action[] => {
       { t: 'FLAG', id: def.flag, on: !on },
       ...(on ? [] : [{ t: 'ITEM_USED', item } as Action]),
       { t: 'FX', kind: 'toast', text: `${def.name} ${on ? '해제' : '착용'}`, lifeMs: 1400, value: 0 },
+    ]
+  }
+
+  /**
+   * 선물 5종 — 할아버지가 근처면 전달로 직행한다 (선택 UI를 다시 열지 않는다).
+   *
+   * ★ **다섯 개를 전부 여기서 받는다.** 예전엔 `I-12`(정답) 하나만 이 분기를 타고
+   *   나머지 넷은 아래 `switch` 의 `default:` 로 떨어져 `ACT_DENY(def.noTargetReason)`
+   *   만 뜨고 끝났다. 그러면 "할아버지 앞에서 슬롯 키를 눌러 봤는데 아무 반응이 없다
+   *   = 오답"이라는 **공짜 확인 수단**이 생겨, 잘못 산 선물을 실제로 건네 `E-15` 를
+   *   보는 사람이 아무도 없어진다 — 구매의 실패 위험이 사라지면 5지 선택이 의미를
+   *   잃는다. 정답/오답 판정은 여기서 하지 않는다: `complete()` 의 `give` 핸들러가
+   *   `GIFT_CORRECT` 와 비교해 정답이면 효자손을, 오답이면 `E-15` 를 낸다. 대화창의
+   *   [2]번과 이 슬롯 경로가 항상 같은 곳으로 모이게 하는 게 핵심이다.
+   */
+  if (GIFT_ITEMS.includes(item)) {
+    const gp = byId(GRANDPA_ID)
+    if (!gp || s.act.consumed.includes(gp.id) || !within(s, gp, 2.2)) {
+      return [{ t: 'ACT_DENY', text: def.noTargetReason }]
+    }
+    return [
+      { t: 'DIALOG', id: null },
+      { t: 'ACT_BEGIN', id: GRANDPA_ID, kind: 'give', totalMs: durationOf('give') },
     ]
   }
 
@@ -437,18 +504,6 @@ const useSlot = (s: GameState, slot: number): Action[] => {
         { t: 'ACT_CONSUME', id: cp.id },
         { t: 'PUSH' },
         { t: 'FX', kind: 'toast', text: '우산으로 비켜세웠다', lifeMs: 1600, value: 0 },
-      ]
-    }
-
-    /** 붕어빵 — 할아버지가 근처면 전달로 직행한다 (선택 UI를 다시 열지 않는다) */
-    case 'I-12': {
-      const gp = byId(GRANDPA_ID)
-      if (!gp || s.act.consumed.includes(gp.id) || !within(s, gp, 2.2)) {
-        return [{ t: 'ACT_DENY', text: def.noTargetReason }]
-      }
-      return [
-        { t: 'DIALOG', id: null },
-        { t: 'ACT_BEGIN', id: GRANDPA_ID, kind: 'give', totalMs: durationOf('give') },
       ]
     }
 
@@ -509,7 +564,7 @@ export const interactSystem = (s: GameState, ctx: ActCtx): Action[] => {
   // 2) 대화 UI가 열려 있으면 그것만 처리한다
   if (s.act.dialogId) {
     if (f.pressCancel || moveAxis(f) > INTERACT.cancelAxis) return [...out, { t: 'DIALOG', id: null }]
-    if (f.pressSlot >= 1 && f.pressSlot <= 3) return [...out, ...dialogPick(s, f.pressSlot as 1 | 2 | 3)]
+    if (f.pressSlot >= 1 && f.pressSlot <= 5) return [...out, ...dialogPick(s, f.pressSlot as Branch['key'])]
     return out
   }
 

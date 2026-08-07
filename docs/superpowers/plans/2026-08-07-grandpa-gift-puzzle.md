@@ -1081,3 +1081,213 @@ PR 본문에 스펙 링크(`docs/superpowers/specs/2026-08-07-grandpa-gift-puzzl
 | 2대째 → E-16 · 10초 | `npm test -- gift` |
 | 힌트 3개 · 획득 불가 · 벤치 비겹침 | `npm test -- gift` + 씬 실측 |
 | 전체 | `npm run verify` |
+
+---
+
+### Task 9: ACT-12 편의점 점원
+
+> **범위 변경.** 스펙 §8은 "점원 모델이 없다(`GDD:22`)"는 이유로 이 작업을 범위 밖에 뒀다.
+> 그 근거가 낡았다 — 모델이 커밋 `7cfe88b` 로 들어왔다(클립 4종: `CL_Idle`·`CL_Walk`·
+> `CL_Talk`·`CL_Sell`). 디렉터가 이번 범위에 포함하기로 결정했다.
+
+**Files:**
+- Modify: `game/tools/copy-assets.mjs` (`FILES` 배열)
+- Modify: `game/src/render/actors.ts` (`YAW_FIX` · `loadActors` · 배치)
+- Test: `game/tests/unit/gift.test.ts`
+
+**Interfaces:**
+- Consumes: Task 3의 `GIFT_STALL_ID`
+- Produces: 없음 (렌더 전용)
+
+- [ ] **Step 1: 에셋을 반입 목록에 넣는다**
+
+`game/tools/copy-assets.mjs` 의 `FILES` 배열에 더한다.
+
+```js
+  ['assets/cl_character_rigged.glb', 'npc/cl_character_rigged.glb'],
+```
+
+Run: `npm run assets`
+Expected: `9/9 복사 완료`, `game/public/models/npc/cl_character_rigged.glb` 생성
+
+- [ ] **Step 2: 실패하는 테스트를 쓴다**
+
+`game/tests/unit/gift.test.ts` 에 더한다.
+
+```ts
+import { CLERK_POS } from '../../src/render/actors'
+
+describe('ACT-12 편의점 점원', () => {
+  /**
+   * 점포는 통짜 솔리드다 — `OBJ-19-CVS` = rect[21.5, 25.7, 26.5, 30.0].
+   * 점원은 그 **안쪽**에 서야 유리 너머로 보인다. 파사드(y=25.7) 바깥에 두면
+   * 매대 앞 통로에 사람이 서 있는 그림이 된다.
+   */
+  it('점원이 점포 솔리드 안에 선다', () => {
+    expect(CLERK_POS.x).toBeGreaterThan(21.5)
+    expect(CLERK_POS.x).toBeLessThan(26.5)
+    expect(CLERK_POS.y).toBeGreaterThan(25.7)
+    expect(CLERK_POS.y).toBeLessThan(30.0)
+  })
+
+  /** 매대(x=26.0) 정면이어야 말을 거는 그림이 된다 — x 로 1.5m 안 */
+  it('매대 정면에 선다', () => {
+    expect(Math.abs(CLERK_POS.x - 26.0)).toBeLessThan(1.5)
+  })
+})
+```
+
+- [ ] **Step 3: 실패를 확인한다**
+
+Run: `npm test -- gift`
+Expected: FAIL — `CLERK_POS` is not exported
+
+- [ ] **Step 4: 점원을 배치한다**
+
+`game/src/render/actors.ts` 에서:
+
+`YAW_FIX` 에 `cl: 0` 을 더한다. **0 이 맞는지는 Step 6 에서 눈으로 확인하고 고친다** —
+리그마다 전방축이 다르다.
+
+배치 상수를 더한다. 좌표 근거를 주석에 남긴다.
+
+```ts
+/**
+ * ACT-12 편의점 점원 — 카운터 뒤 고정.
+ *
+ * `OBJ-19-CVS` = rect[21.5, 25.7, 26.5, 30.0] 는 **통짜 솔리드**다(P0에 입장이 없다).
+ * 점원을 파사드(y=25.7) 바깥에 두면 매대 앞 통로에 사람이 서 있는 그림이 되므로
+ * 안쪽 0.7m 에 둔다. x 는 매대(`OBJ-19-GIFT` x=26.0) 정면에 맞춘다.
+ *
+ * 고정 액터라 충돌을 올리지 않는다 — 플레이어는 어차피 점포 솔리드에 막힌다.
+ */
+export const CLERK_POS = { x: 25.8, y: 26.4, z: FLOOR.B1 } as const
+```
+
+`loadActors` 의 `Promise.all` 에 더한다.
+
+```ts
+    loadOr(`${dir}cl_character_rigged.glb`, 'CL', YAW_FIX.cl),
+```
+
+구조분해와 `root.add(...)` 에 `cl` 을 더하고, `CLERK_POS` 에 세운 뒤 `CL_Idle` 을 재생한다.
+기존 정적 NPC(`gp`)가 자세를 잡는 방식을 그대로 따른다.
+
+- [ ] **Step 5: 통과를 확인한다**
+
+Run: `npm test -- gift`
+Expected: PASS
+
+Run: `npm run typecheck`
+Expected: 에러 없음
+
+- [ ] **Step 6: 눈으로 확인한다**
+
+Run: `npm run dev`
+
+편의점 앞으로 가서 확인한다:
+1. 점원이 유리 너머에 보이는가
+2. **플레이어(매대 앞)를 보고 있는가** — 등을 보이면 `YAW_FIX.cl` 을 `Math.PI` 로 고친다
+3. 바닥을 뚫거나 떠 있지 않은가
+4. `CL_Idle` 이 도는가 (T 포즈로 굳어 있으면 클립 이름을 확인한다)
+
+고칠 것이 있으면 고치고 Step 5 를 다시 돌린다.
+
+- [ ] **Step 7: 커밋**
+
+⚠ `npm run assets` 가 `game/public/` 을, 빌드가 `game/dist/` 를 바꾼다.
+`git status` 를 보고 의도한 파일만 담는다.
+
+```bash
+git add game/tools/copy-assets.mjs game/src/render/actors.ts \
+        game/public/models/npc/cl_character_rigged.glb game/tests/unit/gift.test.ts
+git commit -m "feat: ACT-12 편의점 점원 배치 — 카운터 뒤 CL_Idle"
+```
+
+---
+
+### Task 10: OBJ-03 붕어빵 노점 — 퍼즐 우회로 차단
+
+> **스펙 정정.** 스펙 §8은 `OBJ-03` 을 "상호작용 없는 배경 소품으로 유지"라며 범위 밖에 뒀다.
+> 문서(v0.3)는 그렇게 정해 뒀지만 **코드가 안 따라갔다** — `OBJ-03` 은 여전히
+> `kind: 'buy'`, `gives: 'I-12'`, `cost: 500`, `once: false` 인 판매대다.
+>
+> `I-12` 를 양갱으로 재정의한 순간 이것이 두 가지를 망가뜨렸다.
+> **첫째,** Z1 붕어빵 노점이 양갱을 판다. **둘째,** 플레이어가 Z1 에서 정답을
+> 500원에 직접 사서 편의점 5지 퍼즐을 통째로 건너뛴다 — 이 기능의 존재 이유가 사라진다.
+>
+> `I-12` 의 의미를 바꾼 것이 원인이므로 범위 안이다.
+
+**Files:**
+- Modify: `game/src/data/interactables.ts` (`OBJ-03` 항목)
+- Test: `game/tests/unit/gift.test.ts`
+
+**Interfaces:**
+- Consumes: Task 1의 `GIFT_ITEMS`
+- Produces: 없음
+
+- [ ] **Step 1: 실패하는 테스트를 쓴다**
+
+`game/tests/unit/gift.test.ts` 에 더한다.
+
+```ts
+describe('퍼즐 우회로 차단', () => {
+  /**
+   * 선물은 **편의점에서만** 얻는다. 다른 곳에서 선물 5종 중 하나라도 살 수 있으면
+   * 5지 선택이 의미를 잃는다 — 정답만 골라 사면 그만이기 때문이다.
+   */
+  it('편의점 매대 말고는 선물을 주는 상호작용이 없다', () => {
+    const givers = INTERACTABLES.filter(
+      (i) => i.gives !== undefined && GIFT_ITEMS.includes(i.gives),
+    )
+    expect(givers.map((i) => i.id)).toEqual([])
+  })
+})
+```
+
+임포트에 `GIFT_ITEMS` 를 더한다.
+
+```ts
+import { GIFT_ITEMS } from '../../src/data/items'
+```
+
+- [ ] **Step 2: 실패를 확인한다**
+
+Run: `npm test -- gift`
+Expected: FAIL — `['OBJ-03']` 이 나온다
+
+- [ ] **Step 3: 노점의 상호작용을 걷어낸다**
+
+`game/src/data/interactables.ts` 의 `OBJ-03` 항목을 **통째로 지운다.**
+
+솔리드 `OBJ-03-CART`(`data/world.ts`)는 **그대로 둔다** — 배경 소품으로 남는 것이
+문서 v0.3 의 결정이다(`docs/OBJECT-MANIFEST.md`). 지운 자리에 근거를 남긴다.
+
+```ts
+  // ───────────── Z1 (L0) ─────────────
+  /**
+   * 붕어빵 노점(`OBJ-03-CART`)은 **상호작용이 없다** — 배경 소품이다(v0.3).
+   *
+   * P1 에서는 여기서 `I-12`(붕어빵)를 500원에 팔았다. `I-12` 가 양갱이 되면서
+   * 두 가지가 깨졌다: 붕어빵 노점이 양갱을 팔고, Z1 에서 정답을 직접 사면
+   * 편의점 5지 선택이 통째로 무의미해진다. 판매대를 걷어내고 수레만 남긴다.
+   */
+```
+
+- [ ] **Step 4: 통과를 확인한다**
+
+Run: `npm test -- gift`
+Expected: PASS
+
+Run: `npm test`
+Expected: 전체 통과. `OBJ-03` 을 경유하던 경로 테스트가 있으면 여기서 드러난다
+
+Run: `npm run typecheck`
+Expected: 에러 없음
+
+- [ ] **Step 5: 커밋**
+
+```bash
+git add game/src/data/interactables.ts game/tests/unit/gift.test.ts
+git commit -m "fix: 붕어빵 노점 판매 제거 — Z1 에서 정답을 직접 사던 우회로"
+```

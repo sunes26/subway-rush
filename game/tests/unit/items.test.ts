@@ -63,9 +63,12 @@ describe('S15-1 신규 7종 습득', () => {
 
 describe('S22-4 우산꽂이 장식 · 벽 노선도 (디렉터 지시)', () => {
   it('장식 우산은 꽂이(38, 5) 통 안에 있고 습득물과 안 겹친다', () => {
-    expect(DECOR.length).toBeGreaterThanOrEqual(4)
+    // P2 부터 DECOR 에 벤치 힌트 무리(`DEC-HINT-*`, ~42, 14)가 섞여 더 이상 전부가
+    // 우산꽂이 안은 아니다 — 여기서는 우산(`I-09`) 항목만 그 규약을 검증한다.
+    const umbrellas = DECOR.filter((d) => d.item === 'I-09')
+    expect(umbrellas.length).toBeGreaterThanOrEqual(4)
     const umb = spotOf('OBJ-16')
-    for (const d of DECOR) {
+    for (const d of umbrellas) {
       // 통 반폭 0.4 × 반깊이 0.21 — 이 밖이면 우산이 허공이나 바닥에 선다
       expect(Math.abs(d.x - 38), d.id).toBeLessThanOrEqual(0.4)
       expect(Math.abs(d.y - 5), d.id).toBeLessThanOrEqual(0.21)

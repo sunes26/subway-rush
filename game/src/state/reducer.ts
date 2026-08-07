@@ -179,10 +179,9 @@ const decayFx = (fx: readonly Fx[], dtMs: number): readonly Fx[] => {
  * 플레이어 타이머 감산 — 감속 회복과 이동 봉쇄를 한 자리에서 줄인다.
  *
  * 감속 회복은 GDD §4.1 "+5%/s (비피격 시)" 다. **도망치면 풀린다.**
- * 회수 연출(`seize`) 중에는 회복하지 않는다 — 2초 완전 정지가 그 구간의 내용이다.
  */
 const decayPlayerTimers = (s: GameState, dtMs: number): GameState['player'] => {
-  const recover = s.player.speedPenalty > 0 && s.chase.phase !== 'seize'
+  const recover = s.player.speedPenalty > 0
   const stall = s.player.stallMs > 0
   if (!recover && !stall) return s.player
   return {
@@ -263,10 +262,7 @@ export const reducer = (s: GameState, a: Action): GameState => {
           remainingMs: s.chase.active ? Math.max(0, s.chase.remainingMs - a.dtMs) : s.chase.remainingMs,
           swingCooldownMs: Math.max(0, s.chase.swingCooldownMs - a.dtMs),
         },
-        /**
-         * 감속 회복 — GDD §4.1 "+5%/s (비피격 시)". **도망치면 풀린다.**
-         * 회수 연출(`seize`) 중에는 회복하지 않는다 — 2초 완전 정지가 그 구간의 내용이다.
-         */
+        /** 감속 회복 — GDD §4.1 "+5%/s (비피격 시)". **도망치면 풀린다.** */
         player: decayPlayerTimers(s, a.dtMs),
         surge: s.surge.stallMs > 0
           ? { ...s.surge, stallMs: Math.max(0, s.surge.stallMs - a.dtMs) }
@@ -640,15 +636,10 @@ export const reducer = (s: GameState, a: Action): GameState => {
         chase: { ...s.chase, pos: { x: a.x, y: a.y }, facing: a.facing, stuckMs: a.stuckMs },
       }
 
-    /** 회수 연출(`seize`)에 들어가는 순간 플레이어는 완전 정지한다 — GDD §4.1 "완전 정지 2초" */
     case 'CHASE_PHASE':
       return s.chase.phase === a.phase
         ? s
-        : {
-            ...s,
-            player: a.phase === 'seize' ? { ...s.player, speedPenalty: 1 } : s.player,
-            chase: { ...s.chase, phase: a.phase, phaseMs: 0 },
-          }
+        : { ...s, chase: { ...s.chase, phase: a.phase, phaseMs: 0 } }
 
     /**
      * 피격 — GDD §4.1 그대로. 감속 누적 · 양심 −1 · 쿨다운.
@@ -676,36 +667,34 @@ export const reducer = (s: GameState, a: Action): GameState => {
       }
 
     /**
-     * 해제. **회수당해도 게임은 계속된다** (GDD §6.2) — 벌은 주되 문은 닫지 않는다.
-     * 3분 게임에서 방해요소 하나로 즉사시키면 재도전 의욕이 꺾인다.
+     * 해제 — `gate`/`timeout`/`returned` 셋뿐이다. 2대째 즉사(E-16)는 이 액션을 거치지
+     * 않고 `chaseSystem` 이 `END` 를 바로 낸다 — `seize` 로 끝나는 경로는 이제 없다.
      */
     case 'CHASE_END': {
-      const seized = a.reason === 'seize'
       const returned = a.reason === 'returned'
       const hyo = s.inventory.findIndex((v) => v === 'I-01')
       return {
         ...s,
-        // 회수·반납이면 효자손이 사라진다. 잔액 충전 수단을 잃는 것이 실질 페널티다
-        inventory: (seized || returned) && hyo >= 0
+        // 반납이면 효자손이 사라진다. 잔액 충전 수단을 잃는 것이 실질 페널티다
+        inventory: returned && hyo >= 0
           ? s.inventory.map((v, i) => (i === hyo ? null : v))
           : s.inventory,
         /**
-         * ★ 효자손을 잃었으면 할아버지를 **다시 만날 수 있다.**
+         * ★ 효자손을 반납했으면 할아버지를 **다시 만날 수 있다.**
          *
          * GDD §6.2: *"벌은 주되 문은 닫지 않는다."* 잔액 0원 시드(15%)에서 효자손을
-         * 회수당하면 P1에는 다른 충전 수단이 없어 **진짜로 막힌다** — 스윕에서 2건 나왔다.
+         * 반납하면 P1에는 다른 충전 수단이 없어 **진짜로 막힌다** — 스윕에서 2건 나왔다.
          * 그래서 `consumed` 에서 할아버지를 빼 정직한 루트(붕어빵·대화)로 재도전하게 둔다.
          * 훔치기 분기는 `CHASE_DONE` 이 막는다(`grandpaBranches`) — 그는 이제 경계한다.
          */
-        act: seized || returned
+        act: returned
           ? { ...s.act, consumed: s.act.consumed.filter((id) => id !== GRANDPA_ID) }
           : s.act,
-        player: seized ? { ...s.player, speedPenalty: 0 } : s.player,
         chase: { ...s.chase, active: false, phase: 'return', phaseMs: 0, swingCooldownMs: 0 },
         scores: {
           ...s.scores,
           conscience: clamp(
-            s.scores.conscience + (seized ? -2 : returned ? 1 : 0),
+            s.scores.conscience + (returned ? 1 : 0),
             CONSCIENCE_MIN, CONSCIENCE_MAX,
           ),
         },

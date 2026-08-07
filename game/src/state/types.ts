@@ -207,7 +207,6 @@ export type ChasePhase =
   | 'draw'     // 발도 0.6s — 이 동안엔 안 때린다
   | 'chase'    // 추격
   | 'swing'    // 스윙 동작 0.32s (제자리)
-  | 'seize'    // 5대 도달 — 완전 정지 2s 후 효자손 회수
   | 'return'   // 벤치로 돌아간다 (게임은 계속된다)
 
 export type ChaseState = Readonly<{
@@ -363,8 +362,8 @@ export type Action =
   | { t: 'CHASE_MOVE'; x: number; y: number; facing: number; stuckMs: number }
   | { t: 'CHASE_PHASE'; phase: ChasePhase }
   | { t: 'CHASE_HIT' }
-  /** 해제. `seize` 면 효자손을 회수당한다 */
-  | { t: 'CHASE_END'; reason: 'gate' | 'timeout' | 'returned' | 'seize' }
+  /** 해제. `returned` 면 효자손을 반납한 것이다 — 2대째 즉사(E-16)는 `END` 로 직접 끝난다 */
+  | { t: 'CHASE_END'; reason: 'gate' | 'timeout' | 'returned' }
 
   // ── P1 인파 (O-04) ──
   | { t: 'SURGE_FALL' }

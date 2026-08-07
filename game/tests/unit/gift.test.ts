@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { ENDINGS } from '../../src/data/endings'
-import { put, start, tap, yawTo } from './_pilot'
-import { giftBranches } from '../../src/systems/interact'
+import { CHASE, INTERACT, SLOTS } from '../../src/data/tuning'
+import { FLOOR } from '../../src/data/world'
+import type { GameState, ItemId } from '../../src/state/types'
+import { put, start, tap, wait, yawTo } from './_pilot'
+import { branchesFor, giftBranches, grandpaBranches } from '../../src/systems/interact'
+import { chaseSystem } from '../../src/systems/chase'
 import { GIFT_STALL_ID, GRANDPA_ID, INTERACTABLES } from '../../src/data/interactables'
+import { DECOR } from '../../src/data/decor'
+import { GIFT_ITEMS } from '../../src/data/items'
+import { CLERK_POS } from '../../src/render/actors'
 
 describe('선물 퍼즐 엔딩', () => {
   it('E-15 · E-16 이 등록돼 있다', () => {
@@ -81,5 +88,218 @@ describe('편의점 매대', () => {
     expect(s.inventory).not.toContain('I-01')
     expect(s.flags).not.toContain('GRANDPA_ANGRY')
     expect(s.act.consumed).not.toContain(GRANDPA_ID)
+  })
+})
+
+describe('대화창 라우팅', () => {
+  it('대화 상대에 따라 분기가 갈린다', () => {
+    const s = start(1)
+    expect(branchesFor(s, GIFT_STALL_ID).length).toBe(5)
+    expect(branchesFor(s, GRANDPA_ID).length).toBe(3)
+  })
+
+  it('모르는 상대면 빈 배열 — 화면에 아무것도 안 뜬다', () => {
+    expect(branchesFor(start(1), 'OBJ-NOPE')).toEqual([])
+  })
+})
+
+/** 선물 하나를 들고 할아버지 앞 1.1m 에 선다 */
+const withGift = (item: ItemId): GameState => {
+  const inv: (ItemId | null)[] = Array.from({ length: SLOTS }, () => null)
+  inv[0] = item
+  const s = start(7, { phase: 'playing', inventory: inv })
+  return put(s, 42, 14.9 - 1.1, FLOOR.B1)
+}
+
+/** 대화를 열고 [2] 선물을 드린다 → 완료까지 기다린다 */
+const giveIt = (item: ItemId): GameState => {
+  const s0 = withGift(item)
+  const yaw = yawTo(s0, 42, 14.9)
+  const opened = tap(s0, { pressInteract: true }, yaw)
+  const picked = tap(opened, { pressSlot: 2 }, yaw)
+  return wait(picked, INTERACT.buyMs + 200, yaw)
+}
+
+describe('선물 증정', () => {
+  it('양갱이면 효자손을 얻고 게임이 계속된다', () => {
+    const s = giveIt('I-12')
+    expect(s.inventory).toContain('I-01')
+    expect(s.phase).toBe('playing')
+    expect(s.endingId).toBe(null)
+    // 양심 +1 은 E-12 히든 엔딩 조건이다 — 개편에서 빠뜨리기 쉬운 자리
+    expect(s.scores.conscience).toBeGreaterThan(0)
+  })
+
+  it('오답 4종은 전부 E-15 로 끝난다', () => {
+    for (const id of ['I-15', 'I-16', 'I-17', 'I-18'] as const) {
+      const s = giveIt(id)
+      expect(s.phase).toBe('ended')
+      expect(s.endingId).toBe('E-15')
+      expect(s.inventory).not.toContain('I-01')
+    }
+  })
+
+  it('선물이 없으면 증정 분기가 잠긴다', () => {
+    const b = grandpaBranches(start(7)).find((x) => x.key === 2)!
+    expect(b.enabled).toBe(false)
+    expect(b.note).toBe('선물이 없다')
+  })
+
+  it('선물이 있으면 열린다', () => {
+    const b = grandpaBranches(withGift('I-17')).find((x) => x.key === 2)!
+    expect(b.enabled).toBe(true)
+  })
+})
+
+/**
+ * 회귀 — 슬롯 키(`useSlot`)의 `case 'I-12'` 가 정답 하나만 알고 있었다. 오답 4종은
+ * `default:` 로 떨어져 `ACT_DENY('드릴 사람이 없다')` 만 뜨고 아무 일도 일어나지 않았다.
+ * 할아버지 앞에서 슬롯 키를 눌러 "반응이 없으면 오답"이라는 **공짜 확인 수단**이 생겨,
+ * `E-15` 가 완전히 회피 가능해지고 구매의 실패 위험이 사라졌다 — 대화창의 [2]번(`give`)
+ * 경로와 슬롯 키 경로가 갈라져 있던 게 원인이다. 다섯 개 모두 같은 `complete()` 의
+ * `give` 핸들러로 들어가야 정답/오답이 대화창과 동일하게 갈린다.
+ */
+describe('슬롯 키로 선물 전달 — 매대 5종 전부 give 로 라우팅된다', () => {
+  const giveViaSlot = (item: ItemId): GameState => {
+    const s0 = withGift(item)
+    const pressed = tap(s0, { pressSlot: 1 })
+    return wait(pressed, INTERACT.buyMs + 200)
+  }
+
+  it('양갱을 슬롯 키로 줘도 대화창 경로와 똑같이 효자손을 얻고 게임이 계속된다', () => {
+    const s = giveViaSlot('I-12')
+    expect(s.inventory).toContain('I-01')
+    expect(s.phase).toBe('playing')
+    expect(s.endingId).toBe(null)
+  })
+
+  it('오답 4종을 슬롯 키로 줘도 아무 반응 없이 넘어가지 않고 전부 E-15 로 끝난다', () => {
+    for (const id of ['I-15', 'I-16', 'I-17', 'I-18'] as const) {
+      const s = giveViaSlot(id)
+      expect(s.phase, `${id}: 아무 일도 안 일어나면 안 된다`).toBe('ended')
+      expect(s.endingId).toBe('E-15')
+      expect(s.inventory).not.toContain('I-01')
+    }
+  })
+})
+
+describe('바닥 양갱 힌트', () => {
+  const hints = () => INTERACTABLES.filter((i) => i.kind === 'inspect')
+
+  /** "포장이 여럿"이라는 문구가 화면과 맞아야 한다 — 하나면 우연으로 읽힌다 */
+  it('벤치 근처에 3개가 있다', () => {
+    expect(hints().length).toBe(3)
+    for (const h of hints()) {
+      expect(Math.hypot(h.x - 42, h.y - 14.9)).toBeLessThan(4)
+    }
+  })
+
+  it('벤치 솔리드와 겹치지 않는다', () => {
+    // ACT-02-BENCH = rect[40.8, 14.6, 43.2, 15.4]
+    for (const h of hints()) {
+      const inside = h.x >= 40.8 && h.x <= 43.2 && h.y >= 14.6 && h.y <= 15.4
+      expect(inside).toBe(false)
+    }
+  })
+
+  it('획득되지 않고 몇 번이고 볼 수 있다', () => {
+    for (const h of hints()) {
+      expect(h.gives).toBeUndefined()
+      expect(h.once).toBe(false)
+    }
+  })
+
+  /**
+   * 회귀 — `kind: 'inspect'` 상호작용은 정의돼도 `render/props.ts` 가
+   * `kind === 'pickup' && gives` 만 그려서 화면엔 아무것도 안 섰다. 힌트가
+   * 안 보이면 정답(`I-12`)을 알 방법이 조준뿐이라 사실상 1/5 확률 도박이 된다.
+   * `data/decor.ts` 의 `DECOR` 가 같은 좌표에 `I-12` 메시를 얹어 채운다.
+   */
+  it('힌트마다 I-12 메시를 빌린 장식이 같은 좌표에 있다', () => {
+    for (const h of hints()) {
+      const d = DECOR.find((x) => x.x === h.x && x.y === h.y)
+      expect(d, `${h.id} 자리에 장식이 없다`).toBeDefined()
+      expect(d!.item).toBe('I-12')
+    }
+  })
+
+  it('세 장식의 yaw 가 서로 다르다 — 같은 각이면 복제한 티가 난다', () => {
+    const yaws = hints().map((h) => DECOR.find((d) => d.x === h.x && d.y === h.y)!.yaw)
+    expect(new Set(yaws).size).toBe(yaws.length)
+  })
+
+  /**
+   * `render/props.ts` 는 `DECOR` 전체를 **하나의 무리**로 묶어 그 중심에서
+   * `DECOR_VISIBLE_M`(12m, 리터럴 — export 되지 않아 여기 그대로 박는다) 안일 때만
+   * 켠다. 우산꽂이 무리(38, 5)에 벤치 무리(~42, 14)가 새로 섞이면서 중심이
+   * (39.9, 8.8) 근처로 옮겨졌다 — 두 무리 다 여전히 반경 안임을 고정한다.
+   * 이 테스트가 없으면 세 번째 무리가 추가될 때 기존 무리 하나가 조용히
+   * 반경 밖으로 밀려나 사라져도 아무도 모른다.
+   */
+  it('장식 컬링 반경 — 모든 DECOR 항목이 전체 중심에서 12m 이내다', () => {
+    const DECOR_VISIBLE_M = 12 // render/props.ts 의 동명 상수와 같은 값(export 안 됨)
+    const cx = DECOR.reduce((a, d) => a + d.x, 0) / DECOR.length
+    const cy = DECOR.reduce((a, d) => a + d.y, 0) / DECOR.length
+    for (const d of DECOR) {
+      expect(Math.hypot(d.x - cx, d.y - cy)).toBeLessThan(DECOR_VISIBLE_M)
+    }
+  })
+})
+
+describe('퍼즐 우회로 차단', () => {
+  /**
+   * 선물은 **편의점에서만** 얻는다. 다른 곳에서 선물 5종 중 하나라도 살 수 있으면
+   * 5지 선택이 의미를 잃는다 — 정답만 골라 사면 그만이기 때문이다.
+   */
+  it('편의점 매대 말고는 선물을 주는 상호작용이 없다', () => {
+    const givers = INTERACTABLES.filter(
+      (i) => i.gives !== undefined && GIFT_ITEMS.includes(i.gives),
+    )
+    expect(givers.map((i) => i.id)).toEqual([])
+  })
+})
+
+describe('ACT-12 편의점 점원', () => {
+  /**
+   * `OBJ-19-CVS` = rect[21.5, 25.7, 26.5, 30.0] 는 충돌 솔리드일 뿐, 점포 **내부**는
+   * 가구(카운터·곤돌라·냉장고)로 채워져 있어 이 사각형 전체가 걸어다닐 수 있는
+   * 바닥은 아니다. 이전 가드는 이 충돌 bbox 만 봐서 점원이 카운터 몸통 안(y=26.4)에
+   * 박혀 있어도 통과했다 — 구조적으로 못 잡는 회귀였다.
+   *
+   * `Z2_CONCOURSE.glb` 를 정점 단위로 확인한 실측(카운터 CVS 파트만 x<27 로 격리):
+   *   · 카운터(`Z2_SHOP_ST_COUNTER`) — x[24.55, 26.15] · y[26.05, 26.75], 바닥부터 0.95m 솔리드
+   *   · 곤돌라(x≈24.65) — x[24.23, 25.07] 까지만, 점원의 x=25.8 열에는 안 걸린다
+   *   · 냉장고 정면(VM_TRIM/VM_CAN) — y≈29.2 부터 시작
+   * 그 사이 y(26.75~29.2)가 유리 너머로 보이는 실제 통로다. 점원은 그 안에 서야 한다.
+   */
+  it('점원이 카운터 뒤 통로에 선다 — 충돌 bbox 안이 아니라 걸어다닐 수 있는 통로 안', () => {
+    expect(CLERK_POS.x).toBeGreaterThan(21.5)
+    expect(CLERK_POS.x).toBeLessThan(26.5)
+    expect(CLERK_POS.y, '카운터 뒷면(26.75)보다 안쪽').toBeGreaterThan(26.75)
+    expect(CLERK_POS.y, '냉장고 정면(≈29.2)보다 앞쪽').toBeLessThan(29.2)
+  })
+
+  /** 매대(x=26.0) 정면이어야 말을 거는 그림이 된다 — x 로 1.5m 안 */
+  it('매대 정면에 선다', () => {
+    expect(Math.abs(CLERK_POS.x - 26.0)).toBeLessThan(1.5)
+  })
+})
+
+describe('추격 개편', () => {
+  it('10초로 줄었고 회수 개념이 사라졌다', () => {
+    expect(CHASE.durationMs).toBe(10_000)
+    expect('seizeHits' in CHASE).toBe(false)
+  })
+
+  it('2대째에 E-16 으로 끝난다', () => {
+    const s = start(1)
+    const hit1 = {
+      ...s, phase: 'playing' as const,
+      chase: { ...s.chase, active: true, phase: 'chase' as const, hitCount: 1, remainingMs: 5000 },
+    }
+    const hit2 = { ...hit1, chase: { ...hit1.chase, hitCount: 2 } }
+    expect(chaseSystem(hit1, { dtMs: 16 }).some((a) => a.t === 'END')).toBe(false)
+    expect(chaseSystem(hit2, { dtMs: 16 })
+      .some((a) => a.t === 'END' && a.endingId === 'E-16')).toBe(true)
   })
 })
