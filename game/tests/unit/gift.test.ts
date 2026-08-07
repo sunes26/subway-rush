@@ -7,6 +7,7 @@ import { put, start, tap, wait, yawTo } from './_pilot'
 import { branchesFor, giftBranches, grandpaBranches } from '../../src/systems/interact'
 import { chaseSystem } from '../../src/systems/chase'
 import { GIFT_STALL_ID, GRANDPA_ID, INTERACTABLES } from '../../src/data/interactables'
+import { DECOR } from '../../src/data/decor'
 
 describe('선물 퍼즐 엔딩', () => {
   it('E-15 · E-16 이 등록돼 있다', () => {
@@ -171,6 +172,42 @@ describe('바닥 양갱 힌트', () => {
     for (const h of hints()) {
       expect(h.gives).toBeUndefined()
       expect(h.once).toBe(false)
+    }
+  })
+
+  /**
+   * 회귀 — `kind: 'inspect'` 상호작용은 정의돼도 `render/props.ts` 가
+   * `kind === 'pickup' && gives` 만 그려서 화면엔 아무것도 안 섰다. 힌트가
+   * 안 보이면 정답(`I-12`)을 알 방법이 조준뿐이라 사실상 1/5 확률 도박이 된다.
+   * `data/decor.ts` 의 `DECOR` 가 같은 좌표에 `I-12` 메시를 얹어 채운다.
+   */
+  it('힌트마다 I-12 메시를 빌린 장식이 같은 좌표에 있다', () => {
+    for (const h of hints()) {
+      const d = DECOR.find((x) => x.x === h.x && x.y === h.y)
+      expect(d, `${h.id} 자리에 장식이 없다`).toBeDefined()
+      expect(d!.item).toBe('I-12')
+    }
+  })
+
+  it('세 장식의 yaw 가 서로 다르다 — 같은 각이면 복제한 티가 난다', () => {
+    const yaws = hints().map((h) => DECOR.find((d) => d.x === h.x && d.y === h.y)!.yaw)
+    expect(new Set(yaws).size).toBe(yaws.length)
+  })
+
+  /**
+   * `render/props.ts` 는 `DECOR` 전체를 **하나의 무리**로 묶어 그 중심에서
+   * `DECOR_VISIBLE_M`(12m, 리터럴 — export 되지 않아 여기 그대로 박는다) 안일 때만
+   * 켠다. 우산꽂이 무리(38, 5)에 벤치 무리(~42, 14)가 새로 섞이면서 중심이
+   * (39.9, 8.8) 근처로 옮겨졌다 — 두 무리 다 여전히 반경 안임을 고정한다.
+   * 이 테스트가 없으면 세 번째 무리가 추가될 때 기존 무리 하나가 조용히
+   * 반경 밖으로 밀려나 사라져도 아무도 모른다.
+   */
+  it('장식 컬링 반경 — 모든 DECOR 항목이 전체 중심에서 12m 이내다', () => {
+    const DECOR_VISIBLE_M = 12 // render/props.ts 의 동명 상수와 같은 값(export 안 됨)
+    const cx = DECOR.reduce((a, d) => a + d.x, 0) / DECOR.length
+    const cy = DECOR.reduce((a, d) => a + d.y, 0) / DECOR.length
+    for (const d of DECOR) {
+      expect(Math.hypot(d.x - cx, d.y - cy)).toBeLessThan(DECOR_VISIBLE_M)
     }
   })
 })
