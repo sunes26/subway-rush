@@ -11,7 +11,7 @@
 import type { InputFrame } from '../core/input'
 import { CP_IDS, GIFT_STALL_ID, GRANDPA_ID, INTERACTABLES, byId, coinValue, isCoin, isVending,
   type InteractKind, type Interactable } from '../data/interactables'
-import { GIFT_ITEMS, itemDef } from '../data/items'
+import { GIFT_CORRECT, GIFT_ITEMS, itemDef } from '../data/items'
 import { CHASE, EMERGENCY, INTERACT, SLOTS, STAMINA } from '../data/tuning'
 import type { Action, Drop, GameState, ItemId } from '../state/types'
 
@@ -197,13 +197,26 @@ const complete = (s: GameState): Action[] => {
       ]
     }
 
-    /** [2] 붕어빵 — 효자손을 **정당하게** 얻는다. 양심 +1 */
+    /**
+     * [2] 선물 — **양갱만** 효자손으로 이어진다. 양심 +1.
+     *
+     * 구매가 1회 한정(`GIFT_BOUGHT`)이라 소지한 선물은 항상 최대 하나다.
+     * 어느 것을 드릴지 다시 고를 필요가 없어 인벤토리의 첫 선물이 곧 답이다.
+     */
     case 'give': {
-      const slot = slotOf(s, 'I-12')
-      if (slot < 0) return [{ t: 'ACT_DENY', text: '붕어빵이 필요하다' }]
+      const held = GIFT_ITEMS.find((i) => slotOf(s, i) >= 0)
+      if (held === undefined) return [{ t: 'ACT_DENY', text: '선물이 필요하다' }]
+      const slot = slotOf(s, held)
+      if (held !== GIFT_CORRECT) {
+        return [
+          { t: 'ITEM_SPEND', slot },
+          { t: 'FX', kind: 'toast', text: '"이놈아, 내가 이런 걸 먹게 생겼냐?"', lifeMs: 2600, value: 0 },
+          { t: 'END', endingId: 'E-15' },
+        ]
+      }
       return [
         { t: 'ITEM_SPEND', slot },
-        { t: 'ITEM_USED', item: 'I-12' },
+        { t: 'ITEM_USED', item: held },
         { t: 'PICKUP', item: 'I-01', slot: -1, dropId: null },
         { t: 'CONSCIENCE', delta: 1 },
         { t: 'FLAG', id: 'GRANDPA_HELPED', on: true },
@@ -314,9 +327,9 @@ export const grandpaBranches = (s: GameState): readonly Branch[] => [
   },
   {
     key: 2,
-    label: '붕어빵을 드린다',
-    enabled: hasItem(s, 'I-12'),
-    note: hasItem(s, 'I-12') ? '+1.5s' : '붕어빵이 필요하다',
+    label: '선물을 드린다',
+    enabled: GIFT_ITEMS.some((i) => hasItem(s, i)),
+    note: GIFT_ITEMS.some((i) => hasItem(s, i)) ? '+1.5s' : '선물이 없다',
   },
   { key: 3, label: '말을 건다', enabled: true, note: '+15s' },
 ]

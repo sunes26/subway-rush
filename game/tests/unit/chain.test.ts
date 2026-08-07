@@ -82,7 +82,7 @@ describe('S9-2 [2]는 붕어빵 보유 시에만 활성', () => {
     expect(grandpaBranches(s0)[1]?.enabled).toBe(false)
     const opened = openDialog(s0)
     const s = tap(opened, { pressSlot: 2 }, yawTo(opened, GP.x, GP.y))
-    expect(s.act.denyText).toBe('붕어빵이 필요하다')
+    expect(s.act.denyText).toBe('선물이 없다')
     expect(s.inventory.includes('I-01'), '효자손 안 나온다').toBe(false)
     expect(s.scores.conscience).toBe(0)
   })

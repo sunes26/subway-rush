@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { ENDINGS } from '../../src/data/endings'
-import { put, start, tap, yawTo } from './_pilot'
-import { branchesFor, giftBranches } from '../../src/systems/interact'
+import { INTERACT, SLOTS } from '../../src/data/tuning'
+import { FLOOR } from '../../src/data/world'
+import type { GameState, ItemId } from '../../src/state/types'
+import { put, start, tap, wait, yawTo } from './_pilot'
+import { branchesFor, giftBranches, grandpaBranches } from '../../src/systems/interact'
 import { GIFT_STALL_ID, GRANDPA_ID, INTERACTABLES } from '../../src/data/interactables'
 
 describe('선물 퍼즐 엔딩', () => {
@@ -93,5 +96,53 @@ describe('대화창 라우팅', () => {
 
   it('모르는 상대면 빈 배열 — 화면에 아무것도 안 뜬다', () => {
     expect(branchesFor(start(1), 'OBJ-NOPE')).toEqual([])
+  })
+})
+
+/** 선물 하나를 들고 할아버지 앞 1.1m 에 선다 */
+const withGift = (item: ItemId): GameState => {
+  const inv: (ItemId | null)[] = Array.from({ length: SLOTS }, () => null)
+  inv[0] = item
+  const s = start(7, { phase: 'playing', inventory: inv })
+  return put(s, 42, 14.9 - 1.1, FLOOR.B1)
+}
+
+/** 대화를 열고 [2] 선물을 드린다 → 완료까지 기다린다 */
+const giveIt = (item: ItemId): GameState => {
+  const s0 = withGift(item)
+  const yaw = yawTo(s0, 42, 14.9)
+  const opened = tap(s0, { pressInteract: true }, yaw)
+  const picked = tap(opened, { pressSlot: 2 }, yaw)
+  return wait(picked, INTERACT.buyMs + 200, yaw)
+}
+
+describe('선물 증정', () => {
+  it('양갱이면 효자손을 얻고 게임이 계속된다', () => {
+    const s = giveIt('I-12')
+    expect(s.inventory).toContain('I-01')
+    expect(s.phase).toBe('playing')
+    expect(s.endingId).toBe(null)
+    // 양심 +1 은 E-12 히든 엔딩 조건이다 — 개편에서 빠뜨리기 쉬운 자리
+    expect(s.scores.conscience).toBeGreaterThan(0)
+  })
+
+  it('오답 4종은 전부 E-15 로 끝난다', () => {
+    for (const id of ['I-15', 'I-16', 'I-17', 'I-18'] as const) {
+      const s = giveIt(id)
+      expect(s.phase).toBe('ended')
+      expect(s.endingId).toBe('E-15')
+      expect(s.inventory).not.toContain('I-01')
+    }
+  })
+
+  it('선물이 없으면 증정 분기가 잠긴다', () => {
+    const b = grandpaBranches(start(7)).find((x) => x.key === 2)!
+    expect(b.enabled).toBe(false)
+    expect(b.note).toBe('선물이 없다')
+  })
+
+  it('선물이 있으면 열린다', () => {
+    const b = grandpaBranches(withGift('I-17')).find((x) => x.key === 2)!
+    expect(b.enabled).toBe(true)
   })
 })
