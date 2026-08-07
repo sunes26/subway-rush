@@ -12,7 +12,7 @@
 import { byId } from '../data/interactables'
 import { itemDef } from '../data/items'
 import { QTE } from '../data/tuning'
-import { grandpaBranches } from '../systems/interact'
+import { branchesFor } from '../systems/interact'
 import type { GameState } from '../state/types'
 // 스타일은 `css/dialog.css` 가 단일 원천이다 — UI 킷(/uikit.html)이 같은 파일을 읽는다.
 // `?inline` 은 파일 내용을 문자열로 준다: 주입 방식(<style> 삽입)은 예전과 같다.
@@ -130,7 +130,7 @@ export const createDialog = (mount: HTMLElement): Dialog => {
       const dlgKey = s.act.dialogId ? `${s.act.dialogId}:${s.inventory.join(',')}` : ''
       if (dlgKey !== lastDlg) {
         if (dlgKey) {
-          dlgOps.innerHTML = grandpaBranches(s)
+          dlgOps.innerHTML = branchesFor(s, s.act.dialogId!)
             .map((b) => `<div class="op${b.enabled ? '' : ' off'}"><kbd>${b.key}</kbd>` +
               `<span>${b.label}</span><span class="note">${b.note}</span></div>`)
             .join('')

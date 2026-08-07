@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ENDINGS } from '../../src/data/endings'
 import { put, start, tap, yawTo } from './_pilot'
-import { giftBranches } from '../../src/systems/interact'
+import { branchesFor, giftBranches } from '../../src/systems/interact'
 import { GIFT_STALL_ID, GRANDPA_ID, INTERACTABLES } from '../../src/data/interactables'
 
 describe('선물 퍼즐 엔딩', () => {
@@ -81,5 +81,17 @@ describe('편의점 매대', () => {
     expect(s.inventory).not.toContain('I-01')
     expect(s.flags).not.toContain('GRANDPA_ANGRY')
     expect(s.act.consumed).not.toContain(GRANDPA_ID)
+  })
+})
+
+describe('대화창 라우팅', () => {
+  it('대화 상대에 따라 분기가 갈린다', () => {
+    const s = start(1)
+    expect(branchesFor(s, GIFT_STALL_ID).length).toBe(5)
+    expect(branchesFor(s, GRANDPA_ID).length).toBe(3)
+  })
+
+  it('모르는 상대면 빈 배열 — 화면에 아무것도 안 뜬다', () => {
+    expect(branchesFor(start(1), 'OBJ-NOPE')).toEqual([])
   })
 })

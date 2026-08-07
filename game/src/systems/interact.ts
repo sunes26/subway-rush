@@ -9,7 +9,7 @@
  */
 
 import type { InputFrame } from '../core/input'
-import { CP_IDS, GRANDPA_ID, INTERACTABLES, byId, coinValue, isCoin, isVending,
+import { CP_IDS, GIFT_STALL_ID, GRANDPA_ID, INTERACTABLES, byId, coinValue, isCoin, isVending,
   type InteractKind, type Interactable } from '../data/interactables'
 import { GIFT_ITEMS, itemDef } from '../data/items'
 import { CHASE, EMERGENCY, INTERACT, SLOTS, STAMINA } from '../data/tuning'
@@ -338,6 +338,24 @@ export const giftBranches = (s: GameState): readonly Branch[] => {
   }))
 }
 
+/** 대화 상대 → 분기표. UI 와 시스템이 **같은 함수**를 읽는다 */
+export const branchesFor = (s: GameState, dialogId: string): readonly Branch[] =>
+  dialogId === GRANDPA_ID ? grandpaBranches(s)
+    : dialogId === GIFT_STALL_ID ? giftBranches(s)
+      : []
+
+/** 선물 구매 — 1회 한정. 되돌리기가 없으므로 여기서 플래그를 못 박는다 */
+const buyGift = (_s: GameState, key: Branch['key']): Action[] => {
+  const item = GIFT_ITEMS[key - 1]
+  if (!item) return []
+  return [
+    { t: 'DIALOG', id: null },
+    { t: 'PICKUP', item, slot: -1, dropId: null },
+    { t: 'FLAG', id: 'GIFT_BOUGHT', on: true },
+    { t: 'FX', kind: 'toast', text: `${itemDef(item).name}을(를) 샀다`, lifeMs: 1800, value: 0 },
+  ]
+}
+
 /** [1] 훔치기 — 즉시. 0.6초 뒤 단소가 날아온다(O-14). UI는 그걸 미리 말하지 않는다 */
 const steal = (): Action[] => [
   { t: 'DIALOG', id: null },
@@ -349,20 +367,21 @@ const steal = (): Action[] => [
 ]
 
 /**
- * `1``2``3` 는 지금 열린 대화창이 **할아버지 것일 때만** 그의 분기를 태운다.
- *
- * 'talk' 종류가 할아버지 하나뿐이던 시절엔 "대화창이 열려 있다 = 할아버지다"가
- * 성립해서 이 검사가 없어도 안전했다. 편의점 매대(`OBJ-19-GIFT`)가 두 번째
- * 'talk' 이 되면서 그 가정이 깨졌다 — 매대 대화에서 `1`을 누르면 거리와 무관하게
- * `steal()`이 실행되고 할아버지가 소진돼 버렸다. 매대 자신의 5지 분기는
- * 아직 여기 연결하지 않는다(다음 작업에서 `branchesFor` 로 라우팅한다) — 그래서
- * 매대 대화 중에는 숫자키가 지금은 의도적으로 아무것도 하지 않는다.
+ * `1`~`5` 를 지금 열린 대화창의 **상대**에 따라 갈라 보낸다 — `branchesFor` 가 정한
+ * 그 상대의 분기표에서 찾는다. 예전엔 이 함수가 할아버지의 분기만 알고 있어서
+ * "대화창이 열려 있다 = 할아버지다"라는 가정이 깔려 있었다. 편의점 매대
+ * (`OBJ-19-GIFT`)가 두 번째 'talk' 이 되면서 그 가정이 깨져, 매대 대화에서 `1`을
+ * 누르면 거리와 무관하게 `steal()`이 실행되고 할아버지가 소진돼 버렸다(회귀 —
+ * `tests/unit/gift.test.ts` 의 "매대 대화에서 1을 눌러도…" 가 그걸 지킨다).
+ * 이제는 대화 상대별 분기표를 직접 찾으므로 그 가정이 필요 없다.
  */
-const dialogPick = (s: GameState, key: 1 | 2 | 3): Action[] => {
-  if (s.act.dialogId !== GRANDPA_ID) return []
-  const b = grandpaBranches(s).find((x) => x.key === key)
+const dialogPick = (s: GameState, key: Branch['key']): Action[] => {
+  const id = s.act.dialogId
+  if (!id) return []
+  const b = branchesFor(s, id).find((x) => x.key === key)
   if (!b) return []
   if (!b.enabled) return [{ t: 'ACT_DENY', text: b.note }]
+  if (id === GIFT_STALL_ID) return buyGift(s, key)
   if (key === 1) return steal()
   const kind: InteractKind = key === 2 ? 'give' : 'story'
   return [
@@ -509,7 +528,7 @@ export const interactSystem = (s: GameState, ctx: ActCtx): Action[] => {
   // 2) 대화 UI가 열려 있으면 그것만 처리한다
   if (s.act.dialogId) {
     if (f.pressCancel || moveAxis(f) > INTERACT.cancelAxis) return [...out, { t: 'DIALOG', id: null }]
-    if (f.pressSlot >= 1 && f.pressSlot <= 3) return [...out, ...dialogPick(s, f.pressSlot as 1 | 2 | 3)]
+    if (f.pressSlot >= 1 && f.pressSlot <= 5) return [...out, ...dialogPick(s, f.pressSlot as Branch['key'])]
     return out
   }
 
