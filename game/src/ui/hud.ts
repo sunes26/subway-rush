@@ -255,8 +255,11 @@ export const createHud = (mount: HTMLElement): Hud => {
         const item = s.inventory[i] ?? null
         const def = item ? itemDef(item) : null
         const worn = !!(def?.flag && s.flags.includes(def.flag))
+        // 손에 든 칸 — 착용(`worn`)과 다른 축이다. 마스크는 쓰는 것이고 우산은 드는 것이다
+        const inHand = s.hand.slot === i && s.hand.item !== null && s.hand.item === item
         const swappable = swapOn && i !== s.swap.newSlot
-        const key = `${item ?? ''}|${worn ? 'w' : ''}|${swapOn ? (swappable ? 's' : 'n') : ''}`
+        const key = `${item ?? ''}|${worn ? 'w' : ''}|${inHand ? 'h' : ''}` +
+          `|${swapOn ? (swappable ? 's' : 'n') : ''}`
         if (key === slot.last) continue
         slot.glyph.textContent = def ? def.glyph : ''
         slot.box.title = def ? (def.cost ? `${def.name} — ${def.cost}` : def.name) : ''
@@ -264,6 +267,7 @@ export const createHud = (mount: HTMLElement): Hud => {
           'slot',
           item ? 'has' : '',
           worn ? 'worn' : '',
+          inHand ? 'inhand' : '',
           swappable ? 'swappable' : '',
         ].filter(Boolean).join(' ')
         slot.last = key

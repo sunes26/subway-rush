@@ -237,6 +237,41 @@ export type SurgeState = Readonly<{
   stallMs: number
 }>
 
+/**
+ * 손 — **지금 들고 있는 것** (디렉터 지시 2026-08-07).
+ *
+ * P2까지 슬롯 키(`1`~`0`)는 곧 "쓴다"였다. 그래서 쓸 대상이 없으면 사유만 뜨고
+ * 아이템은 영영 손에 안 들어왔다 — 인벤토리는 있는데 **가진 것이 화면에 없었다.**
+ * 이제 대상이 없으면 그 자리에서 **든다.** 쓰는 것은 대상이 있을 때만 일어난다.
+ *
+ * ★ `slot` 을 같이 들고 있는 이유: 인벤토리가 바뀌면(소모·교체·낙하) 손이 유령이 된다.
+ *   `reducer.applyAll` 이 매 액션 뒤에 `inventory[slot] === item` 을 확인해 어긋나면 비운다.
+ */
+export type HandState = Readonly<{
+  /** 들고 있는 아이템. null 이면 빈손 */
+  item: ItemId | null
+  /** 들고 있는 칸. 빈손이면 −1 */
+  slot: number
+  /** 우산을 펼쳤는가 — `item === 'I-09'` 일 때만 참일 수 있다 */
+  open: boolean
+}>
+
+/**
+ * 펼친 우산에 맞아 날아간 사람 — **방향만** 상태에 남긴다.
+ *
+ * 경과 시간은 렌더가 자기 시계로 센다(`render/actors.ts` 의 `cpAsideSec` 와 같은 방식).
+ * 시뮬이 들고 있어야 할 이유가 없다: 판정은 맞은 그 순간 이미 끝났고(`ACT_CONSUME`),
+ * 그 뒤는 연출이다. 방향만 시뮬이 정하는 이유는 **플레이어가 어디서 훑었는지**가
+ * 렌더에 없기 때문이다.
+ */
+export type KnockState = Readonly<{
+  /** 맞은 사람의 상호작용 id (`ACT-CP*`) */
+  id: string
+  /** 날아가는 방향 단위벡터 (월드 x 동 · y 북) */
+  dx: number
+  dy: number
+}>
+
 /** 채점 보조 집계 — 엔딩 조건식이 읽는다 */
 export type TallyState = Readonly<{
   /** 자판기·바닥에서 얻은 누적 동전액 (E-14 조건) */
@@ -293,6 +328,10 @@ export type GameState = Readonly<{
   qte: QteState
   surge: SurgeState
   tally: TallyState
+  /** 손에 든 물건 — 슬롯 키로 들고 놓는다 */
+  hand: HandState
+  /** 펼친 우산에 날아간 사람들. 한 번 들어가면 안 빠진다(그 자리에 널브러져 있다) */
+  knocks: readonly KnockState[]
 
   // ── P2 신설 ──
   /** UI-14 교체 창 — 슬롯이 가득 찬 채로 습득한 직후 0.9초 */
@@ -379,6 +418,14 @@ export type Action =
   | { t: 'STAFF_ALERT'; ms: number }
   /** 우산으로 인파를 밀어냈다 (E-11 계수) */
   | { t: 'PUSH' }
+
+  // ── 손 (디렉터 지시 2026-08-07) ──
+  /** 들거나 놓는다. `item: null` 이면 빈손으로 만든다 */
+  | { t: 'EQUIP'; slot: number; item: ItemId | null }
+  /** 우산을 펼치거나 접는다. 우산을 안 들고 있으면 무시된다 */
+  | { t: 'UMBRELLA'; open: boolean }
+  /** 펼친 우산이 사람을 날렸다 — 방향은 단위벡터 */
+  | { t: 'KNOCK'; id: string; dx: number; dy: number }
 
   // ── P2 슬롯 교체 (UI-14) ──
   /** 교체 창 안에서 `1``2``3` — 새 아이템을 그 칸으로 옮기고 원래 있던 것을 바닥으로 */

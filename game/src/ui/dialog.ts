@@ -50,12 +50,20 @@ export const createDialog = (mount: HTMLElement): Dialog => {
 
   const el = document.createElement('div')
   el.id = 'iact'
+  /**
+   * ⚠ `#qte` 는 **`#dlg` 의 형제**여야 한다.
+   *
+   * 예전엔 `#dlg` 를 닫는 `</div>` 가 빠져 있어 파서가 QTE 블록을 대화창 **안**에 넣었다.
+   * 대화가 닫혀 있으면 `#dlg{display:none}` 이 통째로 먹으므로 게이지가 한 픽셀도 안 그려진다 —
+   * 자판기 미니게임이 **보이지 않는 리듬 게임**이었다. DOM 에는 `#qte.on` 이 멀쩡히 있어서
+   * E2E 의 존재 검사(`toHaveCount(1)`)는 통과했다. 그래서 지금은 **실제 가시성**을 잠근다.
+   */
   el.innerHTML = `
     <div id="iprompt"><kbd>E</kbd><span id="iprompt-t"></span></div>
     <div id="iring"><b id="iring-t"></b></div>
     <div id="ireason"></div>
     <div id="dlg"><div class="who" id="dlg-who"></div><div id="dlg-ops">
-      <div class="esc">ESC 그냥 지나간다</div></div>
+      <div class="esc">ESC 그냥 지나간다</div></div></div>
     <div id="qte">
       <div class="cap">자판기 밑을 긁는다 — 가운데에서 <b>클릭</b></div>
       <div class="track"><div class="fill" id="qte-fill"></div>

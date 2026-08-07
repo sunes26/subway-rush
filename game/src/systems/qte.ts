@@ -105,6 +105,19 @@ export const qteSystem = (s: GameState, ctx: QteCtx): Action[] => {
   if (s.qte.elapsedMs >= QTE.timeoutMs) return fail()
 
   /**
+   * ⚠ **연 그 입력은 안 센다.**
+   *
+   * `tick.ts` 는 같은 스텝에서 `interactSystem` → `qteSystem` 순으로 돈다. 자판기를 `E`(또는
+   * 락 중 좌클릭)로 열면 그 스텝에서 QTE 가 이미 `active` 가 되고, **같은 원샷 입력**이
+   * 여기까지 흘러와 마커가 아직 왼쪽 끝(pos 0)일 때 판정돼 **여는 즉시 미스 1개**를 먹었다.
+   * 3회 성공에 3회 실패로 끝나는 판정이라 시작부터 한 칸을 잃는 셈이었다.
+   *
+   * `elapsedMs === 0` 은 **연 그 스텝에서만** 참이다 — 다음 틱의 `ADVANCE` 가 즉시 올린다.
+   * (아이템 키 `1` 로 여는 경로는 `pressSlot` 이라 이 누수가 없었다. 그래서 E2E 가 못 잡았다.)
+   */
+  if (s.qte.elapsedMs === 0) return []
+
+  /**
    * 입력은 **원샷 하나**다. `pressInteract` 는 `E` 와 **락 중 좌클릭**을 둘 다 받는다
    * (`core/input.ts`) — 손이 이미 어디에 있든 누를 수 있다.
    */

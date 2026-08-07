@@ -24,6 +24,12 @@ export type Decor = Readonly<{
   z: number
   /** 세우는 방향(rad). 같은 각으로 여럿 두면 복제한 티가 난다 */
   yaw: number
+  /**
+   * 눕히거나 뒤집는 각(rad, 모델 로컬 X축). 없으면 0.
+   * `Interactable.propPitch` 와 같은 규약이다 — 두 표가 같은 메시를 빌려 쓰므로
+   * **같은 물건은 같은 값**이어야 한다(우산 다섯 자루가 서로 반대로 꽂히면 안 된다).
+   */
+  pitch?: number
 }>
 
 /**
@@ -64,10 +70,11 @@ export type Decor = Readonly<{
  * 고정한다 — 세 번째 무리를 추가할 때 이 여유가 깨지지 않는지 거기서 확인하라).
  */
 export const DECOR: readonly Decor[] = [
-  { id: 'DEC-UMB-0', item: 'I-09', x: 37.82, y: 4.93, z: FLOOR.B1 + 0.40, yaw: -0.62 },
-  { id: 'DEC-UMB-1', item: 'I-09', x: 38.18, y: 4.93, z: FLOOR.B1 + 0.40, yaw: 0.41 },
-  { id: 'DEC-UMB-2', item: 'I-09', x: 37.82, y: 5.07, z: FLOOR.B1 + 0.40, yaw: 2.10 },
-  { id: 'DEC-UMB-3', item: 'I-09', x: 38.18, y: 5.07, z: FLOOR.B1 + 0.40, yaw: -2.44 },
+  // pitch: π — 페룰이 통 속으로, 갈고리가 위로 (`OBJ-16` 과 같은 값이어야 한다)
+  { id: 'DEC-UMB-0', item: 'I-09', x: 37.82, y: 4.93, z: FLOOR.B1 + 0.40, yaw: -0.62, pitch: Math.PI },
+  { id: 'DEC-UMB-1', item: 'I-09', x: 38.18, y: 4.93, z: FLOOR.B1 + 0.40, yaw: 0.41, pitch: Math.PI },
+  { id: 'DEC-UMB-2', item: 'I-09', x: 37.82, y: 5.07, z: FLOOR.B1 + 0.40, yaw: 2.10, pitch: Math.PI },
+  { id: 'DEC-UMB-3', item: 'I-09', x: 38.18, y: 5.07, z: FLOOR.B1 + 0.40, yaw: -2.44, pitch: Math.PI },
   // 좌표는 OBJ-19-HINT1/2/3 (interactables.ts) 과 동일 — 상호작용 판정 = 시각적 위치
   { id: 'DEC-HINT-0', item: 'I-12', x: 41.4, y: 13.9, z: FLOOR.B1, yaw: 0.35 },
   { id: 'DEC-HINT-1', item: 'I-12', x: 42.6, y: 13.6, z: FLOOR.B1, yaw: 1.92 },

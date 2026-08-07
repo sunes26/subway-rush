@@ -31,6 +31,22 @@ describe('열림', () => {
     expect(s.qte.dirSign).toBe(1)
     expect(s.qte.speedMul).toBe(1)
   })
+
+  /**
+   * `E`(=좌클릭)로 여는 경로의 회귀 방지.
+   *
+   * `tick` 은 한 스텝에서 `interactSystem` → `qteSystem` 순으로 돈다. **여는 원샷이 그대로**
+   * QTE 판정까지 흘러와, 마커가 왼쪽 끝(0)일 때 눌린 것으로 쳐서 **여는 즉시 미스**가 났다.
+   * 아이템 키(`pressSlot`)로 여는 경로는 이 누수가 없어 기존 테스트가 전부 통과했다 —
+   * 그래서 여기서는 반드시 **`pressInteract` 로** 연다.
+   */
+  it('E 로 열면 그 입력이 첫 판정으로 새지 않는다', () => {
+    const near = put(start(7, { inventory: ['I-01', null, null] }), 13.03, 4.15 - 1.2, FLOOR.B1)
+    const s = tap(near, { pressInteract: true })
+    expect(s.qte.active, 'E 로도 열려야 한다').toBe(true)
+    expect(s.qte.misses, '여는 입력이 미스로 세어지면 안 된다').toBe(0)
+    expect(s.qte.strokes).toBe(0)
+  })
 })
 
 describe('성공 구간 판정', () => {

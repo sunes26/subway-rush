@@ -22,6 +22,7 @@ import { obstacleSystem } from './obstacles'
 import { staffSystem } from './staff'
 import { qteSystem } from './qte'
 import { psdDoors, trainAt, trainSystem } from './train'
+import { umbrellaSystem } from './umbrella'
 
 export type TickCtx = Readonly<{ input: InputFrame; cameraYaw: number }>
 
@@ -101,6 +102,14 @@ export const tick = (state: GameState, dtMs: number, ctx: TickCtx): GameState =>
    */
   s = applyAll(s, interactSystem(s, { dtMs, input: ctx.input, cameraYaw: ctx.cameraYaw }))
   s = applyAll(s, qteSystem(s, { dtMs, input: ctx.input }))
+
+  /**
+   * 펼친 우산 훑기 — **상호작용 뒤**다. 같은 스텝에 좌클릭으로 편 우산이 곧바로
+   * 판정에 들어가야 "펴자마자 옆 사람이 날아간다"가 성립한다.
+   * (인파 솔리드는 이번 스텝 시작에 이미 확정됐으므로 실제로 길이 열리는 것은
+   *  다음 스텝이다 — 예전 슬롯 키 경로와 같은 한 프레임이라 체감이 달라지지 않는다.)
+   */
+  s = applyAll(s, umbrellaSystem(s, { dtMs }))
 
   const gateActions = gatesSystem(s)
   s = applyAll(s, gateActions)

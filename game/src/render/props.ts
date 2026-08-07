@@ -17,8 +17,8 @@
 
 import { Box3, BoxGeometry, Color, Group, Material, Mesh, MeshStandardMaterial,
   type BufferGeometry, type Object3D } from 'three'
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { itemsSource } from './items-gltf'
 import { INTERACTABLES } from '../data/interactables'
 import { DECOR } from '../data/decor'
 import { itemDef } from '../data/items'
@@ -73,7 +73,8 @@ const PLACEHOLDER_LOOK: Readonly<Partial<Record<ItemId, { c: number; w: number; 
 
 const placeholderCache = new Map<ItemId, Object3D>()
 
-const placeholderFor = (item: ItemId): Object3D => {
+/** 메시가 없는 아이템의 자리표시자. 손에 든 물건(`held.ts`)도 같은 것을 쓴다 */
+export const placeholderFor = (item: ItemId): Object3D => {
   const hit = placeholderCache.get(item)
   if (hit) return hit
   const look = PLACEHOLDER_LOOK[item] ?? { c: 0x9aa0a6, w: 0.14, h: 0.14, d: 0.14 }
@@ -96,6 +97,21 @@ type Prop = Readonly<{
   shell: Mesh | null
   /** `state.drops` 에서 온 프롭인가 — 가시성 규칙이 갈린다 */
   drop: boolean
+}>
+
+/**
+ * 프롭 하나를 세우는 방법 — 위치를 뺀 나머지. 위치는 항상 표에서 오고,
+ * 이쪽은 **표마다 있을 수도 없을 수도 있는** 값이라 선택 필드로 묶었다.
+ */
+type PropOpts = Readonly<{
+  /** 세우는 방향(rad). 없으면 기본 각 `YAW` */
+  yaw?: number | undefined
+  /** 눕히거나 뒤집는 각(rad, 모델 로컬 X축). 없으면 0 */
+  pitch?: number | undefined
+  /** 배율(기본 1) */
+  scale?: number | undefined
+  /** 자체 발광 — 벽 게시물 전용 */
+  backlit?: boolean | undefined
 }>
 
 export type Props = Readonly<{
@@ -145,8 +161,8 @@ export const loadProps = async (baseUrl: string): Promise<Props> => {
 
   let source: Object3D
   try {
-    const gltf = await new GLTFLoader().loadAsync(`${baseUrl}models/items.glb`)
-    source = gltf.scene
+    // 원본은 `render/items-gltf.ts` 가 캐시한다 — 손에 든 물건(`held.ts`)과 공유한다
+    source = await itemsSource(baseUrl)
   } catch (e) {
     // 프롭이 없어도 게임은 돈다 — 습득 판정은 `data/interactables.ts` 테이블이 하고
     // 렌더는 그 결과를 그릴 뿐이다 (`main.ts:220` 의 station 폴백과 같은 태도).
@@ -167,9 +183,9 @@ export const loadProps = async (baseUrl: string): Promise<Props> => {
    * `ITM01_Backscratcher` 는 밑면이 y=0 이다. 품목별 상수를 박으면 에셋이 갱신될 때 어긋난다.
    */
   const makeProp = (
-    item: ItemId, x: number, y: number, z: number, drop: boolean, yaw = YAW, scale = 1,
-    backlit = false,
+    item: ItemId, x: number, y: number, z: number, drop: boolean, o: PropOpts = {},
   ): Prop | null => {
+    const { yaw = YAW, pitch = 0, scale = 1, backlit = false } = o
     let nodeName: string
     try {
       nodeName = itemDef(item).node
@@ -186,6 +202,11 @@ export const loadProps = async (baseUrl: string): Promise<Props> => {
     const tpl = found ?? placeholderFor(item)
 
     const node = tpl.clone(true)
+    /**
+     * 눕히기·뒤집기는 **셸을 굽기 전에** 준다. 셸 지오메트리는 이 시점의 노드 월드
+     * 행렬을 그대로 굽기 때문에(`shellGeometry`), 뒤에 회전하면 아웃라인만 제자리에 남는다.
+     */
+    node.rotation.x = pitch
     /**
      * 백라이트 게시물 — 인쇄면을 **자기 텍스처로** 밝힌다.
      *
@@ -241,11 +262,10 @@ export const loadProps = async (baseUrl: string): Promise<Props> => {
   }
 
   const ensure = (
-    id: string, item: ItemId, x: number, y: number, z: number, drop: boolean,
-    yaw = YAW, scale = 1, backlit = false,
+    id: string, item: ItemId, x: number, y: number, z: number, drop: boolean, o: PropOpts = {},
   ): void => {
     if (props.has(id) || skipped.has(id)) return
-    const p = makeProp(item, x, y, z, drop, yaw, scale, backlit)
+    const p = makeProp(item, x, y, z, drop, o)
     if (!p) { skipped.add(id); return }
     props.set(id, p)
     root.add(p.holder)
@@ -254,7 +274,9 @@ export const loadProps = async (baseUrl: string): Promise<Props> => {
   // 고정 습득물 — `gives` 가 있는 `pickup` 항목만. 좌표를 여기서 새로 만들지 않는다.
   for (const e of INTERACTABLES) {
     if (e.kind !== 'pickup' || !e.gives) continue
-    ensure(e.id, e.gives, e.x, e.y, e.z, false, e.faceYaw ?? YAW, e.propScale ?? 1, e.backlit ?? false)
+    ensure(e.id, e.gives, e.x, e.y, e.z, false, {
+      yaw: e.faceYaw, pitch: e.propPitch, scale: e.propScale, backlit: e.backlit,
+    })
   }
 
   /**
@@ -277,6 +299,7 @@ export const loadProps = async (baseUrl: string): Promise<Props> => {
     if (!tpl) { console.error(`[props] 장식 ${d.id} 의 메시가 없다`); continue }
 
     const node = tpl.clone(true)
+    node.rotation.x = d.pitch ?? 0
     const pivot = new Group()
     pivot.add(node)
     pivot.scale.setScalar(SCALE)
