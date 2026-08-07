@@ -243,6 +243,9 @@ describe('S10-9~S10-10 몸통과 끼임', () => {
       flags: ['GRANDPA_ANGRY'],
       chase: {
         ...start(7).chase, active: true, phase: 'chase', phaseMs: 900,
+        // `CHASE.durationMs`(10_000)보다 훨씬 길게 잡은 값이다 — 일부러다. 이 테스트는
+        // "생존"이 아니라 "기둥 사이에서 끼임 없이 실제로 움직이는가"를 재는 이동 프로브라
+        // 도중에 시간 제한이나 즉사로 잘려 지그재그 구간을 다 못 도는 걸 피하려는 것뿐이다.
         remainingMs: 30_000, pos: { x: 30, y: 25 }, facing: 0,
         hitCount: 0, swingCooldownMs: 0, stuckMs: 0,
       },

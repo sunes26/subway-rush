@@ -149,11 +149,20 @@ let shakeUntil = 0
 let hitCooldownMs = 0
 const HIT_COOLDOWN_MS = 1200
 
-/** 관찰 모드에서 대상 종류를 한 줄로 풀어 쓴다 — 처음 보는 사람에게 동사를 알려 준다 */
+/**
+ * 관찰 모드에서 대상 종류를 한 줄로 풀어 쓴다 — 처음 보는 사람에게 동사를 알려 준다.
+ *
+ * 상대 이름은 여기서 안 낸다 — 그건 `t.label` 이 따로 보여준다(`main.ts` 호출부).
+ * 그래서 `talk` 문구도 상대를 특정하면 안 된다. `GIFT_STALL_ID`(편의점 매대)가
+ * 두 번째 `talk` 대상이 되기 전에는 `talk` = 할아버지뿐이라 "말을 건다"가 맞았지만,
+ * 매대에는 말을 걸지 않는다 — 매대·할아버지 둘 다 그대로 쓸 수 있는 동사가 필요하다.
+ * `talk` 은 어느 쪽이든 "선택 UI를 연다"는 뜻이라(`systems/interact.ts` `durationOf`
+ * 주석 참고) '고른다'로 통일한다.
+ */
 const OBSERVE_NOTE: Readonly<Record<InteractKind, string>> = {
   pickup: 'E — 줍는다',
   buy: 'E — 산다',
-  talk: 'E — 말을 건다',
+  talk: 'E — 고른다',
   scratch: 'E — 효자손으로 긁는다',
   aside: 'E — "저기요"',
   give: 'E — 건넨다',

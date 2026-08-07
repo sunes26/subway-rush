@@ -138,8 +138,10 @@ export const chaseSystem = (s: GameState, ctx: ChaseCtx): Action[] => {
    * `swingCooldownMs`(1.5s)가 연타 즉사를 막으므로 한 번 맞고도 도망칠 창이 있다.
    */
   if (c.hitCount >= 2) {
+    // 토스트는 엔딩 화면의 `line`('눈앞이 하얘졌다.')과 **다른 문장**이어야 한다 —
+    // 두 화면이 연달아 뜨는데 같은 문장이면 같은 말을 두 번 읽게 된다.
     return [
-      { t: 'FX', kind: 'toast', text: '눈앞이 하얘졌다', lifeMs: 2000, value: 0 },
+      { t: 'FX', kind: 'toast', text: '딱! — 단소가 정통으로 맞았다', lifeMs: 2000, value: 0 },
       { t: 'END', endingId: 'E-16' },
     ]
   }

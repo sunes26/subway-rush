@@ -63,6 +63,14 @@ describe('S18-1 신규 8종이 각각 도달 가능하다', () => {
     expect(at({ boarded: false, scores: { conscience: -1, style: 0, knowledge: 0 } })).toBe('E-07')
   })
 
+  /**
+   * ⚠ 아래 `toBe(14)` 는 **"엔딩 14종"이라는 제목의 잔재가 아니다.** `E-15`·`E-16` 은
+   * 강제 엔딩이라 `resolveEnding` 을 아예 타지 않으므로(파일 상단 `at()` 은
+   * `resolveEnding` 을 부른다) 여기 모이는 집합엔 절대 안 섞여야 한다. 14는
+   * "resolveEnding 으로 도달 가능한 엔딩 수는 정확히 14개다 — E-15/E-16 은 그중에
+   * 없다"는 불변식을 인코딩한 값이다. 총 엔딩 수(16종)에 맞춰 16으로 "고치면"
+   * 이 가드가 무력화된다.
+   */
   it('14종 전부 한 번씩은 나온다', () => {
     const seen = new Set<EndingId>([
       at(trueRun()),

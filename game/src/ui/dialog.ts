@@ -28,6 +28,7 @@ const busyLabel = (s: GameState): string => {
     case 'give': return '드리는 중'
     case 'story': return '이야기 듣는 중'
     case 'aside': return '"저기요…"'
+    case 'inspect': return '살펴보는 중'
     default: return ''
   }
 }
@@ -53,7 +54,7 @@ export const createDialog = (mount: HTMLElement): Dialog => {
     <div id="iprompt"><kbd>E</kbd><span id="iprompt-t"></span></div>
     <div id="iring"><b id="iring-t"></b></div>
     <div id="ireason"></div>
-    <div id="dlg"><div class="who" id="dlg-who">할아버지</div><div id="dlg-ops"></div>
+    <div id="dlg"><div class="who" id="dlg-who"></div><div id="dlg-ops">
       <div class="esc">ESC 그냥 지나간다</div></div>
     <div id="qte">
       <div class="cap">자판기 밑을 긁는다 — 가운데에서 <b>클릭</b></div>
@@ -72,6 +73,7 @@ export const createDialog = (mount: HTMLElement): Dialog => {
   const ringT = $('iring-t')
   const reason = $('ireason')
   const dlg = $('dlg')
+  const dlgWho = $('dlg-who')
   const dlgOps = $('dlg-ops')
   const qte = $('qte')
   const qFill = $('qte-fill')
@@ -130,6 +132,13 @@ export const createDialog = (mount: HTMLElement): Dialog => {
       const dlgKey = s.act.dialogId ? `${s.act.dialogId}:${s.inventory.join(',')}` : ''
       if (dlgKey !== lastDlg) {
         if (dlgKey) {
+          /**
+           * 상대 이름을 대화 상대의 `label` 에서 읽는다 — 예전엔 `할아버지`가 마크업에
+           * 박혀 있어 편의점 매대(`GIFT_STALL_ID`)가 두 번째 `talk` 대상이 되자
+           * 매대에서 연 선택창에도 "할아버지"가 떴다. `byId` 가 `systems/interact.ts`
+           * 의 상호작용 테이블과 같은 원천이므로 여기서 갈릴 일이 없다.
+           */
+          dlgWho.textContent = byId(s.act.dialogId!)?.label ?? ''
           dlgOps.innerHTML = branchesFor(s, s.act.dialogId!)
             .map((b) => `<div class="op${b.enabled ? '' : ' off'}"><kbd>${b.key}</kbd>` +
               `<span>${b.label}</span><span class="note">${b.note}</span></div>`)

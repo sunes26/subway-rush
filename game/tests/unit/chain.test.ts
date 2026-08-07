@@ -48,10 +48,10 @@ describe('S9-1 할아버지 3분기 — 전부 효자손을 얻는다', () => {
     expect(sec, `소요 ${sec.toFixed(2)}s — 즉시여야 한다`).toBeLessThan(0.2)
   })
 
-  it('[2] 붕어빵 — 1.5s, 양심 +1, 붕어빵 소모', () => {
+  it('[2] 양갱 — 1.5s, 양심 +1, 양갱 소모', () => {
     const { s, sec } = pick(start(7, { inventory: ['I-12', null, null] }), 2)
     expect(s.inventory.includes('I-01')).toBe(true)
-    expect(s.inventory.includes('I-12'), '붕어빵은 소모된다').toBe(false)
+    expect(s.inventory.includes('I-12'), '양갱은 소모된다').toBe(false)
     expect(s.scores.conscience).toBe(1)
     expect(s.flags.includes('GRANDPA_HELPED')).toBe(true)
     expect(s.flags.includes('GRANDPA_ANGRY'), '추격 없음').toBe(false)
@@ -77,7 +77,7 @@ describe('S9-1 할아버지 3분기 — 전부 효자손을 얻는다', () => {
   })
 })
 
-describe('S9-2 [2]는 붕어빵 보유 시에만 활성', () => {
+describe('S9-2 [2]는 양갱 보유 시에만 활성', () => {
   it('미보유면 회색 + 사유, 상태 불변', () => {
     const s0 = start(7)
     expect(grandpaBranches(s0)[1]?.enabled).toBe(false)
