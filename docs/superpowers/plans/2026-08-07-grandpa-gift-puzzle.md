@@ -17,6 +17,10 @@
 - 실패 엔딩 힌트는 조롱 금지 (`endings.ts:18`, GDD §11)
 - 작업 디렉터리는 `game/`. 모든 명령은 거기서 실행한다
 - 브랜치 `feat/grandpa-gift-puzzle` (스펙 커밋 `3666094` 위에 쌓는다)
+- ⚠ **검증 명령이 커밋된 산출물을 더럽힌다.** `npm run build`(= `verify` 안)는
+  커밋된 `game/dist/` 를 다시 굽고, `npm run test:e2e` 는 커밋된 스크린샷
+  베이스라인 ~100장을 다시 쓴다. 검증 뒤 `git status` 로 확인하고, 의도한 파일만
+  `git add` 한다. 나머지는 `git checkout --` 로 되돌린다.
 
 ## File Structure
 
