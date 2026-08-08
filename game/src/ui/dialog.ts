@@ -166,9 +166,8 @@ export const createDialog = (mount: HTMLElement): Dialog => {
         <div class="tag" id="ambush-who"></div>
       </div>
       <div class="conv">
-        <div class="bubble"><span class="who" id="ambush-speaker"></span><p id="ambush-line"></p></div>
+        <div class="bubble"><div class="kick">DIALOGUE</div><p id="ambush-line"></p></div>
         <div class="bar"><i id="ambush-bar"></i></div>
-        <div class="cap">개찰구</div>
       </div>
     </div>
     <div id="qte">
@@ -232,7 +231,6 @@ export const createDialog = (mount: HTMLElement): Dialog => {
   const ambushFrame = $('ambush-frame')
   const ambushWho = $('ambush-who')
   const ambushPortrait = $<HTMLImageElement>('ambush-portrait')
-  const ambushSpeaker = $('ambush-speaker')
   const ambushLine = $('ambush-line')
   const ambushBar = $('ambush-bar')
   const qte = $('qte')
@@ -412,7 +410,9 @@ export const createDialog = (mount: HTMLElement): Dialog => {
               ? (FISHCAKE_GREETING[Math.min(s.act.dialogStep, FISHCAKE_GREETING.length - 1)] ?? '')
               : '"이 시간에 여긴 어쩐 일인가?"'
           const showNext = isFishcake && (reacting || !greetingDone)
-          dlgNext.className = showNext ? 'on' : ''
+          // ⚠ `next` 를 **반드시 남긴다** — CSS 가 `#dlg .bubble .next` 로 잡으므로
+          //   `'on'` 만 넣으면 셀렉터가 통째로 빗나가 우측 하단 배치가 안 먹는다(실제로 그랬다)
+          dlgNext.className = showNext ? 'next on' : 'next'
           dlgBubble.className = `bubble${showNext ? ' has-next' : ''}`
           dlgOps.innerHTML = greetingDone && !reacting
             ? branchesFor(s, s.act.dialogId!)
@@ -459,9 +459,9 @@ export const createDialog = (mount: HTMLElement): Dialog => {
       }
       if (s.ambush.active) {
         const { line } = ambushLineAt(s.ambush.phaseMs)
+        // 화자는 **이름표에만** 둔다 — `#dlg` 와 같은 구조(말풍선 머리는 DIALOGUE 배지 고정)
         ambushWho.textContent = line.speaker
-        ambushSpeaker.textContent = line.speaker
-        ambushSpeaker.className = `who${line.speaker === '역무원' ? ' danger' : ''}`
+        ambushWho.className = `tag${line.speaker === '역무원' ? ' danger' : ''}`
         ambushLine.textContent = line.text
         if (line.speaker === '??') {
           ambushFrame.style.display = 'none'
