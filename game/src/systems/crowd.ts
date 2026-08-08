@@ -66,6 +66,30 @@ export const surgeAt = (elapsedMs: number, seed: number): SurgePhase => {
   return 'done'
 }
 
+/**
+ * 인파를 "겪는" 반경(m). 상호작용 판정 반경(1.5m)보다 조금 넓다 —
+ * 부딪혀야 겪는 게 아니라 **옆을 스쳐 지나가는 것**도 붐빈 것이기 때문이다.
+ */
+const CROWD_NEAR_R = 2.2
+
+/**
+ * 지금 인파에 영향받고 있는가 — `tally.crowdMs` 를 늘릴지 정한다.
+ *
+ * 이 게임의 인파는 두 종류뿐이다: 에스컬레이터 진입부를 막는 3인(`crowdSolids`)과
+ * 승강장 역류(`surge`). 둘 다 세지 않으면 대부분의 판에서 혼잡도가 0 이 된다.
+ * 사각형까지의 거리로 재므로 안쪽에 서 있으면 0 이고, `z` 는 층이 다르면 걸러 낸다.
+ */
+const nearCrowd = (s: GameState): boolean => {
+  const p = s.player.pos
+  return crowdSolids(s).some((c) => {
+    if (p.z < c.z0 - 0.5 || p.z > c.z0 + c.h) return false
+    const [x0, y0, x1, y1] = c.rect
+    const dx = Math.max(x0 - p.x, 0, p.x - x1)
+    const dy = Math.max(y0 - p.y, 0, p.y - y1)
+    return dx * dx + dy * dy <= CROWD_NEAR_R * CROWD_NEAR_R
+  })
+}
+
 /** 승강장에서 역류에 노출되는 위치인가 — 남측 벽(y ≤ 1.5)에 붙으면 안전하다 */
 const exposed = (s: GameState): boolean =>
   Math.abs(s.player.pos.z - FLOOR.B2) < 1.5 &&
@@ -85,6 +109,15 @@ export const crowdSystem = (s: GameState, ctx: CrowdCtx): Action[] => {
       t: 'FX', kind: 'toast',
       text: '반대편 열차 도착 — 하차 인파가 밀려옵니다', lifeMs: 2800, value: 0,
     })
+  }
+
+  /**
+   * 혼잡도 누적 — **아래의 이른 반환들보다 먼저** 낸다.
+   * 넘어져 있는 동안(`stallMs > 0`)이야말로 가장 붐빈 순간인데, 그 분기가
+   * `return` 으로 빠지므로 뒤에 두면 그 시간이 통째로 안 세진다.
+   */
+  if (nearCrowd(s) || (phase === 'active' && exposed(s))) {
+    out.push({ t: 'CROWD_NEAR', dtMs: ctx.dtMs })
   }
 
   // 넘어져 있는 동안은 이동을 봉쇄한다. movement가 낸 MOVE를 **덮어쓴다**

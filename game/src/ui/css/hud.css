@@ -18,6 +18,20 @@
 
 /* ─────────────── 공통 레이어 ─────────────── */
 #hud{position:absolute;inset:0;font-family:var(--sans);user-select:none}
+/* 타이틀·엔딩에서는 통째로 사라진다 (`ui/hud.ts sync()` 가 붙인다).
+   `visibility` 가 아니라 `display` 인 이유: 숨은 위젯이 레이아웃·히트영역을
+   남기면 그 위에 뜬 화면의 클릭이 먹힌다. */
+#hud.off{display:none}
+/*
+ * 인트로에서 조작권이 넘어올 때 **HUD 가 톡 튀어나오지 않게** 한다.
+ *
+ * `display:none` 에서 돌아오는 순간 애니메이션이 다시 시작되는 성질을 쓴다 —
+ * 별도의 신호나 클래스 없이 이 한 줄로 끝난다. 길게 끌면 시작이 굼떠 보이므로
+ * 0.32초. 검은 화면으로 덮는 페이드는 쓰지 않는다(브리프 §18).
+ */
+#hud{animation:hud-in .32s ease-out both}
+@keyframes hud-in{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){#hud{animation:none}}
 
 /* Figma 패널 — 반투명 검정 · 실낱 테두리 · 깊은 그림자. 모든 위젯이 이 한 규칙을 쓴다 */
 .hud-panel{background:var(--panel);border:1px solid var(--panel-line);

@@ -84,7 +84,8 @@ test('P1 스크린샷 — 아웃라인 · 대화 · QTE · HUD', async ({ page }
     const g = window.__game!
     g.set({ phase: 'ended', endingId: 'E-14', boarded: true, timeLeftMs: 24_000,
       scores: { conscience: 3, style: 4, knowledge: 4 },
-      tally: { coinsEarned: 3500, itemsUsed: ['I-01', 'I-06', 'I-09', 'I-12'], secrets: ['a', 'b', 'c', 'd'], pushes: 0 } })
+      tally: { coinsEarned: 3500, itemsUsed: ['I-01', 'I-06', 'I-09', 'I-12'],
+        secrets: ['a', 'b', 'c', 'd'], pushes: 0, crowdMs: 41_000, staminaMin: 34 } })
   })
   await page.waitForTimeout(700)
   await page.screenshot({ path: `${DIR}/06-ending-e14.png` })

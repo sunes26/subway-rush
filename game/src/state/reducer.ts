@@ -66,7 +66,17 @@ const EMPTY_KNOCKDOWN: KnockdownState = { active: false, phaseMs: 0 }
 
 const EMPTY_SURGE: SurgeState = { fell: false, stallMs: 0 }
 
-const EMPTY_TALLY: TallyState = { coinsEarned: 0, itemsUsed: [], secrets: [], pushes: 0 }
+/**
+ * 판 집계의 초기값.
+ *
+ * `staminaMin` 은 최댓값에서 시작해 내려가기만 한다 — 0 으로 두면 첫 프레임부터 탈진이다.
+ *
+ * **export 인 이유**: 테스트가 `TallyState` 리터럴을 통째로 적으면 필드를 하나 더할
+ * 때마다 관계없는 테스트가 전부 컴파일 에러로 깨진다(실제로 `crowdMs` 를 넣자
+ * 네 곳이 깨졌다). 스프레드로 쓰게 두면 그 파급이 사라진다.
+ */
+export const EMPTY_TALLY: TallyState =
+  { coinsEarned: 0, itemsUsed: [], secrets: [], pushes: 0, crowdMs: 0, staminaMin: 100 }
 
 const EMPTY_SWAP: SwapState = { active: false, newSlot: 0, dropId: null, leftMs: 0 }
 
@@ -330,16 +340,23 @@ export const reducer = (s: GameState, a: Action): GameState => {
         },
       }
 
-    case 'STAMINA':
+    case 'STAMINA': {
+      const stamina = clamp(a.value, 0, 100)
       return {
         ...s,
         player: {
           ...s.player,
-          stamina: clamp(a.value, 0, 100),
+          stamina,
           sprintLocked: a.locked,
           sinceSprintMs: a.sinceSprintMs,
         },
+        // 최저치는 여기서만 갱신한다 — 스태미너를 clamp 하는 유일한 자리라
+        // 값이 지나가는 경로가 하나로 유지된다. 회복해도 안 올라간다.
+        tally: stamina < s.tally.staminaMin
+          ? { ...s.tally, staminaMin: stamina }
+          : s.tally,
       }
+    }
 
     case 'ZONE':
       return s.zone === a.zone ? s : { ...s, zone: a.zone }
@@ -780,6 +797,14 @@ export const reducer = (s: GameState, a: Action): GameState => {
         flags: s.flags.includes('CHASE_DONE') ? s.flags : [...s.flags, 'CHASE_DONE'],
       }
     }
+
+    /**
+     * 인파에 영향받은 시간 누적 — 엔딩 "이번 판 · 혼잡도".
+     * 발행처(`crowdSystem`)가 `phase !== 'playing'` 이면 아무것도 안 내므로
+     * 여기서 다시 막지 않는다 — 게이트가 두 곳이면 어느 쪽이 진짜인지 못 읽는다.
+     */
+    case 'CROWD_NEAR':
+      return { ...s, tally: { ...s.tally, crowdMs: s.tally.crowdMs + a.dtMs } }
 
     /** 역류에 넘어졌다 — 1.2초 정지. 아이템 드랍은 O-05(P2)의 몫이고 여기서는 시간만 잃는다 */
     case 'SURGE_FALL':
