@@ -60,9 +60,26 @@ export const loadPlayerRig = async (url: string, outline: boolean, scale = 1): P
   // 스켈레톤을 공유해야 하는데, 그 복잡도를 P0 게이트 전에 지불할 이유가 없다.
   void outline
 
-  // 접지 그림자 — 쿼터뷰에서 높이를 읽게 해주는 유일한 단서
+  /**
+   * 접지 그림자 — 실제 그림자가 없는 씬에서 발이 바닥에 붙어 보이게 하는 단서.
+   *
+   * ■ ★ 계수는 **실측 보폭에서 나왔다** — 0.42 는 배율이 없던 시절의 값이다
+   *
+   *   한동안 `0.42 * scale` 이었다. `CHAR_SCALE` 1.6 이 나중에 곱해지면서
+   *   반지름 0.67 · **지름 1.34m** 가 됐다. 실측하면 그게 얼마나 큰지 나온다:
+   *
+   *     두 발 간격  걸을 때 0.316m · 뛸 때(최대 보폭) 0.815m
+   *     그림자      지름 1.30m        ← 걸을 때 발자국의 **4.1배**
+   *
+   *   그래서 인물 밑에 검은 웅덩이가 깔렸다. 사람이 아니라 물체가 떠 있는 것처럼
+   *   보인다. 원래 0.42 는 P0 쿼터뷰에서 **높이를 읽는 단서**로 크게 잡은 값인데,
+   *   지금은 1인칭이 기본이고 3인칭은 인트로에서만 쓴다 — 전제가 바뀌었다.
+   *
+   *   최대 보폭 0.815m 를 덮는 반지름은 0.41 이다. 배율을 따라가되 그 값이
+   *   나오도록 계수를 0.26 으로 잡는다(0.26 × 1.6 = 0.416).
+   */
   const shadow = new Mesh(
-    new CircleGeometry(0.42 * scale, 20),
+    new CircleGeometry(0.26 * scale, 20),
     new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.26, depthWrite: false }),
   )
   shadow.rotation.x = -Math.PI / 2

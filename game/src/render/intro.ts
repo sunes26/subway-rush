@@ -242,11 +242,20 @@ export type ActorState = Readonly<{
 /**
  * 주인공의 자리.
  *
- * ★ 앉히지 않는다. `mc_character_rigged.glb` 의 클립은 Board·Hit·Idle·Jump·
- *   JumpAir·JumpLand·Run·Slide·Sprint·Stumble·Walk 열한 종이고 **앉은 자세가
- *   없다.** 없는 포즈를 억지로 만들면 무릎이 좌판을 뚫는다. 손잡이를 잡고 서 있는
- *   것으로 간다 — 출근길 버스에서 서서 가는 것은 오히려 흔한 그림이고,
- *   레퍼런스의 두 번째 컷도 서 있다. (앉은 포즈가 생기면 여기만 갈아 끼우면 된다.)
+ * ■ ★ **앉는다.** 클립이 없어도 본을 직접 접으면 된다
+ *
+ * 이 자리에 한동안 정반대의 주석이 붙어 있었다 — *"★ 앉히지 않는다 … 손잡이를
+ * 잡고 서 있는 것으로 간다"*. 근거는 `mc_character_rigged.glb` 에 앉은 클립이
+ * 없다는 것이었고, **그 사실은 지금도 맞다**(Board·Hit·Idle·Jump·JumpAir·
+ * JumpLand·Run·Slide·Sprint·Stumble·Walk 열한 종).
+ *
+ * 틀린 것은 결론이었다. 본을 열어 보니 17개뿐이고 이름이 붙어 있어서
+ * **클립 없이 코드로 앉힐 수 있었다**(`render/pose.ts`). 그래서 `sit` 축이
+ * 생겼고 주인공은 좌석에 앉아 있다. 그런데 주석은 안 고쳐져서, 코드를 읽는
+ * 사람에게 **자신 있게 거짓말을 하고 있었다.**
+ *
+ * 남겨 두는 이유: 지금도 "앉은 클립이 없다"를 보고 같은 결론으로 갈 수 있다.
+ * 없는 것은 클립이지 방법이 아니다.
  */
 export const actorAt = (tMs: number): ActorState => {
   const t = Math.max(0, Math.min(INTRO_MS, tMs))

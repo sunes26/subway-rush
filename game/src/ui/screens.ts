@@ -218,7 +218,7 @@ export const createScreens = (mount: HTMLElement): Screens => {
         </div>
         <div class="goal s2">
           <b>180초 안에 신촌 방면 지하철에 탑승하세요.</b>
-          <span>서두르되, 아무거나 고르진 마세요.</span>
+          <span>뛰는 것만으로는 안 될 수 있습니다.</span>
         </div>
         <div class="keys s3">
           <span class="go"><b>ENTER</b> ${first ? '게임 시작' : '출근 시작'}</span>

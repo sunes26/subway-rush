@@ -117,10 +117,15 @@ export const loadNpcRig = async (
     m.material = Array.isArray(m.material) ? m.material.map(apply) : apply(m.material)
   })
 
-  // 접지 그림자 — 실제 그림자가 없는 씬에서 발이 바닥에 붙어 보이게 하는 유일한 단서
+  /**
+   * 접지 그림자 — 실제 그림자가 없는 씬에서 발이 바닥에 붙어 보이게 하는 단서.
+   *
+   * ⚠ 계수는 `player-rig.ts` 와 **같은 값이어야 한다.** 거기서 실측 보폭
+   *   (걸을 때 0.316m · 뛸 때 0.815m)에 맞춰 0.42 → 0.26 으로 내렸다.
+   *   한쪽만 고치면 주인공과 NPC 의 그림자 크기가 달라져 그게 더 눈에 띈다.
+   */
   const shadow = new Mesh(
-    // 접지 그림자도 같이 커져야 한다 — 안 그러면 발보다 작은 그림자가 남는다
-    new CircleGeometry(0.42 * (opts?.scale ?? 1), 20),
+    new CircleGeometry(0.26 * (opts?.scale ?? 1), 20),
     new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.26, depthWrite: false }),
   )
   shadow.rotation.x = -Math.PI / 2

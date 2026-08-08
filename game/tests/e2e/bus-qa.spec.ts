@@ -1,4 +1,5 @@
 /** STEP QA — 단계별 눈 검사용. 판정은 사람이 한다. */
+import { DOORS_MS, SHOT } from '../../src/render/intro'
 import { test, type Page } from '@playwright/test'
 const DIR = 'tests/e2e/__shots__/bus'
 const boot = async (page: Page): Promise<void> => {
@@ -76,10 +77,20 @@ for (const axis of ['x', 'z'] as const) {
 test('STEP 5·6 — 4샷', async ({ page }) => {
   test.setTimeout(240_000)
   await boot(page)
+  /**
+   * ⚠ `SHOT` 파생. 박아 둔 밀리초는 ② 가 길어지면서 전부 밀렸다 —
+   *   `c3-door-open`(3250)은 ② 폰을, `c5-handoff-*`(5500~5790)은 인계(6500)보다
+   *   한참 앞을 찍고 있었다. 이름이 가리키는 **순간**을 찍게 되돌린다.
+   */
   const marks: [string, number][] = [
-    ['c1-interior', 700], ['c2-ots', 2100], ['c2-ots-late', 2600],
-    ['c3-door-shut', 2860], ['c3-door-open', 3250], ['c3-alight', 3760], ['c3-peak', 3821], ['c3-out', 4050],
-    ['c4-run', 4700], ['c4-late', 5450], ['c5-handoff-a', 5500], ['c5-handoff-b', 5680], ['c5-handoff-c', 5790],
+    ['c1-interior', 700], ['c2-ots', SHOT.interior + 700],
+    ['c2-ots-late', SHOT.phone - 900],
+    ['c3-door-shut', DOORS_MS - 120], ['c3-door-open', SHOT.phone + 200],
+    ['c3-alight', SHOT.phone + 800], ['c3-peak', SHOT.phone + 950],
+    ['c3-out', SHOT.door - 150],
+    ['c4-run', SHOT.door + 300], ['c4-late', SHOT.dash - 900],
+    ['c5-handoff-a', SHOT.dash - 400], ['c5-handoff-b', SHOT.dash - 200],
+    ['c5-handoff-c', SHOT.dash - 60],
   ]
   for (const [name, t] of marks) {
     await page.evaluate((ms) => window.__game!.seekIntro(ms), t)
