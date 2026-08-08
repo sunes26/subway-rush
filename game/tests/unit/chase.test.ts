@@ -206,9 +206,16 @@ describe('S10-7~S10-8 해제 3경로', () => {
     expect(s.scores.conscience, '양심 +1').toBe(c0 + 1)
   })
 
-  it('추격이 아닐 때 효자손 슬롯은 자판기용으로 남는다', () => {
+  /**
+   * 예전엔 여기서 `ACT_DENY('자판기 앞에서 써야 한다')` 가 났다. "언제든 장착"
+   * (디렉터 지시 2026-08-07) 이후로는 **손에 들린다** — 그래도 자판기가 열리지는 않는다.
+   * 안내 문구(`noTargetReason`)는 사라지지 않고 드는 토스트에 얹힌다.
+   */
+  it('추격이 아니고 자판기도 없으면 효자손은 손에 들린다 (QTE는 안 열린다)', () => {
     const s = tap(put(start(7, { inventory: ['I-01', null, null] }), 30, 15, FLOOR.B1), { pressSlot: 1 })
-    expect(s.act.denyText, '근처에 자판기가 없다').toBe('자판기 앞에서 써야 한다')
+    expect(s.hand.item).toBe('I-01')
+    expect(s.qte.active, '근처에 자판기가 없다').toBe(false)
+    expect(s.act.denyText).toBe('')
   })
 })
 

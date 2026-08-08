@@ -1,5 +1,5 @@
 /**
- * UI-12 · SCN-08 — 엔딩 도감 16칸 (`docs/P2-SPEC.md` §6.2).
+ * UI-12 · SCN-08 — 엔딩 도감 18칸(차에 치이는 즉사 E-18 추가, 원래는 17칸) (`docs/P2-SPEC.md` §6.2).
  *
  * **엔딩이 이 게임의 세일즈 포인트인데 P1까지 카운터가 없었다.** 몇 개를 봤는지 모르면
  * 수집이 성립하지 않는다. 도감은 그 카운터다.
@@ -54,7 +54,7 @@ const cardHtml = (save: SaveData): string => {
       return `<li class="cell got ${e.tone}">
         <b>${TONE_MARK[e.tone]} ${e.title}</b>
         <i>${e.id}</i>
-        <em>“${e.lines[0]}”</em>
+        <em>“${e.line}”</em>
         <u>${rec.seen}회 · ${best}</u>
       </li>`
     })

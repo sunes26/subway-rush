@@ -22,7 +22,7 @@ export type Phase = 'title' | 'intro' | 'playing' | 'boarding' | 'ended'
 export type EndingId =
   | 'E-01' | 'E-02' | 'E-03' | 'E-04' | 'E-05'
   | 'E-06' | 'E-07' | 'E-08' | 'E-09' | 'E-10' | 'E-11'
-  | 'E-12' | 'E-13' | 'E-14' | 'E-15' | 'E-16' | 'E-17'
+  | 'E-12' | 'E-13' | 'E-14' | 'E-15' | 'E-16' | 'E-17' | 'E-18'
 
 /** P1 예약 — 지금은 선언만 */
 export type ItemId =
@@ -35,7 +35,7 @@ export type FlagId =
   // 붕어빵 or 대화 완주. **P1에서는 읽는 곳이 없다** — E-12(히든 굿엔딩)의 조건 중
   // 하나이므로 P2에서 소비된다. 지금 지우면 그때 절도/선행 구분을 다시 만들어야 한다.
   | 'GRANDPA_HELPED'
-  | 'HINT_GRANDPA'       // 대화 완주 보상 — 안내 LED가 고장 게이트를 지목한다
+  | 'HINT_GRANDPA'       // 대화 완주 보상 — 안내 LED가 정상 게이트를 지목한다
   | 'MASK_ON'            // 마스크 착용 (O-04 저항 +50%)
   | 'CHASE_DONE'         // 추격이 한 번 끝났다 — 재발동 금지
   | 'WALLET_RETURNED'    // 유실물 지갑 반납 — 비상게이트 개방원 (E-12 조건)
@@ -52,6 +52,9 @@ export type FlagId =
   | 'OPPOSITE_SIDE'      // Z5 반대편 승강장 도달 (E-08)
   | 'BUSTED'             // 역무원에게 적발됐다 — E-09 의 단일 조건
   | 'GIFT_BOUGHT'        // 편의점 선물 구매 — 1회 한정. 되돌리기 없음
+  // ── 붕어빵 아저씨 분실물 (신규) ──
+  /** [1]"내가 가진다" 선택 — 개찰구 x≥57 매복(E-17)의 단일 조건 */
+  | 'EARBUDS_STOLEN'
 
 export type GateState = 'idle' | 'tagging' | 'open' | 'reject'
 
@@ -154,6 +157,19 @@ export type ActState = Readonly<{
   consumed: readonly string[]
   /** 선택 UI가 열린 대상 (P1은 할아버지 전용) */
   dialogId: string | null
+  /**
+   * 대화 진행 단계 — `DIALOG`로 새 상대가 열릴 때마다 0으로 돌아간다.
+   * 지금은 붕어빵 아저씨의 클릭 진행형 인사말(`FISHCAKE_GREETING`)만 쓴다 —
+   * 다른 대화는 즉시 선택지를 보여주므로 이 값을 읽지 않는다.
+   */
+  dialogStep: number
+  /**
+   * 선택 이후 반응 대사 단계 — 0이면 아직 안 골랐다. 지금은 붕어빵 아저씨만 쓴다:
+   * 고르면(`DIALOG_CHOSEN`) 대화창은 안 닫고 반응 대사(`FISHCAKE_REACTION`)를 먼저
+   * 보여준다 — 골랐다고 바로 닫으면 아저씨 대답이 대화창이 아니라 **토스트**로
+   * 따로 떠서 방금까지 읽던 대화창과 끊겨 보였다(디렉터 지적으로 갱신).
+   */
+  dialogChoice: 0 | 1 | 2
 }>
 
 /** 바닥에 떨어진 아이템 — 슬롯 교체 시 생긴다. 되돌아가 주울 수 있다 */
@@ -234,6 +250,31 @@ export type ChaseState = Readonly<{
 }>
 
 /**
+ * 개찰구 매복 — 붕어빵 아저씨 분실물을 챙긴 뒤(`EARBUDS_STOLEN`) x≥57에서 발동하는
+ * 강제 컷씬(E-17). 위치는 상태로 안 든다 — 이동이 잠기는 순간 `player.pos`가
+ * 그대로 고정되므로 렌더가 그 값을 그대로 읽으면 된다(`chase.pos`와 다른 이유).
+ *
+ * `phaseMs`는 `systems/ambush.ts`의 대사 표(`AMBUSH_LINES`) 누적 시간과 비교해
+ * 몇 번째 대사인지·언제 끝나는지를 판정한다.
+ */
+export type AmbushState = Readonly<{
+  active: boolean
+  phaseMs: number
+}>
+
+/**
+ * E-18 차에 치임 — 붕 떴다가 쓰러지는 동안의 상태(`systems/knockdown.ts`).
+ *
+ * `AmbushState` 와 모양이 같지만 **합치지 않는다.** 둘은 동시에 살아 있을 수 없는 게
+ * 아니라(지상에서 치이고 지하에서 매복당한다) 그냥 서로 다른 사건이고, 하나로 묶으면
+ * "무엇 때문에 쓰러졌는가"를 상태에서 못 읽는다 — 카메라 궤적도 엔딩도 다르다.
+ */
+export type KnockdownState = Readonly<{
+  active: boolean
+  phaseMs: number
+}>
+
+/**
  * O-04 역류 (P1). 웨이브 자체는 `surgeAt(elapsedMs, seed)` 로 파생되므로 상태가 없다 —
  * 여기 남는 건 **한 번만 일어나야 하는 일**뿐이다.
  */
@@ -242,6 +283,41 @@ export type SurgeState = Readonly<{
   fell: boolean
   /** 넘어져 못 움직이는 남은 시간(ms) */
   stallMs: number
+}>
+
+/**
+ * 손 — **지금 들고 있는 것** (디렉터 지시 2026-08-07).
+ *
+ * P2까지 슬롯 키(`1`~`0`)는 곧 "쓴다"였다. 그래서 쓸 대상이 없으면 사유만 뜨고
+ * 아이템은 영영 손에 안 들어왔다 — 인벤토리는 있는데 **가진 것이 화면에 없었다.**
+ * 이제 대상이 없으면 그 자리에서 **든다.** 쓰는 것은 대상이 있을 때만 일어난다.
+ *
+ * ★ `slot` 을 같이 들고 있는 이유: 인벤토리가 바뀌면(소모·교체·낙하) 손이 유령이 된다.
+ *   `reducer.applyAll` 이 매 액션 뒤에 `inventory[slot] === item` 을 확인해 어긋나면 비운다.
+ */
+export type HandState = Readonly<{
+  /** 들고 있는 아이템. null 이면 빈손 */
+  item: ItemId | null
+  /** 들고 있는 칸. 빈손이면 −1 */
+  slot: number
+  /** 우산을 펼쳤는가 — `item === 'I-09'` 일 때만 참일 수 있다 */
+  open: boolean
+}>
+
+/**
+ * 펼친 우산에 맞아 날아간 사람 — **방향만** 상태에 남긴다.
+ *
+ * 경과 시간은 렌더가 자기 시계로 센다(`render/actors.ts` 의 `cpAsideSec` 와 같은 방식).
+ * 시뮬이 들고 있어야 할 이유가 없다: 판정은 맞은 그 순간 이미 끝났고(`ACT_CONSUME`),
+ * 그 뒤는 연출이다. 방향만 시뮬이 정하는 이유는 **플레이어가 어디서 훑었는지**가
+ * 렌더에 없기 때문이다.
+ */
+export type KnockState = Readonly<{
+  /** 맞은 사람의 상호작용 id (`ACT-CP*`) */
+  id: string
+  /** 날아가는 방향 단위벡터 (월드 x 동 · y 북) */
+  dx: number
+  dy: number
 }>
 
 /** 채점 보조 집계 — 엔딩 조건식이 읽는다 */
@@ -287,8 +363,23 @@ export type GameState = Readonly<{
    * 맵을 보러 들어온 사람도 열차는 봐야 한다.
    */
   freeplay: boolean
-  /** 시작 후 경과(ms). 열차 스케줄의 단일 입력 */
+  /** 시작 후 경과(ms). 열차 스케줄의 단일 입력 — 위치 트리거 이후엔 `trainTriggerMs` 와 함께 쓴다 */
   elapsedMs: number
+  /**
+   * 열차 위치 트리거(디렉터 지시) — 계단/엘리베이터 앞에 처음 도착한 시각(ms). null이면
+   * 아직 안 밟음. `systems/train.ts trainClock` 이 이 값과 `elapsedMs` 로 열차의 유효
+   * 시각을 계산한다 — 트리거 전엔 원래 스케줄(168~182s) 그대로, 트리거 후엔 그 순간부터
+   * 앞당겨진다. 기존 시간 기반 테스트가 `elapsedMs` 만 조작해도 깨지지 않게, 트리거가
+   * 없으면(null) `trainClock`은 `elapsedMs` 를 그대로 돌려준다.
+   */
+  trainTriggerMs: number | null
+  /**
+   * 반대 방면 열차(디렉터 지시) — 게이트9 동쪽 새 통로 끝 플랫폼. `train`/`trainTriggerMs`
+   * 와 완전히 독립된 두 번째 열차다. 여길 타면 `OPPOSITE_SIDE` 플래그가 서고
+   * 기존 E-08("반대편 탑승") 엔딩이 그대로 집어간다 — 새 엔딩을 안 만들었다.
+   */
+  train2: TrainStatus
+  trainTriggerMs2: number | null
   zone: ZoneId
   player: PlayerState
   cardBalance: number
@@ -298,6 +389,8 @@ export type GameState = Readonly<{
   lightMs: number
   boarded: boolean
   boardedDoorX: number | null
+  /** 탄 게 `train2`(반대 방면)인가 — 출발 판정이 어느 열차를 볼지 이걸로 가른다 */
+  boardedTrain2: boolean
   endingId: EndingId | null
   fx: readonly Fx[]
   nextFxId: number
@@ -306,6 +399,8 @@ export type GameState = Readonly<{
   inventory: readonly (ItemId | null)[]
   scores: Readonly<{ conscience: number; style: number; knowledge: number }>
   chase: ChaseState
+  ambush: AmbushState
+  knockdown: KnockdownState
   flags: readonly FlagId[]
 
   // ── P1 신설 ──
@@ -315,6 +410,10 @@ export type GameState = Readonly<{
   qte: QteState
   surge: SurgeState
   tally: TallyState
+  /** 손에 든 물건 — 슬롯 키로 들고 놓는다 */
+  hand: HandState
+  /** 펼친 우산에 날아간 사람들. 한 번 들어가면 안 빠진다(그 자리에 널브러져 있다) */
+  knocks: readonly KnockState[]
 
   // ── P2 신설 ──
   /** UI-14 교체 창 — 슬롯이 가득 찬 채로 습득한 직후 0.9초 */
@@ -347,7 +446,11 @@ export type Action =
   | { t: 'GATE_SET'; state: GateState; timerMs: number }
   | { t: 'GATE_PASSED' }
   | { t: 'TIME_PENALTY'; ms: number; label: string }
-  | { t: 'BOARD'; doorX: number }
+  /** `opp` 면 반대 방면 열차 — `boardedTrain2` 로 기록해서 종료 판정이 어느 열차를 볼지 안다 */
+  | { t: 'BOARD'; doorX: number; opp?: boolean }
+  /** 계단/엘리베이터 위치 트리거 — 한 번만 유효(멱등) */
+  | { t: 'TRAIN_TRIGGER' }
+  | { t: 'TRAIN_TRIGGER2' }
   | { t: 'PHASE'; phase: Phase }
   | { t: 'END'; endingId: EndingId }
   | { t: 'FX'; kind: Fx['kind']; text: string; lifeMs: number; value: number }
@@ -360,11 +463,15 @@ export type Action =
   | { t: 'ACT_DENY'; text: string }
   | { t: 'ACT_CONSUME'; id: string }
   | { t: 'DIALOG'; id: string | null }
+  /** 클릭 진행형 인사말 한 칸 전진 — 지금은 붕어빵 아저씨 전용 */
+  | { t: 'DIALOG_ADVANCE' }
+  /** 선택 확정 — 대화는 안 닫고 반응 대사 단계로 넘어간다 (지금은 붕어빵 아저씨 전용) */
+  | { t: 'DIALOG_CHOSEN'; key: 1 | 2 }
   /** slot < 0 이면 빈 칸 자동 선택. 가득 차면 slot 0 을 바닥에 떨군다 */
   | { t: 'PICKUP'; item: ItemId; slot: number; dropId: string | null }
   | { t: 'ITEM_SPEND'; slot: number }
   | { t: 'ITEM_USED'; item: ItemId }
-  | { t: 'BALANCE'; delta: number; label: string }
+  | { t: 'BALANCE'; delta: number; label: string; text?: string }
   | { t: 'CONSCIENCE'; delta: number }
   | { t: 'SECRET'; id: string }
   | { t: 'FLAG'; id: FlagId; on: boolean }
@@ -387,6 +494,18 @@ export type Action =
   /** 해제. `returned` 면 효자손을 반납한 것이다 — 2대째 즉사(E-16)는 `END` 로 직접 끝난다 */
   | { t: 'CHASE_END'; reason: 'gate' | 'timeout' | 'returned' }
 
+  // ── 개찰구 매복 (신규) ──
+  /** 발동 — 이동·시선이 잠긴다(`systems/movement.ts`) */
+  | { t: 'AMBUSH_START' }
+  /** 대사 진행. 총 길이를 넘기면 `systems/ambush.ts`가 곧바로 `END`를 낸다 */
+  | { t: 'AMBUSH_TICK'; dtMs: number }
+
+  // ── 차에 치임 (E-18) ──
+  /** 충돌 — 이동이 잠기고 카메라가 떠오르기 시작한다 */
+  | { t: 'KNOCKDOWN_START' }
+  /** 체공·착지 진행. 총 길이를 넘기면 `systems/knockdown.ts`가 `END`를 낸다 */
+  | { t: 'KNOCKDOWN_TICK'; dtMs: number }
+
   // ── P1 인파 (O-04) ──
   | { t: 'SURGE_FALL' }
   /** 이번 스텝 동안 인파에 영향받았다 — `tally.crowdMs` 누적 (`systems/crowd.ts`) */
@@ -403,6 +522,14 @@ export type Action =
   | { t: 'STAFF_ALERT'; ms: number }
   /** 우산으로 인파를 밀어냈다 (E-11 계수) */
   | { t: 'PUSH' }
+
+  // ── 손 (디렉터 지시 2026-08-07) ──
+  /** 들거나 놓는다. `item: null` 이면 빈손으로 만든다 */
+  | { t: 'EQUIP'; slot: number; item: ItemId | null }
+  /** 우산을 펼치거나 접는다. 우산을 안 들고 있으면 무시된다 */
+  | { t: 'UMBRELLA'; open: boolean }
+  /** 펼친 우산이 사람을 날렸다 — 방향은 단위벡터 */
+  | { t: 'KNOCK'; id: string; dx: number; dy: number }
 
   // ── P2 슬롯 교체 (UI-14) ──
   /** 교체 창 안에서 `1``2``3` — 새 아이템을 그 칸으로 옮기고 원래 있던 것을 바닥으로 */

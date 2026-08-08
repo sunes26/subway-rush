@@ -148,6 +148,6 @@ describe('A-2 · S6-4 — 처음부터 끝까지 플레이 가능', () => {
     const e = resolveEnding(s)
     expect(e.tone).toBe('fail')
     // GDD §11 — 실패는 온화해야 한다. 조롱 어휘 금지
-    for (const line of e.lines) expect(line).not.toMatch(/실패|바보|멍청|한심/)
+    for (const line of [e.line]) expect(line).not.toMatch(/실패|바보|멍청|한심/)
   })
 })

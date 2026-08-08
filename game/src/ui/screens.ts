@@ -18,7 +18,7 @@
 
 import { formatClock } from '../core/math'
 import { loadSave } from '../core/save'
-import { ENDINGS, pickLine, resolveEnding, type EndingDef } from '../data/endings'
+import { ENDINGS, resolveEnding, type EndingDef } from '../data/endings'
 import { QUEUE_MARKERS } from '../data/world'
 import type { EndingId, GameState } from '../state/types'
 // 스타일은 `css/screens.css` 가 단일 원천이다 — UI 킷(/uikit.html)이 같은 파일을 읽는다.
@@ -85,7 +85,8 @@ const WHAT_HAPPENED: Readonly<Record<EndingId, string>> = {
   'E-14': '동전을 모아 열차에 탑승했습니다.',
   'E-15': '할아버지가 선물을 돌려주셨습니다.',
   'E-16': '도망치지 못했습니다.',
-  'E-17': '적신호에 건너다 차에 치였습니다.',
+  'E-17': '개찰구에서 붙잡혔습니다.',
+  'E-18': '차에 치였습니다.',
 }
 
 /** 화면에 띄우는 결과값 한 칸. `wide` 면 두 칸을 합쳐 한 줄로 쓴다. */
@@ -191,7 +192,13 @@ export const createScreens = (mount: HTMLElement): Screens => {
    * 같은 안내를 반복하지 않는다.
    */
   const title = (): string => {
-    const first = loadSave().plays === 0
+    const save = loadSave()
+    const first = save.plays === 0
+    /**
+     * 도감 진행도. 한동안 화면에서 숨겨 뒀다가 다시 노출한다 —
+     * 기록은 그동안에도 계속 쌓이고 있었으므로(`recordEnding`) 켜기만 하면 된다.
+     */
+    const got = Object.keys(save.endings).length
     return `
     <div class="board title">
       <div class="brackets"><i></i><i></i></div>
@@ -215,6 +222,7 @@ export const createScreens = (mount: HTMLElement): Screens => {
         </div>
         <div class="keys s3">
           <span class="go"><b>ENTER</b> ${first ? '게임 시작' : '출근 시작'}</span>
+          <span><b>C</b> 도감 ${got} / ${ENDINGS.length}</span>
           <span><b>ESC</b> 설정</span>
         </div>
       </div>
@@ -255,9 +263,10 @@ export const createScreens = (mount: HTMLElement): Screens => {
             <dl${f.wide ? ' class="wide"' : ''}>
               ${f.label ? `<dt>${f.label}</dt>` : ''}<dd>${f.value}</dd>
             </dl>`).join('')}</div>`}
-          <div class="say s5">${pickLine(e, s.seed)}</div>
+          <div class="say s5">${e.line}</div>
           <div class="keys s6">
             <span><b>R</b> 다시하기</span>
+          <span><b>C</b> 도감</span>
             <span><b>ESC</b> 설정</span>
           </div>
         </div>

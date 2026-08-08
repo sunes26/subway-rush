@@ -7,11 +7,31 @@
 
 import { lerpExp, rotateToward, type Vec2 } from '../core/math'
 import type { InputFrame } from '../core/input'
+import { FISHCAKE_ID } from '../data/interactables'
 import { GATE, JUMP, MOVE, SPEED, STAMINA } from '../data/tuning'
 import { FLOOR, GATES, GATE_FUNNEL_X } from '../data/world'
 import type { Action, GameState } from '../state/types'
 import { resolveMove, sampleGround, depenetrate } from './collision'
 import { WET_ZONE } from './obstacles'
+
+/**
+ * 말동무 해주기(`story`) 중엔 **진짜로 못 움직인다** (디렉터 지시 2026-08-08).
+ *
+ * 이 게임의 다른 모든 상호작용은 "움직이면 취소"(`CANCEL_ON_MOVE`)일 뿐 입력 자체를
+ * 막지는 않는다. `story` 만 예외인 이유는 30초짜리 자동 진행 대화라 — 취소가 아니라
+ * 이동 자체가 봉쇄돼야 어색하게 걸어 나가면서 할아버지가 계속 혼잣말하는 그림이 안 나온다.
+ * `story` 는 오직 할아버지(`ACT-02-GP`)만 쓰는 종류라 상대를 따로 확인할 필요가 없다.
+ *
+ * 개찰구 매복(`systems/ambush.ts`)도 같은 이유로 잠근다 — 도망칠 수 있으면
+ * "숨 돌리자마자 뒤통수"가 성립하지 않는다.
+ *
+ * 붕어빵 아저씨(`FISHCAKE_ID`)와의 대화도 여는 동안 전부 잠근다(디렉터 지시) —
+ * 클릭으로 인사말을 넘기는 동안 걸어서 자리를 벗어나면 대사와 위치가 어긋난다.
+ */
+const isTalkLocked = (s: GameState): boolean =>
+  s.act.busyKind === 'story' || s.ambush.active || s.act.dialogId === FISHCAKE_ID ||
+  // 차에 치이면 조작이 통째로 끝난다 — 날아가는 동안 걸어 다니면 안 된다
+  s.knockdown.active
 
 export type MoveCtx = Readonly<{ dtMs: number; input: InputFrame; cameraYaw: number }>
 
@@ -62,10 +82,11 @@ export const movementSystem = (s: GameState, ctx: MoveCtx): Action[] => {
   const dt = ctx.dtMs / 1000
   const p = s.player
   const { input } = ctx
+  const talkLocked = isTalkLocked(s)
 
   // ── 입력 → 카메라 기준 월드 방향
-  const ix = input.moveX
-  const iy = input.moveY
+  const ix = talkLocked ? 0 : input.moveX
+  const iy = talkLocked ? 0 : input.moveY
   const mag = Math.hypot(ix, iy)
   const hasInput = mag > 0.001
   const cos = Math.cos(ctx.cameraYaw)
@@ -183,7 +204,7 @@ export const movementSystem = (s: GameState, ctx: MoveCtx): Action[] => {
   let grounded = p.grounded
   let airborneMs = p.airborneMs
   // 입력 버퍼 — 착지 직전에 누른 점프를 착지 순간에 살려준다
-  let jumpBufferMs = ctx.input.jump ? JUMP.bufferMs : Math.max(0, p.jumpBufferMs - ctx.dtMs)
+  let jumpBufferMs = ctx.input.jump && !talkLocked ? JUMP.bufferMs : Math.max(0, p.jumpBufferMs - ctx.dtMs)
   let jumped = false
 
   if (grounded) {

@@ -5,8 +5,10 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { RIDER_SPOTS } from '../../src/data/crowd'
 import { AISLE, INTERACT, SURGE } from '../../src/data/tuning'
 import { FLOOR, PLATFORM } from '../../src/data/world'
+import { applyAll } from '../../src/state/reducer'
 import type { GameState, ItemId } from '../../src/state/types'
 import { crowdSolids, surgeAt, surgeAtMs } from '../../src/systems/crowd'
 import { goto, holdFor, put, start, tap, wait, yawTo } from './_pilot'
@@ -54,14 +56,75 @@ describe('S11-2~S11-4 O-03 해결 3경로', () => {
   const atCp = (patch: Partial<GameState> = {}): GameState =>
     put(start(7, patch), CP.x - 1.2, CP.y, FLOOR.B1)
 
-  it('S11-2 우산 사용 → 즉시 개방 · 우산 소모 · 스타일 +1', () => {
+  /**
+   * S11-2 — **우산은 들고 · 펼치고 · 훑는다** (디렉터 지시 2026-08-07).
+   *
+   * 예전엔 슬롯 키 한 번이 곧 "가장 가까운 한 명이 비켜섬 + 우산 소모"였다. 그 경로는
+   * 지웠다(`systems/interact.ts` `case 'I-09'` 주석). 여기서 잠그는 것은 새 3단 동사다.
+   */
+  it('S11-2 우산은 슬롯 키로 손에 들린다 — 그것만으로는 아무도 안 밀린다', () => {
     const s0 = atCp({ inventory: ['I-09', null, null] })
     const s = tap(s0, { pressSlot: 1 }, yawTo(s0, CP.x, CP.y))
-    expect(s.act.consumed, '가장 가까운 사람이 비켜선다').toContain('ACT-CP')
-    expect(s.inventory.includes('I-09'), '우산은 소모된다').toBe(false)
-    expect(s.scores.style, '사용 아이템 종류 +1').toBe(1)
-    expect(s.tally.pushes, 'E-11 계수기가 는다').toBe(1)
-    expect(crowdSolids(s).length, '한 사람만 열렸다 — 둘이 남는다').toBe(2)
+    expect(s.hand.item, '손에 들었다').toBe('I-09')
+    expect(s.hand.open, '아직 안 폈다').toBe(false)
+    expect(s.inventory.includes('I-09'), '우산은 소모되지 않는다').toBe(true)
+    expect(s.act.consumed, '드는 것만으로는 아무도 안 비킨다').not.toContain('ACT-CP')
+    expect(s.tally.pushes).toBe(0)
+  })
+
+  it('S11-2 펼친 우산으로 걸어 들어가면 인파가 날아간다 — 3인이 한 번에', () => {
+    // 인파 3인은 x 96.6 / 97.8 / 99.0 · y 2.2 (`AISLE.pitch` 1.2m 간격)
+    const s0 = atCp({ inventory: ['I-09', null, null] })
+    // 1) 든다. 조준 대상이 없는 쪽(북)을 보게 해 좌클릭이 우산에게 가게 한다
+    const away = Math.PI / 2
+    let s = tap(s0, { pressSlot: 1 }, away)
+    /**
+     * 2) **떨어져서** 편다. 인파 옆(1.2m)에서 펴면 그 스텝에 바로 훑어 버린다 —
+     *    `UMBRELLA.sweepM` 이 1.35 이므로 그게 맞는 동작이다. 여기서 보고 싶은 것은
+     *    "펴는 것 자체"라 반경 밖(x 90)으로 물러난다.
+     */
+    s = tap(put(s, 90, CP.y, FLOOR.B1), { pressInteract: true }, away)
+    expect(s.hand.open, '펼쳤다').toBe(true)
+    expect(s.act.consumed, '펴는 것만으로는 아직 아무도 안 맞았다').not.toContain('ACT-CP')
+
+    // 3) 훑는다 — 세 명 옆을 차례로 지난다
+    for (const id of ['ACT-CP', 'ACT-CP2', 'ACT-CP3']) {
+      const at = { 'ACT-CP': 96.6, 'ACT-CP2': 97.8, 'ACT-CP3': 99.0 }[id] as number
+      s = tap(put(s, at, CP.y, FLOOR.B1), {}, away)
+      expect(s.act.consumed, `${id} 가 날아간다`).toContain(id)
+      expect(s.knocks.some((k) => k.id === id), '날아간 방향이 남는다').toBe(true)
+    }
+    expect(s.tally.pushes, 'E-11 계수기 3회 — 이 엔딩이 도달 가능해졌다').toBe(3)
+    expect(s.scores.style, '사용 아이템 종류 +1 (여러 번 써도 1)').toBe(1)
+    expect(s.inventory.includes('I-09'), '우산은 그대로 남는다').toBe(true)
+    expect(crowdSolids(s).length, '길이 완전히 열렸다').toBe(0)
+  })
+
+  /**
+   * *"다른 승객은 우산에 닿았을때 안 날라가는디?"* (디렉터, 2026-08-07) 의 회귀 방지.
+   *
+   * 인파벽 3인(`ACT-CP*`)만 훑던 시절엔 에스컬레이터를 채운 장식 승객(`data/crowd.ts`)이
+   * 하나도 안 날아갔다 — 판정과 렌더의 좌표가 서로 다른 표에 있었기 때문이다.
+   * 이제 `umbrellaSystem` 이 두 표를 **같은 반경으로** 훑는다.
+   */
+  it('에스컬레이터 장식 승객도 우산에 맞으면 날아간다', () => {
+    const spot = RIDER_SPOTS[0]!               // ESC-R0-0, x 101 · y 1.75
+    const s0 = put(start(7, { inventory: ['I-09', null, null] }), spot.x - 1.0, spot.y, FLOOR.B1)
+    const held = tap(s0, { pressSlot: 1 }, 0)
+    const opened = tap(held, { pressInteract: true }, 0)
+    const s = tap(put(opened, spot.x, spot.y, FLOOR.B1), {}, 0)
+    expect(s.act.consumed, '장식 승객도 소진된다').toContain(spot.id)
+    expect(s.knocks.some((k) => k.id === spot.id), '날아간 방향이 남는다').toBe(true)
+    expect(s.tally.pushes, 'E-11 계수기도 같이 는다').toBeGreaterThan(0)
+  })
+
+  it('접은 우산으로는 지나가도 아무도 안 날아간다', () => {
+    const s0 = atCp({ inventory: ['I-09', null, null] })
+    const held = tap(s0, { pressSlot: 1 }, Math.PI / 2)
+    const s = tap(put(held, CP.x, CP.y, FLOOR.B1), {}, Math.PI / 2)
+    expect(s.hand.open).toBe(false)
+    expect(s.act.consumed).not.toContain('ACT-CP')
+    expect(s.tally.pushes).toBe(0)
   })
 
   it('S11-3 "저기요" → 3.0초 뒤 개방', () => {
@@ -85,11 +148,34 @@ describe('S11-2~S11-4 O-03 해결 3경로', () => {
     expect(s.player.pos.z, '계단은 열려 있다').toBeCloseTo(FLOOR.B2, 1)
   })
 
-  it('우산은 캐리어 승객이 없으면 못 쓴다 (아무 데서나 소모되지 않는다)', () => {
+  /**
+   * "언제든 장착" 의 회귀 방지 — 예전엔 여기서 `ACT_DENY('여기서 쓸 데가 없다')` 가 났다.
+   * 인파에서 멀리 떨어져 있어도 **손에는 들린다.** 대신 아무도 안 밀린다.
+   */
+  it('인파가 없는 곳에서도 우산은 손에 들린다 (사유만 뜨고 끝나지 않는다)', () => {
     const s0 = put(start(7, { inventory: ['I-09', null, null] }), 30, 15, FLOOR.B1)
     const s = tap(s0, { pressSlot: 1 })
     expect(s.inventory.includes('I-09'), '소모 안 됨').toBe(true)
-    expect(s.act.denyText).toBe('여기서 쓸 데가 없다')
+    expect(s.hand.item, '손에 들린다').toBe('I-09')
+    expect(s.act.denyText, '거부가 아니라 안내다').toBe('')
+    expect(s.tally.pushes).toBe(0)
+  })
+
+  it('같은 칸을 다시 누르면 손에서 놓는다 — 되돌릴 방법이 손 닿는 곳에 있다', () => {
+    const s0 = put(start(7, { inventory: ['I-09', null, null] }), 30, 15, FLOOR.B1)
+    const held = tap(s0, { pressSlot: 1 })
+    const s = tap(held, { pressSlot: 1 })
+    expect(s.hand.item).toBeNull()
+    expect(s.inventory.includes('I-09'), '놓는 것은 버리는 것이 아니다').toBe(true)
+  })
+
+  /** 인벤토리에서 사라지면 손도 비어야 한다 — `reducer.syncHand` 의 유일한 관측점 */
+  it('들고 있던 것이 인벤토리에서 빠지면 손이 저절로 빈다', () => {
+    const s0 = put(start(7, { inventory: ['I-09', null, null] }), 30, 15, FLOOR.B1)
+    const held = tap(s0, { pressSlot: 1 })
+    expect(held.hand.item).toBe('I-09')
+    const gone = applyAll(held, [{ t: 'ITEM_SPEND', slot: 0 }])
+    expect(gone.hand.item, '유령을 든 채로 남지 않는다').toBeNull()
   })
 })
 

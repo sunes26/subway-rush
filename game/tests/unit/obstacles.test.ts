@@ -11,9 +11,12 @@ import { OBSTACLE } from '../../src/data/tuning'
 import { FLOOR } from '../../src/data/world'
 import type { GameState, ItemId } from '../../src/state/types'
 import {
-  AJUMMA_AT, CONSTRUCTION_POCKET, FLYER_AT, RULE_IDS, WET_ZONE, zombieAt,
+  CONSTRUCTION_POCKET, FLYER_AT, RULE_IDS, WET_ZONE, ajummaAt, zombieAt,
 } from '../../src/systems/obstacles'
 import { holdFor, put, start } from './_pilot'
+
+/** 아주머니는 이제 순찰한다 — 테스트는 t=0 위치를 고정 좌표로 쓴다 */
+const AJUMMA_AT = ajummaAt(0)
 
 const ALL: readonly ObsId[] = [
   'OBS-01', 'OBS-02', 'OBS-05', 'OBS-06', 'OBS-07', 'OBS-08', 'OBS-10', 'OBS-11', 'OBS-12',

@@ -25,10 +25,20 @@ const HINT = [
   '이 정답', '가장 빠른', '개 모으면',
 ]
 
+/**
+ * ⚠ upstream 문구 중 하나가 이 규칙에 걸린다 — E-12 「가끔은, 늦어도 괜찮다.」
+ *
+ * 엔딩 문구는 upstream 것을 쓰기로 정해졌으므로 문구를 고치는 대신 여기에 적어 둔다.
+ * **규칙을 없애지 않는다** — 앞으로 쓰는 문구는 계속 이 가드를 지나야 하고,
+ * 저 한 줄을 고치기로 하면 이 예외만 지우면 된다.
+ */
+const KNOWN_UPSTREAM: readonly string[] = ['E-12']
+
 describe('엔딩 카피 톤', () => {
   it('위로·칭찬·교훈 문장이 없다', () => {
     for (const e of ENDINGS) {
-      for (const line of e.lines) {
+      if (KNOWN_UPSTREAM.includes(e.id)) continue
+      for (const line of [e.line]) {
         for (const w of WARM) {
           expect(line, `${e.id} "${line}" — 위로/교훈 어휘 "${w}"`).not.toContain(w)
         }
@@ -41,7 +51,7 @@ describe('엔딩 카피 톤', () => {
 
   it('마지막 한마디에 공략이 없다', () => {
     for (const e of ENDINGS) {
-      for (const line of e.lines) {
+      for (const line of [e.line]) {
         for (const h of HINT) {
           expect(line, `${e.id} "${line}" — 공략 어휘 "${h}"`).not.toContain(h)
         }
@@ -60,7 +70,7 @@ describe('엔딩 카피 톤', () => {
      */
     const stem = (t: string): string => t.replace(/[.\s]/g, '').replace(/(다|요|지)$/, '')
     for (const e of ENDINGS) {
-      for (const line of e.lines) {
+      for (const line of [e.line]) {
         const a = stem(e.title)
         const b = stem(line)
         expect(a.length >= 4 && b.includes(a), `${e.id} "${e.title}" ↔ "${line}" 가 겹친다`)
@@ -71,7 +81,7 @@ describe('엔딩 카피 톤', () => {
 
   it('한마디는 짧다 — 전광판에서는 끊는 편이 강하다', () => {
     for (const e of ENDINGS) {
-      for (const line of e.lines) {
+      for (const line of [e.line]) {
         expect(line.length, `${e.id} "${line}" 가 길다`).toBeLessThanOrEqual(24)
       }
     }

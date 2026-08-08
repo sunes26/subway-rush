@@ -60,19 +60,20 @@ describe('S18-1 신규 8종이 각각 도달 가능하다', () => {
     })).toBe('E-03')
   })
 
-  it('E-07 지각 확정 — 미탑승 + 개찰구를 못 넘음', () => {
+  it('E-07 지각 확정 — 미탑승 + 양심 < 0', () => {
     /**
-     * 판정 축이 양심 → **도달 지점**으로 바뀌었다. 지각은 시간 문제지 도덕이 아니다.
-     * 기준은 승강장이 아니라 **개찰 통과**다 — 승강장으로 자르면 아무것도 안 하고
-     * 끝난 판이 곧장 「지각 확정」을 받아, E-06 을 온화한 기본 실패로 둔 설계가 깨진다.
+     * ⚠ 이 브랜치에서 한때 판정 축을 **도달 지점**(개찰 통과 여부)으로 바꿨었다.
+     *   "지각은 시간 문제지 도덕이 아니다" 라는 이유였고 지금도 그 지적은 맞다고 본다.
+     *
+     *   다만 upstream 이 그 뒤로 E-07 위에 매복(E-17)·사고(E-18) 엔딩을 쌓았고,
+     *   **엔딩 판정은 upstream 것을 쓰기로** 정해져서 원래 조건으로 되돌렸다.
+     *   되돌린 것이지 틀렸다고 판단해서 지운 것이 아니다 — 다시 바꾸려면
+     *   `data/endings.ts` 의 `when` 한 줄과 이 테스트만 손대면 된다.
      */
-    const gates = (attempts: number, passed = false): Partial<GameState> =>
-      ({ boarded: false, gates: { ...start(7).gates, attempts, passed } })
-    expect(at(gates(2)), '시도했는데 못 넘었다').toBe('E-07')
-    expect(at(gates(0)), '아무것도 안 했으면 온화한 기본 실패다').toBe('E-06')
-    expect(at(gates(3, true)), '넘었는데 못 탔으면 E-06').toBe('E-06')
-    expect(at({ ...gates(2), scores: { conscience: 3, style: 0, knowledge: 0 } }),
-      '양심이 높아도 막혔으면 지각이다').toBe('E-07')
+    expect(at({ boarded: false, scores: { conscience: -1, style: 0, knowledge: 0 } }))
+      .toBe('E-07')
+    expect(at({ boarded: false, scores: { conscience: 0, style: 0, knowledge: 0 } }),
+      '양심이 0 이면 온화한 기본 실패다').toBe('E-06')
   })
 
   /**
@@ -97,11 +98,23 @@ describe('S18-1 신규 8종이 각각 도달 가능하다', () => {
       at({ boarded: true, timeLeftMs: 900 }),
       at({ boarded: true, timeLeftMs: 35_000 }),
       at({ boarded: true, timeLeftMs: 12_000 }),
-      // E-07 — 개찰구를 시도했는데 못 넘었다(양심이 아니라 도달 지점이 축이다)
-      at({ boarded: false, gates: { ...start(7).gates, attempts: 2 } }),
+      // E-07 — 미탑승 + 양심 < 0
+      at({ boarded: false, scores: { conscience: -1, style: 0, knowledge: 0 } }),
       at({}),
     ])
-    expect(seen.size, [...seen].sort().join(',')).toBe(14)
+    /**
+     * ★ **13 이다. 14 가 아니다** — `E-12 오늘도 평화로운 역` 은 지금 **도달할 수 없다.**
+     *
+     *   조건이 `WALLET_RETURNED && GRANDPA_HELPED && SEAT_YIELDED` 인데,
+     *   `SEAT_YIELDED` 를 **내는 시스템이 없다.** 이 리포 전체에서 그 문자열은
+     *   `state/types.ts` 의 선언과 `data/endings.ts` 의 조건, 두 곳에만 있다.
+     *   임산부 배려석 상호작용 자체가 구현돼 있지 않다.
+     *
+     *   이 브랜치에서 한때 그 항을 빼서 도달 가능하게 고쳤었는데, 엔딩 판정은
+     *   upstream 것을 쓰기로 정해져서 되돌렸다. **버그를 조용히 덮지 않으려고**
+     *   여기 남긴다 — 배려석을 구현하거나 조건에서 그 항을 빼면 14 가 된다.
+     */
+    expect(seen.size, [...seen].sort().join(',')).toBe(13)
   })
 })
 

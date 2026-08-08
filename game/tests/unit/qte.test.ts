@@ -12,9 +12,12 @@ import type { GameState } from '../../src/state/types'
 import { coinFor, inZone } from '../../src/systems/qte'
 import { holdFor, playQte, put, start, tap } from './_pilot'
 
-/** 자판기 A 앞에서 효자손을 들고 QTE 를 연 상태 */
+/** 자판기 A 앞에서 효자손을 손에 쥔 채 QTE 를 연 상태 (QTE 는 쥔 상태에서만 열린다) */
 const opened = (patch: Partial<GameState> = {}): GameState => {
-  const s = put(start(7, { inventory: ['I-01', null, null], ...patch }), 13.03, 4.15 - 1.2, FLOOR.B1)
+  const s = put(
+    start(7, { inventory: ['I-01', null, null], hand: { item: 'I-01', slot: 0, open: false }, ...patch }),
+    13.03, 4.15 - 1.2, FLOOR.B1,
+  )
   return tap(s, { pressSlot: 1 })        // 효자손 사용 → 근처 자판기 QTE
 }
 
@@ -30,6 +33,25 @@ describe('열림', () => {
     expect(s.qte.pos, '중앙에서 시작하면 첫 클릭이 공짜다').toBe(0)
     expect(s.qte.dirSign).toBe(1)
     expect(s.qte.speedMul).toBe(1)
+  })
+
+  /**
+   * `E`(=좌클릭)로 여는 경로의 회귀 방지.
+   *
+   * `tick` 은 한 스텝에서 `interactSystem` → `qteSystem` 순으로 돈다. **여는 원샷이 그대로**
+   * QTE 판정까지 흘러와, 마커가 왼쪽 끝(0)일 때 눌린 것으로 쳐서 **여는 즉시 미스**가 났다.
+   * 아이템 키(`pressSlot`)로 여는 경로는 이 누수가 없어 기존 테스트가 전부 통과했다 —
+   * 그래서 여기서는 반드시 **`pressInteract` 로** 연다.
+   */
+  it('E 로 열면 그 입력이 첫 판정으로 새지 않는다', () => {
+    const near = put(
+      start(7, { inventory: ['I-01', null, null], hand: { item: 'I-01', slot: 0, open: false } }),
+      13.03, 4.15 - 1.2, FLOOR.B1,
+    )
+    const s = tap(near, { pressInteract: true })
+    expect(s.qte.active, 'E 로도 열려야 한다').toBe(true)
+    expect(s.qte.misses, '여는 입력이 미스로 세어지면 안 된다').toBe(0)
+    expect(s.qte.strokes).toBe(0)
   })
 })
 

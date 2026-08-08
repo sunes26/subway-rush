@@ -120,8 +120,18 @@
 #hud .slot::after{content:'';width:16px;height:16px;border-radius:2px;
   background:rgba(255,255,255,.06)}
 #hud .slot.has::after{display:none}
+/* 3D 렌더 아이콘(`tools/items_icon_render.py`) — 모델 없는 아이템은 로드가
+   실패해 has-icon이 안 붙고 글리프 이모지(span)가 그대로 보인다 */
+#hud .slot .icon{display:none;grid-area:1/1;width:40px;height:40px;object-fit:contain}
+#hud .slot.has-icon .icon{display:block}
+#hud .slot.has-icon span{display:none}
 /* 착용 중(마스크) — 선택 슬롯과 같은 시안 강조. Figma 의 선택 상태를 이 의미로 쓴다 */
 #hud .slot.worn{border:2px solid var(--accent);box-shadow:0 0 8px rgba(0,240,255,.4)}
+/* 손에 든 칸 — 착용(시안 테두리)·교체(골드 테두리)와 **다른 축**이라 테두리를 안 쓴다.
+   밑변에 흰 띠 하나. 마스크를 쓴 채 우산을 들 수 있으므로 둘이 겹쳐도 읽혀야 한다 */
+#hud .slot.inhand{background:rgba(255,255,255,.14)}
+#hud .slot.inhand::before{content:'';position:absolute;left:8px;right:8px;bottom:0;
+  height:3px;border-radius:2px;background:#fff;box-shadow:0 0 8px rgba(255,255,255,.7)}
 #hud .slot b{position:absolute;right:3px;bottom:3px;background:var(--chip);
   border-radius:4px;padding:1px 3px;font-family:var(--mono);font-size:9px;
   font-weight:700;color:var(--muted)}

@@ -13,8 +13,8 @@ import { BALANCE_POOL, CHASE, FARE, GATE, INTERACT, QTE, SLOTS, SURGE, SWAP_WIND
 import { GRANDPA_ID } from '../data/interactables'
 import { rollObstacles, rollQueues, type ObsId } from '../data/obstacles'
 import { GATES, SPAWN, TRAFFIC_LIGHT, zoneAt } from '../data/world'
-import type { Action, ActState, ChaseState, Drop, GameState, Fx, ItemId, QteState, SurgeState,
-  SwapState, TallyState } from './types'
+import type { Action, ActState, AmbushState, ChaseState, Drop, GameState, Fx, HandState, ItemId,
+  KnockdownState, QteState, SurgeState, SwapState, TallyState } from './types'
 
 const MAX_FX = 12
 
@@ -33,6 +33,8 @@ const EMPTY_ACT: ActState = {
   denyMs: 0,
   consumed: [],
   dialogId: null,
+  dialogStep: 0,
+  dialogChoice: 0,
 }
 
 const EMPTY_QTE: QteState = {
@@ -58,6 +60,10 @@ const EMPTY_CHASE: ChaseState = {
   stuckMs: 0,
 }
 
+const EMPTY_AMBUSH: AmbushState = { active: false, phaseMs: 0 }
+
+const EMPTY_KNOCKDOWN: KnockdownState = { active: false, phaseMs: 0 }
+
 const EMPTY_SURGE: SurgeState = { fell: false, stallMs: 0 }
 
 /**
@@ -73,6 +79,23 @@ export const EMPTY_TALLY: TallyState =
   { coinsEarned: 0, itemsUsed: [], secrets: [], pushes: 0, crowdMs: 0, staminaMin: 100 }
 
 const EMPTY_SWAP: SwapState = { active: false, newSlot: 0, dropId: null, leftMs: 0 }
+
+const EMPTY_HAND: HandState = { item: null, slot: -1, open: false }
+
+/**
+ * 손과 인벤토리를 맞춘다 — **모든 액션 뒤에 한 번씩** 돈다(`applyAll`).
+ *
+ * 손을 놓게 만드는 경로가 여섯이다: 소모(`ITEM_SPEND`) · 낙하(`FUMBLE`) · 습득으로 밀려남
+ * (`PICKUP`) · 교체 창의 두 갈래(`SWAP_TO`/`SWAP_CANCEL`) · 추격 반납(`CHASE_END`).
+ * 각 케이스에서 따로 비우면 **하나를 잊는 순간 없는 물건을 든 채로 남는다** — 우산이라면
+ * 인벤에 없는데 화면에서 계속 돌아간다. 여섯 군데 대신 여기 한 군데서 잠근다.
+ */
+const syncHand = (s: GameState): GameState => {
+  const h = s.hand
+  if (h.item === null) return h.open ? { ...s, hand: EMPTY_HAND } : s
+  if (s.inventory[h.slot] === h.item) return s
+  return { ...s, hand: EMPTY_HAND }
+}
 
 /** 진행 중 상호작용만 비운다 — `consumed`·`dialogId` 는 건드리지 않는다 */
 const clearBusy = (a: ActState): ActState =>
@@ -110,6 +133,8 @@ export const initialState = (seed: number, freeplay = false, allObstacles = fals
     timeLeftMs: TOTAL_TIME_MS,
     freeplay,
     elapsedMs: 0,
+    trainTriggerMs: null,
+    trainTriggerMs2: null,
     zone: 'Z1',
     player: {
       pos: { x: SPAWN.x, y: SPAWN.y, z: SPAWN.z },
@@ -128,7 +153,9 @@ export const initialState = (seed: number, freeplay = false, allObstacles = fals
       sprinting: false,
       stallMs: 0,
     },
-    cardBalance: roll.cardBalance,
+    // 디렉터 지시 — 실제 시작 잔액은 항상 0원. `roll.cardBalance`(BALANCE_POOL)는
+    // 시드 롤 자체의 성질(분포 등)을 보는 쪽에 남겨 두고 여기서만 무시한다.
+    cardBalance: 0,
     gates: {
       workingIds: roll.workingIds,
       ledHint: roll.ledHint,
@@ -142,15 +169,19 @@ export const initialState = (seed: number, freeplay = false, allObstacles = fals
       attempts: 0,
     },
     train: { state: 'incoming', x: 330, doorProgress: 0 },
+    train2: { state: 'incoming', x: 330, doorProgress: 0 },
     lightMs: 0,
     boarded: false,
     boardedDoorX: null,
+    boardedTrain2: false,
     endingId: null,
     fx: [],
     nextFxId: 1,
     inventory: Array.from({ length: SLOTS }, () => null),
     scores: { conscience: 0, style: 0, knowledge: 0 },
     chase: EMPTY_CHASE,
+    ambush: EMPTY_AMBUSH,
+    knockdown: EMPTY_KNOCKDOWN,
     flags: [],
     act: EMPTY_ACT,
     drops: [],
@@ -158,6 +189,8 @@ export const initialState = (seed: number, freeplay = false, allObstacles = fals
     qte: EMPTY_QTE,
     surge: EMPTY_SURGE,
     tally: EMPTY_TALLY,
+    hand: EMPTY_HAND,
+    knocks: [],
     swap: EMPTY_SWAP,
     obstacles: rollObstacles(seed, allObstacles),
     obsCooldown: {},
@@ -376,7 +409,13 @@ export const reducer = (s: GameState, a: Action): GameState => {
     case 'BOARD':
       return s.boarded
         ? s
-        : { ...s, boarded: true, boardedDoorX: a.doorX, phase: 'boarding' }
+        : { ...s, boarded: true, boardedDoorX: a.doorX, boardedTrain2: !!a.opp, phase: 'boarding' }
+
+    case 'TRAIN_TRIGGER':
+      return s.trainTriggerMs !== null ? s : { ...s, trainTriggerMs: s.elapsedMs }
+
+    case 'TRAIN_TRIGGER2':
+      return s.trainTriggerMs2 !== null ? s : { ...s, trainTriggerMs2: s.elapsedMs }
 
     case 'PHASE':
       return s.phase === a.phase ? s : { ...s, phase: a.phase }
@@ -434,7 +473,15 @@ export const reducer = (s: GameState, a: Action): GameState => {
         : { ...s, act: { ...s.act, consumed: [...s.act.consumed, a.id] } }
 
     case 'DIALOG':
-      return s.act.dialogId === a.id ? s : { ...s, act: { ...s.act, dialogId: a.id } }
+      return s.act.dialogId === a.id
+        ? s
+        : { ...s, act: { ...s.act, dialogId: a.id, dialogStep: 0, dialogChoice: 0 } }
+
+    case 'DIALOG_ADVANCE':
+      return { ...s, act: { ...s.act, dialogStep: s.act.dialogStep + 1 } }
+
+    case 'DIALOG_CHOSEN':
+      return { ...s, act: { ...s.act, dialogChoice: a.key } }
 
     /**
      * 습득. 슬롯이 가득하면 0번을 **그 자리 바닥에 떨군다** — 사라지면 억울하다(P1-SPEC §3).
@@ -516,6 +563,33 @@ export const reducer = (s: GameState, a: Action): GameState => {
     case 'PUSH':
       return { ...s, tally: { ...s.tally, pushes: s.tally.pushes + 1 } }
 
+    /**
+     * 손에 든다 / 놓는다.
+     *
+     * 손을 바꾸면 우산은 **무조건 접힌다.** 펼침은 우산 고유의 상태라 다른 물건으로
+     * 넘어갈 때 들고 갈 것이 아니고, 같은 우산을 다시 들었을 때 펼쳐진 채로 나오면
+     * "언제 폈지"가 된다.
+     */
+    case 'EQUIP': {
+      const item = a.item
+      if (item === null) return s.hand.item === null ? s : { ...s, hand: EMPTY_HAND }
+      // 없는 칸·빈 칸·엉뚱한 아이템은 조용히 무시한다 — 손이 인벤토리를 앞지르면 안 된다
+      if (a.slot < 0 || a.slot >= SLOTS || s.inventory[a.slot] !== item) return s
+      return { ...s, hand: { item, slot: a.slot, open: false } }
+    }
+
+    /** 우산 펼치기/접기. 우산을 안 들었으면 아무 일도 없다 */
+    case 'UMBRELLA':
+      return s.hand.item !== 'I-09' || s.hand.open === a.open
+        ? s
+        : { ...s, hand: { ...s.hand, open: a.open } }
+
+    /** 날아갔다 — 같은 사람을 두 번 날리지 않는다 */
+    case 'KNOCK':
+      return s.knocks.some((k) => k.id === a.id)
+        ? s
+        : { ...s, knocks: [...s.knocks, { id: a.id, dx: a.dx, dy: a.dy }] }
+
     case 'STAFF_ALERT':
       return s.staffAlertMs === a.ms ? s : { ...s, staffAlertMs: a.ms }
 
@@ -569,7 +643,7 @@ export const reducer = (s: GameState, a: Action): GameState => {
         },
         {
           kind: 'balance',
-          text: `${a.delta > 0 ? '+' : ''}${a.delta.toLocaleString('ko-KR')}원 ${a.label}`,
+          text: a.text ?? `${a.delta > 0 ? '+' : ''}${a.delta.toLocaleString('ko-KR')}원 ${a.label}`,
           lifeMs: 1600,
           value: a.delta,
         },
@@ -753,11 +827,42 @@ export const reducer = (s: GameState, a: Action): GameState => {
           sprinting: false,
         },
       }
+
+    // ─────────────────── 개찰구 매복 (신규) ───────────────────
+
+    case 'AMBUSH_START':
+      return s.ambush.active ? s : { ...s, ambush: { active: true, phaseMs: 0 } }
+
+    case 'AMBUSH_TICK':
+      return { ...s, ambush: { ...s.ambush, phaseMs: s.ambush.phaseMs + a.dtMs } }
+
+    // ─────────────────── 차에 치임 (E-18) ───────────────────
+
+    /**
+     * 속도를 **같이 0으로 만든다.** 위치는 그대로 두고(몸이 날아가는 것은 카메라 연출이다)
+     * 관성만 지운다 — 안 지우면 쓰러진 뒤에도 시체가 도로 위를 미끄러진다.
+     */
+    case 'KNOCKDOWN_START':
+      return s.knockdown.active
+        ? s
+        : {
+            ...s,
+            knockdown: { active: true, phaseMs: 0 },
+            player: { ...s.player, vel: { x: 0, y: 0 }, moving: false, sprinting: false },
+          }
+
+    case 'KNOCKDOWN_TICK':
+      return { ...s, knockdown: { ...s.knockdown, phaseMs: s.knockdown.phaseMs + a.dtMs } }
   }
 }
 
+/**
+ * 액션 하나마다 손을 인벤토리에 맞춘다 (`syncHand` 주석 참고).
+ * `reducer` 자체를 감싸지 않고 여기서 도는 이유는 **재귀를 피하려는 것**이다 —
+ * 리듀서 안에서 자기 결과를 다시 정규화하면 케이스마다 두 번 도는 경로가 생긴다.
+ */
 export const applyAll = (s: GameState, actions: readonly Action[]): GameState =>
-  actions.reduce(reducer, s)
+  actions.reduce((acc, a) => syncHand(reducer(acc, a)), s)
 
 /** 디버그 표시용 */
 export const describe = (s: GameState): string =>

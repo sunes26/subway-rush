@@ -13,19 +13,8 @@ export type EndingDef = Readonly<{
   id: EndingId
   priority: number
   title: string
-  /**
-   * 엔딩별 마지막 대사 **풀**. 시드로 하나를 고른다(`pickLine`).
-   *
-   * 예전엔 한 줄 고정이었다. 그런데 fallback 인 E-06 은 한 사람이 열 번도 보는
-   * 엔딩이라, 열 번 다 같은 문장이 뜨면 "또 이거"가 되어 여운이 안 남는다.
-   *
-   * ★ **첫 항목은 GDD 부록 B 의 정본이다.** 도감(`ui/collection.ts`)은 이 칸만
-   *   쓴다 — 대표 문구가 판마다 바뀌면 도감이 목록 구실을 못 한다.
-   *
-   * 톤은 **짧고 건조한 관찰**로 통일한다. 감상을 말하지 않고 본 것만 적으면
-   * 오글거리지 않고, GDD §11 의 "조롱 금지"도 저절로 지켜진다.
-   */
-  lines: readonly string[]
+  /** GDD 부록 B — 엔딩별 마지막 대사 */
+  line: string
   /** 실패 계열은 힌트를 1줄 준다. 조롱 금지 (GDD §11) */
   hint?: string
   tone: 'success' | 'fail' | 'hidden'
@@ -82,12 +71,8 @@ export const ENDINGS: readonly EndingDef[] = [
      */
     id: 'E-05',
     priority: 100,
-    title: '아무 일도 없었다',
-    lines: [
-      '이 역은 다 외웠다.',
-      '눈 감고도 간다.',
-      '오늘은 순조로웠다.',
-    ],
+    title: '지하철 마스터',
+    line: '이 역은, 내가 제일 잘 안다.',
     tone: 'hidden',
     when: (s) =>
       s.boarded &&
@@ -103,11 +88,7 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-14',
     priority: 90,
     title: '동전 부자',
-    lines: [
-      '커피값은 건졌다.',
-      '주머니가 무겁다.',
-      '자판기 위치는 다 안다.',
-    ],
+    line: '오늘은 커피도 한 잔 사자.',
     tone: 'hidden',
     // GDD §9.4 발췌의 `coinsEarned>=3000` 그대로. 자판기 3대를 다 긁어야 도달한다
     when: (s) => s.boarded && s.tally.coinsEarned >= 3000,
@@ -119,37 +100,20 @@ export const ENDINGS: readonly EndingDef[] = [
      */
     id: 'E-12',
     priority: 85,
-    title: '나만 남았다',
-    lines: [
-      '조용하다.',
-      '다음 거나 기다린다.',
-      '승강장이 넓다.',
-    ],
+    title: '오늘도 평화로운 역',
+    line: '가끔은, 늦어도 괜찮다.',
     tone: 'hidden',
-    /**
-     * ★ **`SEAT_YIELDED` 를 조건에서 뺐다 — 그 플래그를 켜는 코드가 없다.**
-     *
-     * 타입 선언(`state/types.ts`)과 이 조건식에만 존재하고, 임산부·배려석
-     * 상호작용 자체가 게임에 없다. 즉 이 엔딩은 **실제 플레이로는 도달이
-     * 불가능**했다. 유닛 테스트가 통과한 건 플래그를 배열에 직접 넣기 때문이다
-     * (`ending14.test.ts`) — 판정기는 맞았지만 그 상태에 이르는 길이 없었다.
-     *
-     * 없는 조건을 지우는 쪽을 골랐다. 배려석 상호작용을 새로 만드는 것은
-     * NPC·좌표·대화가 붙는 별건이고, 그 전까지 엔딩 하나를 죽여 둘 이유가 없다.
-     */
     when: (s) =>
       !s.boarded &&
       s.flags.includes('WALLET_RETURNED') &&
-      s.flags.includes('GRANDPA_HELPED'),
+      s.flags.includes('GRANDPA_HELPED') &&
+      s.flags.includes('SEAT_YIELDED'),
   },
   {
     id: 'E-11',
     priority: 84,
-    title: '다 넘어졌다',
-    lines: [
-      '뒤는 안 봤다.',
-      '아래쪽이 조용해졌다.',
-    ],
+    title: '에스컬레이터 참사',
+    line: '…뒤를 돌아보지 말자.',
     hint: '우산은 길을 여는 물건이지 미는 물건이 아니다.',
     tone: 'fail',
     // GDD §9.4 "우산으로 인파 밀기 3회 이상". 즉사 2종 중 하나 — 명백한 고의 행동이다
@@ -164,11 +128,7 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-09',
     priority: 83,
     title: '부정승차 적발',
-    lines: [
-      '서른 배라고 한다.',
-      '역무실 의자가 딱딱하다.',
-      '이름부터 적으라고 한다.',
-    ],
+    line: '…과태료가 서른 배랍니다.',
     hint: '비상문은 열려 있어도 요금은 따로다. 잔액이 있으면 자동으로 낸다.',
     tone: 'fail',
     when: (s) => s.flags.includes('BUSTED'),
@@ -176,12 +136,8 @@ export const ENDINGS: readonly EndingDef[] = [
   {
     id: 'E-10',
     priority: 80,
-    title: '아무도 안 비켜준다',
-    lines: [
-      '다들 쳐다본다.',
-      '손잡이가 유난히 멀다.',
-      '옆자리가 비어 있다.',
-    ],
+    title: '양심 파산',
+    line: '다들 왜 이렇게 쳐다보지.',
     hint: '훔치면 빠르다. 빠른 만큼 뒤에서 따라온다.',
     tone: 'fail',
     // 효자손 절도(−3) 단독으로도 도달한다 (GDD §6.2).
@@ -191,11 +147,8 @@ export const ENDINGS: readonly EndingDef[] = [
   {
     id: 'E-13',
     priority: 70,
-    title: '화장실 다녀왔다',
-    lines: [
-      '열차보다 급했다.',
-      '이건 어쩔 수 없었다.',
-    ],
+    title: '해방',
+    line: '이건 이거대로 승리다.',
     tone: 'hidden',
     // 열차는 갔지만 인간은 자유로워졌다 — 탑승했으면 이 엔딩이 아니다
     when: (s) => !s.boarded && s.flags.includes('TOILET_USED'),
@@ -203,12 +156,8 @@ export const ENDINGS: readonly EndingDef[] = [
   {
     id: 'E-08',
     priority: 60,
-    title: '반대로 간다',
-    lines: [
-      '잘 탔다. 반대로.',
-      '역명이 낯설다.',
-      '세 정거장 뒤에 알았다.',
-    ],
+    title: '반대편 탑승',
+    line: '…어? 여기 어디지?',
     hint: '환승 통로는 건너가면 반대 방향이다. 3정거장 뒤에 깨닫는다.',
     tone: 'fail',
     when: (s) => s.boarded && s.flags.includes('OPPOSITE_SIDE'),
@@ -217,11 +166,7 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-03',
     priority: 50,
     title: '앉아서 간다',
-    lines: [
-      '자리까지 있다.',
-      '두 정거장은 눈 감아도 된다.',
-      '창밖이 잘 보인다.',
-    ],
+    line: '오늘 하루는 잘 풀릴 것 같다.',
     tone: 'success',
     // "승차줄 1번" — 가장 앞 대기줄(3-1)에서 탔는가. 문 위치로 판정한다
     when: (s) => s.boarded && s.timeLeftMs >= 45_000 && boardedAtFirstQueue(s),
@@ -230,12 +175,8 @@ export const ENDINGS: readonly EndingDef[] = [
   {
     id: 'E-04',
     priority: 40,
-    title: '문 닫히기 1초 전',
-    lines: [
-      '가방은 아직 밖이다.',
-      '문이 어깨를 물었다.',
-      '탔다. 됐다.',
-    ],
+    title: '문틈 낑김',
+    line: '가방이… 가방이 안 빠진다.',
     tone: 'success',
     when: (s) => s.boarded && s.timeLeftMs <= 1000,
   },
@@ -243,34 +184,15 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-02',
     priority: 30,
     title: '여유로운 출근',
-    lines: [
-      '한 대 일찍 왔다.',
-      '앉지는 못했다.',
-      '오늘은 안 뛰었다.',
-      '숨 고를 시간은 있었다.',
-    ],
+    line: '오늘은 좀 이르다.',
     tone: 'success',
-    /**
-     * 문턱을 30 → 15초로 낮췄다.
-     *
-     * 30초로 두면 **잔여 1.1초부터 29초까지가 전부 E-01 「아슬아슬 탑승」**이었다
-     * (실측). 180초 중 29초를 남긴 건 아슬아슬한 게 아닌데 화면은 그렇다고 말한다.
-     * GDD §6.2 도 E-01 을 "잔여 0~10s" 로 규정하는데 코드에는 하한이 없었다.
-     *
-     * 15초는 3분의 1/12 다 — 이 아래면 실제로 뛰어야 하고, 위면 걸어도 탄다.
-     * 조정하려면 이 상수 하나만 만지면 된다.
-     */
-    when: (s) => s.boarded && s.timeLeftMs >= 15_000,
+    when: (s) => s.boarded && s.timeLeftMs >= 30_000,
   },
   {
     id: 'E-01',
     priority: 10,
     title: '아슬아슬 탑승',
-    lines: [
-      '탔다. 됐다.',
-      '숨이 안 쉬어진다.',
-      '문이 등을 밀었다.',
-    ],
+    line: '…겨우 탔다.',
     tone: 'success',
     when: (s) => s.boarded,
   },
@@ -278,46 +200,17 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-07',
     priority: 5,
     title: '지각 확정',
-    lines: [
-      '망했다.',
-      '이제 뛰어도 똑같다.',
-      '변명은 가면서 생각하자.',
-      '시계는 안 봐도 안다.',
-    ],
+    line: '오늘은 아무래도 글렀다.',
     hint: '급할수록 정직한 쪽이 빠르다. 실측으로 19초 차이가 난다.',
     tone: 'fail',
-    /**
-     * E-06 과 갈리는 지점은 **어디까지 갔느냐**다.
-     *
-     * 예전엔 `양심 < 0` 이었다 — 두 엔딩을 나눌 축이 필요해서 마침 있던 양심을
-     * 빌려 쓴 것이고, 그래서 **지각인데 판정은 도둑질 여부로** 하고 있었다.
-     * 착하게 굴다 놓치면 `다음 열차`, 효자손을 훔치고 놓치면 `지각 확정` 이
-     * 뜬다. 지각은 시간 문제인데 조건이 도덕이라 제목과 무관했다.
-     * (GDD 는 "배차 20분 노선" 이라 적어 뒀지만 배차 개념은 코드에 없다.)
-     *
-     * 이제는 **개찰구에서 막혔는가**로 가른다. 눈앞에서 놓친 것과 개찰구를
-     * 붙잡고 있다 끝난 것은 다른 실패이고, 그 차이가 곧 제목이다.
-     * 양심은 E-10 이 이미 담당하므로 역할도 안 겹친다.
-     *
-     * ★ 조건이 `!passed` 가 아니라 **`attempts > 0 && !passed`** 인 이유.
-     *
-     *   그냥 "못 넘었다" 로 자르면 **아무것도 안 하고 끝난 판이 곧장 「지각 확정」**
-     *   을 받는다(실측: 무입력 완주는 `zone Z1 · passed false · attempts 0`).
-     *   승강장 기준으로 잘라도 똑같다 — 안 움직였으니 어디에도 도달하지 못한다.
-     *   첫 플레이는 대개 길을 헤매다 끝나는데 그 사람이 보는 첫 화면이 가장 센
-     *   문구가 되면, GDD §11 이 E-06 을 "온화한 기본 실패" 로 둔 설계가 깨진다.
-     *
-     *   `attempts` 를 보면 **개찰구까지 가서 태그를 시도한 사람**만 걸린다.
-     *   잔액이 모자랐거나 고장난 게이트만 골랐거나 — 어느 쪽이든 "다 와서 못
-     *   들어갔다" 는 상황이고, 지각 확정이라는 말이 거기서 성립한다.
-     */
-    when: (s) => !s.boarded && s.gates.attempts > 0 && !s.gates.passed,
+    // E-06(온화한 실패)과 갈리는 지점은 **양심 하나**다. GDD §9.4
+    when: (s) => !s.boarded && s.scores.conscience < 0,
   },
   /**
-   * 강제 엔딩 2종 — `when` 이 **항상 거짓**이다.
+   * 강제 엔딩 4종(E-15·E-16·E-17·E-18) — `when` 이 **항상 거짓**이다.
    *
    * `resolveEnding` 은 열차 출발 경로에서만 쓰인다(`systems/tick.ts:124-128`).
-   * 이 둘은 시스템이 `{ t: 'END', endingId }` 로 직접 발행하므로 조건식이 필요 없다.
+   * 넷 다 시스템이 `{ t: 'END', endingId }` 로 직접 발행하므로 조건식이 필요 없다.
    * 참이 될 수 있으면 열차 출발 시 오검출되므로 거짓으로 고정하고, `priority` 는
    * 선택에 관여하지 않으니 그 값의 유일한 역할은 정렬·유일성 불변식을 지키는 것이다 —
    * 그래서 실제 엔딩과 절대 경합하지 않는 자리, fallback(E-06) 바로 위 최하단에 둔다.
@@ -325,12 +218,8 @@ export const ENDINGS: readonly EndingDef[] = [
   {
     id: 'E-15',
     priority: 4,
-    title: '선물이 돌아왔다',
-    lines: [
-      '표정이 그게 아니었다.',
-      '한참을 들고 계셨다.',
-      '다른 걸 드셨어야.',
-    ],
+    title: '이걸 누가 먹어',
+    line: '"이놈아, 내가 이런 걸 먹게 생겼냐?"',
     hint: '벤치 근처 바닥을 살펴보면 뭘 드셨는지 알 수 있다.',
     tone: 'fail',
     when: () => false,
@@ -338,36 +227,40 @@ export const ENDINGS: readonly EndingDef[] = [
   {
     id: 'E-16',
     priority: 3,
-    title: '이놈이!',
-    lines: [
-      '원래는 부는 거다.',
-      '소리가 좀 컸다.',
-      '효자손은 손에서 떨어졌다.',
-    ],
+    title: '딱!',
+    line: '눈앞이 하얘졌다.',
     // "두 대까지"는 "두 대를 맞아도 괜찮다"로 잘못 읽힌다 — 실제로는 두 번째가 즉사다.
     // 살아남는 수는 "안 맞는다"뿐이라는 걸 분명히 한다.
     hint: '단소는 두 번째로 맞으면 그걸로 끝이다. 개찰구를 넘으면 멈추신다.',
     tone: 'fail',
     when: () => false,
   },
+  /**
+   * 강제 엔딩 3번째 — 개찰구 매복(`systems/ambush.ts`). 위 두 개(E-15·E-16)와 같은 이유로
+   * `when` 이 항상 거짓이다: `EARBUDS_STOLEN` 플래그 + x≥57 트리거는 `resolveEnding` 이 아니라
+   * `ambushSystem` 이 직접 `{ t: 'END', endingId: 'E-17' }` 로 낸다.
+   */
   {
-    /**
-     * 🚗 무단횡단 사망 — `main.ts` 의 차량 충돌 판정이 직접 발행한다.
-     *
-     * **적신호에 건널 때만** 즉사다. 보행 녹색에 치이면 예전처럼 스폰으로 돌아간다.
-     * 차도를 막지 않고 대가를 청구하는 것이 이 게임의 규칙인데(GDD §4),
-     * 무조건 즉사로 두면 그 원칙이 Z1 에서만 깨진다 — 초록불에 건너다 죽는 건
-     * 플레이어의 선택이 아니기 때문이다. 적신호는 명백한 선택이라 즉사가 성립한다.
-     */
     id: 'E-17',
     priority: 2,
-    title: '빨간불이었다',
-    hint: '보행 신호가 초록이면 차가 멈춰 선다.',
-    lines: [
-      '안 올 줄 알았다.',
-      '클랙슨은 들었다.',
-      '여기서 끝날 줄은.',
-    ],
+    title: '지지직!',
+    line: '눈앞이 번쩍였다.',
+    hint: '주인 없는 물건은 원래 주인이 나타난다. 신고가 더 안전하다.',
+    tone: 'fail',
+    when: () => false,
+  },
+  /**
+   * 강제 엔딩 4번째 — 차에 치였다(`main.ts` 의 `roadHazard` 판정).
+   * 적신호 차단벽을 걷어낸 뒤로 차선이 진짜 위험이 됐다는 것을 결과로 보여준다
+   * (`data/world.ts` "막는 대신 결과로 막는다"). 위 셋과 같은 이유로 `when` 이 항상 거짓이다:
+   * `main.ts` 가 `carHits` 판정에서 직접 `{ t: 'END', endingId: 'E-18' }` 을 낸다.
+   */
+  {
+    id: 'E-18',
+    priority: 1,
+    title: '쾅!',
+    line: '몸이 붕 떴다가, 그대로 아스팔트에 멈췄다.',
+    hint: '차선 위에 서 있지 마라. 신호는 몸을 지켜주지 않는다.',
     tone: 'fail',
     when: () => false,
   },
@@ -375,12 +268,7 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-06',
     priority: 0,
     title: '다음 열차',
-    lines: [
-      '봤는데 못 탔다.',
-      '딱 내 앞에서.',
-      '4분이나.',
-      '문 닫히는 것만 봤다.',
-    ],
+    line: '5분 늦는다고 세상 안 무너져.',
     tone: 'fail',
     when: () => true,          // fallback — 항상 매치
   },
@@ -404,15 +292,3 @@ export const resolveEnding = (s: GameState): EndingDef => {
 
 export const pickHint = (seed: number): string =>
   FAIL_HINTS[Math.abs(seed) % FAIL_HINTS.length] as string
-
-/**
- * 이번 판의 대사. **시드로 고른다** — `pickHint` 와 같은 규칙이다.
- *
- * 시드 기반이라 같은 판을 다시 돌리면 같은 대사가 나온다(리플레이·e2e 가 안 깨진다).
- * 재시작은 시드를 굴리므로(`main.ts restart()`) 다음 판에는 다른 줄이 뜬다.
- *
- * 힌트와 **다른 상수로 흩는다**(`^ 0x2f1d`). 같은 시드를 그대로 쓰면 대사와 힌트가
- * 항상 같은 색인으로 묶여, 풀을 아무리 늘려도 조합이 늘지 않는다.
- */
-export const pickLine = (e: EndingDef, seed: number): string =>
-  e.lines[Math.abs((seed ^ 0x2f1d) >>> 0) % e.lines.length] as string
