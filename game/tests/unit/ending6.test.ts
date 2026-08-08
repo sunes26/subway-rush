@@ -50,10 +50,11 @@ describe('S12-1 엔딩 6종이 각각 재현된다', () => {
     expect(resolveEnding(s).id).toBe('E-14')
   })
 
-  it('전부 서로 다른 id·title 을 갖는다 (선물 퍼즐 2종 포함 16종)', () => {
-    expect(ENDINGS.length).toBe(16)
-    expect(new Set(ENDINGS.map((e) => e.id)).size).toBe(16)
-    expect(new Set(ENDINGS.map((e) => e.title)).size).toBe(16)
+  // 선물 퍼즐 2종(E-15·E-16) + 개찰구 매복(E-17) 포함 17종(디렉터 지시로 16→17 확장)
+  it('전부 서로 다른 id·title 을 갖는다 (강제 엔딩 3종 포함 17종)', () => {
+    expect(ENDINGS.length).toBe(17)
+    expect(new Set(ENDINGS.map((e) => e.id)).size).toBe(17)
+    expect(new Set(ENDINGS.map((e) => e.title)).size).toBe(17)
   })
 })
 
@@ -147,7 +148,10 @@ describe('S12-4~S12-6 채점 축', () => {
   })
 
   it('S12-6 자판기 성공 1회 = 시크릿 1건 (재긁기 불가하므로 중복 불가)', () => {
-    let s = put(start(7, { inventory: ['I-01', null, null] }), VEND_A.x, VEND_A.y - 1.1, FLOOR.B1)
+    let s = put(
+      start(7, { inventory: ['I-01', null, null], hand: { item: 'I-01', slot: 0, open: false } }),
+      VEND_A.x, VEND_A.y - 1.1, FLOOR.B1,
+    )
     const yaw = yawTo(s, VEND_A.x, VEND_A.y)
     s = tap(s, { pressInteract: true }, yaw)
     expect(s.qte.active).toBe(true)

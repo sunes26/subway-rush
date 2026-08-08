@@ -4,13 +4,13 @@
 
 import { describe, expect, it } from 'vitest'
 import { DECOR } from '../../src/data/decor'
-import { INTERACTABLES, coinValue, isCoin } from '../../src/data/interactables'
+import { FISHCAKE_GREETING, FISHCAKE_ID, INTERACTABLES, coinValue, isCoin } from '../../src/data/interactables'
 import { GIFT_ITEMS, ITEMS, SLOT_ITEMS, WEARABLES, itemDef } from '../../src/data/items'
 import { COIN, SLOTS, SWAP_WINDOW_MS } from '../../src/data/tuning'
 import { FLOOR } from '../../src/data/world'
 import { PLACEHOLDER_ITEMS } from '../../src/render/props'
 import type { GameState, ItemId } from '../../src/state/types'
-import { put, start, tap, wait, yawTo } from './_pilot'
+import { holdFor, put, start, tap, wait, yawTo } from './_pilot'
 
 /** 아이템이 놓인 자리 — `data/interactables.ts` 와 같은 좌표여야 한다 */
 const spotOf = (id: string) => {
@@ -29,9 +29,22 @@ const grab = (id: string, patch: Partial<GameState> = {}): GameState => {
   return wait(tap(s, { pressInteract: true }, yaw), 2400, yaw)
 }
 
+/**
+ * 붕어빵 아저씨 분실물 2지 — 완전 대체된 무선이어폰(I-05) 획득처.
+ * `talk` 이라 `grab()`(pickup 전용, 습득 0.8s 대기)이 안 먹는다 — E로 열고,
+ * 인사말(`FISHCAKE_GREETING`)을 클릭(E)으로 다 넘긴 뒤에야 슬롯키 선택이 먹는다.
+ */
+const fishcakePick = (key: 1 | 2, patch: Partial<GameState> = {}): GameState => {
+  const it = spotOf(FISHCAKE_ID)
+  const s0 = put(start(7, patch), it.x, it.y - 1.1, FLOOR.L0)
+  const yaw = yawTo(s0, it.x, it.y)
+  let s = tap(s0, { pressInteract: true }, yaw)
+  for (let i = 0; i < FISHCAKE_GREETING.length - 1; i++) s = tap(s, { pressInteract: true }, yaw)
+  return tap(s, { pressSlot: key }, yaw)
+}
+
 describe('S15-1 신규 7종 습득', () => {
   const CASES: readonly (readonly [string, ItemId])[] = [
-    ['Z1-ITM05', 'I-05'],
     ['OBJ-18-COFFEE', 'I-07'],
     ['OBJ-17-PAPER', 'I-08'],
     ['OBJ-13-BAG', 'I-10'],
@@ -46,6 +59,68 @@ describe('S15-1 신규 7종 습득', () => {
       expect(s.inventory).toContain(item)
     })
   }
+
+  // 무선이어폰(I-05)은 바닥 습득이 아니다 — 붕어빵 아저씨 분실물 2지, 어느 쪽을 골라도 받는다
+  it('붕어빵 아저씨 — ①"내가 가진다"도 이어폰을 준다', () => {
+    expect(fishcakePick(1).inventory).toContain('I-05')
+  })
+  it('붕어빵 아저씨 — ②"신고하자"도 이어폰을 준다', () => {
+    expect(fishcakePick(2).inventory).toContain('I-05')
+  })
+  it('①만 EARBUDS_STOLEN 플래그를 남긴다 — 개찰구 매복의 단일 조건', () => {
+    expect(fishcakePick(1).flags).toContain('EARBUDS_STOLEN')
+    expect(fishcakePick(2).flags).not.toContain('EARBUDS_STOLEN')
+  })
+
+  describe('붕어빵 아저씨 — 클릭 진행형 인사말 (디렉터 지시)', () => {
+    const openFishcake = (): { s: GameState; yaw: number } => {
+      const it = spotOf(FISHCAKE_ID)
+      const s0 = put(start(7), it.x, it.y - 1.1, FLOOR.L0)
+      const yaw = yawTo(s0, it.x, it.y)
+      return { s: tap(s0, { pressInteract: true }, yaw), yaw }
+    }
+
+    it('처음 열면 0번째 줄이고 선택지는 아직 없다', () => {
+      const { s } = openFishcake()
+      expect(s.act.dialogId).toBe(FISHCAKE_ID)
+      expect(s.act.dialogStep).toBe(0)
+    })
+
+    it('마지막 줄 전에는 슬롯키(선택)가 안 먹는다', () => {
+      const { s } = openFishcake()
+      const picked = tap(s, { pressSlot: 1 })
+      expect(picked.inventory, '0번째 줄에서 고르면 안 된다').not.toContain('I-05')
+      expect(picked.act.dialogId, '대화가 안 닫혀야 한다').toBe(FISHCAKE_ID)
+    })
+
+    it('E(클릭)를 누를 때마다 한 줄씩 넘어간다', () => {
+      const { s, yaw } = openFishcake()
+      const step1 = tap(s, { pressInteract: true }, yaw)
+      expect(step1.act.dialogStep).toBe(1)
+      const step2 = tap(step1, { pressInteract: true }, yaw)
+      expect(step2.act.dialogStep).toBe(2)
+    })
+
+    it('마지막 줄(2)에서만 슬롯키가 선택으로 먹는다 — 골라도 반응 대사까지는 안 닫힌다', () => {
+      const { s, yaw } = openFishcake()
+      let cur = s
+      for (let i = 0; i < FISHCAKE_GREETING.length - 1; i++) cur = tap(cur, { pressInteract: true }, yaw)
+      const picked = tap(cur, { pressSlot: 2 }, yaw)
+      expect(picked.inventory).toContain('I-05')
+      expect(picked.act.dialogChoice, '골랐다는 표시').toBe(2)
+      expect(picked.act.dialogId, '반응 대사 보여주는 동안은 안 닫힌다').toBe(FISHCAKE_ID)
+      const closed = tap(picked, { pressInteract: true }, yaw)
+      expect(closed.act.dialogId, '반응 대사에서 한 번 더 클릭하면 닫힌다').toBeNull()
+    })
+
+    it('대화가 열려 있는 동안 이동 입력이 위치를 안 바꾼다', () => {
+      const { s } = openFishcake()
+      const x0 = s.player.pos.x
+      const moved = holdFor(s, { moveY: 1 }, 30)
+      expect(moved.player.pos.x).toBeCloseTo(x0, 5)
+      expect(moved.act.dialogId, '이동해도 안 닫힌다(다른 대화와 달리)').toBe(FISHCAKE_ID)
+    })
+  })
 
   it('커피는 잔액이 모자라면 사유만 나오고 잔액이 안 준다', () => {
     const s = grab('OBJ-18-COFFEE', { cardBalance: 100 })
@@ -123,15 +198,15 @@ describe('S22-3 소지품 10칸 (디렉터 지시)', () => {
 })
 
 describe('S22-2 즉시 착용 (디렉터 지시)', () => {
-  it('무선이어폰(I-05)은 줍는 즉시 켜져 있다', () => {
-    const s = grab('Z1-ITM05')
+  it('무선이어폰(I-05)은 받는 즉시 켜져 있다', () => {
+    const s = fishcakePick(2)
     expect(s.inventory).toContain('I-05')
-    expect(s.flags, '주웠는데 꺼져 있으면 한 번 더 눌러야 한다 — 그 한 번이 지시의 대상이었다')
+    expect(s.flags, '받았는데 꺼져 있으면 한 번 더 눌러야 한다 — 그 한 번이 지시의 대상이었다')
       .toContain('EARBUDS_ON')
   })
 
   it('이어폰은 슬롯 키를 눌러도 꺼지지 않는다 — 토글이 없다 (디렉터 지시)', () => {
-    const s = grab('Z1-ITM05')
+    const s = fishcakePick(2)
     const slot = s.inventory.indexOf('I-05') + 1
     const off = tap(s, { pressSlot: slot })
     expect(off.flags, '따로 껐다 켰다 하는 대상이 아니다').toContain('EARBUDS_ON')

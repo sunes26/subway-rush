@@ -7,6 +7,7 @@
 
 import { lerpExp, rotateToward, type Vec2 } from '../core/math'
 import type { InputFrame } from '../core/input'
+import { FISHCAKE_ID } from '../data/interactables'
 import { GATE, JUMP, MOVE, SPEED, STAMINA } from '../data/tuning'
 import { FLOOR, GATES, GATE_FUNNEL_X } from '../data/world'
 import type { Action, GameState } from '../state/types'
@@ -20,8 +21,15 @@ import { WET_ZONE } from './obstacles'
  * 막지는 않는다. `story` 만 예외인 이유는 30초짜리 자동 진행 대화라 — 취소가 아니라
  * 이동 자체가 봉쇄돼야 어색하게 걸어 나가면서 할아버지가 계속 혼잣말하는 그림이 안 나온다.
  * `story` 는 오직 할아버지(`ACT-02-GP`)만 쓰는 종류라 상대를 따로 확인할 필요가 없다.
+ *
+ * 개찰구 매복(`systems/ambush.ts`)도 같은 이유로 잠근다 — 도망칠 수 있으면
+ * "숨 돌리자마자 뒤통수"가 성립하지 않는다.
+ *
+ * 붕어빵 아저씨(`FISHCAKE_ID`)와의 대화도 여는 동안 전부 잠근다(디렉터 지시) —
+ * 클릭으로 인사말을 넘기는 동안 걸어서 자리를 벗어나면 대사와 위치가 어긋난다.
  */
-const isTalkLocked = (s: GameState): boolean => s.act.busyKind === 'story'
+const isTalkLocked = (s: GameState): boolean =>
+  s.act.busyKind === 'story' || s.ambush.active || s.act.dialogId === FISHCAKE_ID
 
 export type MoveCtx = Readonly<{ dtMs: number; input: InputFrame; cameraYaw: number }>
 

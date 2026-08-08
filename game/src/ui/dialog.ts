@@ -9,9 +9,11 @@
  * 이 파일은 `state.act` / `state.qte` 를 **그리기만** 한다.
  */
 
-import { byId, GIFT_STALL_ID, GRANDPA_ID } from '../data/interactables'
+import { byId, FISHCAKE_GREETING, FISHCAKE_ID, FISHCAKE_REACTION, GIFT_STALL_ID, GRANDPA_ID }
+  from '../data/interactables'
 import { GIFT_CORRECT, GIFT_ITEMS, itemDef, SHOP_PRICE } from '../data/items'
 import { QTE } from '../data/tuning'
+import { AMBUSH_TOTAL_MS, ambushLineAt } from '../systems/ambush'
 import { branchesFor, hasItem } from '../systems/interact'
 import type { GameState } from '../state/types'
 // 스타일은 `css/dialog.css` 가 단일 원천이다 — UI 킷(/uikit.html)이 같은 파일을 읽는다.
@@ -23,6 +25,10 @@ import SHOP_CSS from './css/shop.css?inline'
 const ICON_BASE = `${import.meta.env.BASE_URL}icons/items/`
 /** 할아버지 초상화 — 스크린샷 렌더를 그대로 쓴다(`public/portraits/grandpa.png`) */
 const GP_PORTRAIT = `${import.meta.env.BASE_URL}portraits/grandpa.png`
+/** 붕어빵 아저씨 초상화 — 같은 방식(스크린샷 렌더) */
+const FM_PORTRAIT = `${import.meta.env.BASE_URL}portraits/fishcake-man.png`
+/** 개찰구 매복 역무원 초상화 */
+const AO_PORTRAIT = `${import.meta.env.BASE_URL}portraits/ambush-officer.png`
 
 /** 대화 패널(`#gpstory`) 한 줄 — 화자와 대사. 대사는 상태에 따라 달라질 수 있어 함수도 받는다 */
 type ConvLine = Readonly<{ speaker: 'gp' | 'player'; text: string | ((s: GameState) => string) }>
@@ -131,11 +137,14 @@ export const createDialog = (mount: HTMLElement): Dialog => {
     <div id="ireason"></div>
     <div id="dlg">
       <div class="actor-card">
-        <div class="frame"><img src="${GP_PORTRAIT}" alt=""></div>
+        <div class="frame" id="dlg-frame"><img id="dlg-portrait" src="${GP_PORTRAIT}" alt=""></div>
         <div class="tag" id="dlg-who"></div>
       </div>
       <div class="conv">
-        <div class="bubble"><div class="kick">DIALOGUE</div><p id="dlg-line"></p></div>
+        <div class="bubble" id="dlg-bubble">
+          <div class="kick">DIALOGUE</div><p id="dlg-line"></p>
+          <div class="next" id="dlg-next">클릭하여 계속</div>
+        </div>
         <div class="choices" id="dlg-ops"></div>
         <div class="esc">ESC 그냥 지나간다</div>
       </div>
@@ -149,6 +158,17 @@ export const createDialog = (mount: HTMLElement): Dialog => {
         <div class="bubble"><span class="who" id="gpstory-speaker"></span><p id="gpstory-line"></p></div>
         <div class="bar"><i id="gpstory-bar"></i></div>
         <div class="cap" id="gpstory-cap"></div>
+      </div>
+    </div>
+    <div id="ambush">
+      <div class="actor-card">
+        <div class="frame" id="ambush-frame"><img id="ambush-portrait" src="" alt=""></div>
+        <div class="tag" id="ambush-who"></div>
+      </div>
+      <div class="conv">
+        <div class="bubble"><span class="who" id="ambush-speaker"></span><p id="ambush-line"></p></div>
+        <div class="bar"><i id="ambush-bar"></i></div>
+        <div class="cap">개찰구</div>
       </div>
     </div>
     <div id="qte">
@@ -197,7 +217,10 @@ export const createDialog = (mount: HTMLElement): Dialog => {
   const reason = $('ireason')
   const dlg = $('dlg')
   const dlgWho = $('dlg-who')
+  const dlgPortrait = $<HTMLImageElement>('dlg-portrait')
+  const dlgBubble = $('dlg-bubble')
   const dlgLine = $('dlg-line')
+  const dlgNext = $('dlg-next')
   const dlgOps = $('dlg-ops')
   const gpstory = $('gpstory')
   const gpstoryWho = $('gpstory-who')
@@ -205,6 +228,13 @@ export const createDialog = (mount: HTMLElement): Dialog => {
   const gpstoryLine = $('gpstory-line')
   const gpstoryBar = $('gpstory-bar')
   const gpstoryCap = $('gpstory-cap')
+  const ambush = $('ambush')
+  const ambushFrame = $('ambush-frame')
+  const ambushWho = $('ambush-who')
+  const ambushPortrait = $<HTMLImageElement>('ambush-portrait')
+  const ambushSpeaker = $('ambush-speaker')
+  const ambushLine = $('ambush-line')
+  const ambushBar = $('ambush-bar')
   const qte = $('qte')
   const qFill = $('qte-fill')
   const qWin = $('qte-win')
@@ -299,6 +329,13 @@ export const createDialog = (mount: HTMLElement): Dialog => {
     pressKey(`Digit${row.dataset['key']}`)
   })
 
+  /**
+   * 붕어빵 아저씨 인사말 — 말풍선을 클릭하면 한 줄 넘어간다.
+   * `KeyE` 를 합성한다 — `interactSystem` 의 `pressInteract` 분기가 물리 키와
+   * 같은 길을 타므로(`DIALOG_ADVANCE`), 선택지가 뜬 뒤(마지막 줄)에는 조용히 씹힌다.
+   */
+  dlgBubble.addEventListener('click', () => pressKey('KeyE'))
+
   return {
     el,
     sync(s) {
@@ -343,7 +380,12 @@ export const createDialog = (mount: HTMLElement): Dialog => {
       // ── 대화 선택. 분기 데이터는 시스템과 **같은 함수**에서 온다
       // 편의점 매대(`GIFT_STALL_ID`)는 아래 `#shop` 이 대신 그리므로 여기서는 뺀다
       const isShop = s.act.dialogId === GIFT_STALL_ID
-      const dlgKey = s.act.dialogId && !isShop ? `${s.act.dialogId}:${s.inventory.join(',')}` : ''
+      const isFishcake = s.act.dialogId === FISHCAKE_ID
+      // 붕어빵 아저씨는 단계(`dialogStep`)가 바뀔 때마다 새로 그려야 한다 — 클릭마다 대사가 다르다
+      const dlgKey = s.act.dialogId && !isShop
+        ? `${s.act.dialogId}:${isFishcake ? s.act.dialogStep : 0}:${isFishcake ? s.act.dialogChoice : 0}` +
+          `:${s.inventory.join(',')}`
+        : ''
       if (dlgKey !== lastDlg) {
         if (dlgKey) {
           /**
@@ -353,13 +395,32 @@ export const createDialog = (mount: HTMLElement): Dialog => {
            * 의 상호작용 테이블과 같은 원천이므로 여기서 갈릴 일이 없다.
            */
           dlgWho.textContent = byId(s.act.dialogId!)?.label ?? ''
-          // 인사말은 대사 판정과 무관한 연출 문구다 — 상대가 바뀔 일이 없으니(할아버지뿐) 고정
-          dlgLine.textContent = '"이 시간에 여긴 어쩐 일인가?"'
-          dlgOps.innerHTML = branchesFor(s, s.act.dialogId!)
-            .map((b) => `<button type="button" class="gp-choice${b.enabled ? '' : ' off'}" data-key="${b.key}">` +
-              `<span class="badge">0${b.key}</span><span class="label">${b.label}</span>` +
-              `<span class="note">${b.note}</span></button>`)
-            .join('')
+          dlgPortrait.src = isFishcake ? FM_PORTRAIT : GP_PORTRAIT
+
+          /**
+           * 붕어빵 아저씨는 인사말을 **클릭으로 한 줄씩** 넘긴다 — 마지막 줄 전까지는
+           * 선택지 대신 "클릭하여 계속"만 보인다(`systems/interact.ts`의 같은 게이트).
+           * 고른 뒤에는 반응 대사(`dialogChoice`)가 같은 자리를 한 번 더 쓴다 —
+           * 예전엔 여기서 바로 닫고 토스트로 반응을 띄웠는데, 대화창과 끊겨 보였다.
+           * 그 외 상대는 예전처럼 고정 인사말 + 즉시 선택지다.
+           */
+          const reacting = isFishcake && s.act.dialogChoice !== 0
+          const greetingDone = !isFishcake || s.act.dialogStep >= FISHCAKE_GREETING.length - 1
+          dlgLine.textContent = reacting
+            ? (FISHCAKE_REACTION[s.act.dialogChoice as 1 | 2] ?? '')
+            : isFishcake
+              ? (FISHCAKE_GREETING[Math.min(s.act.dialogStep, FISHCAKE_GREETING.length - 1)] ?? '')
+              : '"이 시간에 여긴 어쩐 일인가?"'
+          const showNext = isFishcake && (reacting || !greetingDone)
+          dlgNext.className = showNext ? 'on' : ''
+          dlgBubble.className = `bubble${showNext ? ' has-next' : ''}`
+          dlgOps.innerHTML = greetingDone && !reacting
+            ? branchesFor(s, s.act.dialogId!)
+              .map((b) => `<button type="button" class="gp-choice${b.enabled ? '' : ' off'}" data-key="${b.key}">` +
+                `<span class="badge">0${b.key}</span><span class="label">${b.label}</span>` +
+                `<span class="note">${b.note}</span></button>`)
+              .join('')
+            : ''
         }
         dlg.className = dlgKey ? 'on' : ''
         lastDlg = dlgKey
@@ -384,6 +445,33 @@ export const createDialog = (mount: HTMLElement): Dialog => {
         }
         gpstoryBar.style.transform = `scaleX(${Math.min(1, elapsed / total).toFixed(3)})`
         gpstoryCap.textContent = `${busyLabel(s)} · ${Math.ceil(s.act.busyLeftMs / 1000)}s`
+      }
+
+      /**
+       * ── 개찰구 매복 — `#dlg`·`#gpstory`와 같은 초상화 카드 UI(디렉터 지시로 통일).
+       * `??` 구간은 **초상화도 감춘다** — 정체 공개가 이름표만이 아니라 사진에서도
+       * 한 번에 터져야 한다. 공개된 뒤엔 실제 사진(`FM_PORTRAIT`/`AO_PORTRAIT`)으로 바뀐다.
+       * `AMBUSH_LINES` 는 `systems/ambush.ts` 와 공유하는 단일 원천이다 — 대사가
+       * 바뀌어도 판정(테이저 발사 시점)과 화면이 갈릴 일이 없다.
+       */
+      if (ambush.className !== (s.ambush.active ? 'on' : '')) {
+        ambush.className = s.ambush.active ? 'on' : ''
+      }
+      if (s.ambush.active) {
+        const { line } = ambushLineAt(s.ambush.phaseMs)
+        ambushWho.textContent = line.speaker
+        ambushSpeaker.textContent = line.speaker
+        ambushSpeaker.className = `who${line.speaker === '역무원' ? ' danger' : ''}`
+        ambushLine.textContent = line.text
+        if (line.speaker === '??') {
+          ambushFrame.style.display = 'none'
+        } else {
+          ambushFrame.style.display = ''
+          ambushPortrait.src = line.speaker === '역무원' ? AO_PORTRAIT : FM_PORTRAIT
+        }
+        // 대사별이 아니라 **전체** 진행도 — 몇 마디 남았는지가 아니라 "곧 끝난다"가 중요하다
+        const overall = Math.min(1, s.ambush.phaseMs / AMBUSH_TOTAL_MS)
+        ambushBar.style.transform = `scaleX(${overall.toFixed(3)})`
       }
 
       // ── UI-19 편의점 상점

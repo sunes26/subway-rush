@@ -93,6 +93,36 @@ export const GRANDPA_ID = 'ACT-02-GP'
 /** 편의점 선물 매대 — 5지 선택 대화(`giftBranches`)를 여는 `talk` 대상 */
 export const GIFT_STALL_ID = 'OBJ-19-GIFT'
 
+/**
+ * 붕어빵 아저씨 — 무선이어폰(I-05)의 **유일한** 획득처(디렉터 지시, 완전 대체).
+ * `OBJ-03-CART` 솔리드(카트) 바로 뒤에 세운다 — 좌표는 `render/actors.ts`가
+ * `byId`로 그대로 읽는다(면 방향 규약: 좌표를 여기서 새로 만들지 않는다).
+ */
+export const FISHCAKE_ID = 'OBJ-03-FISHMAN'
+
+/**
+ * 붕어빵 아저씨 인사말 — **클릭으로 한 줄씩** 넘어간다(디렉터 지시).
+ * 마지막 줄에서만 선택지가 뜬다 — `systems/interact.ts`·`ui/dialog.ts`가 이 배열
+ * 하나를 같이 읽는다(길이가 곧 "몇 번 클릭해야 선택지가 뜨는가"다).
+ */
+export const FISHCAKE_GREETING: readonly string[] = [
+  '"어이, 거기 학생. 길 잃었나?"',
+  '"…홍대입구역 말인가? 저짝으로 쭉 가면 나올 거네."',
+  '"그나저나… 아까 누가 놓고 갔는지, 여기 신형 무선이어폰이 하나 떨어져 있더라고. ' +
+    '이거 참, 어찌해야 되나 모르겠네."',
+]
+
+/**
+ * 선택 후 반응 — 골라도 대화창은 안 닫힌다. 이 대사를 한 번 더 보여준 뒤
+ * 클릭해야 닫힌다(`state.act.dialogChoice`) — 토스트로 따로 뜨면 방금 읽던
+ * 대화창과 끊겨 보인다(디렉터 지적).
+ */
+export const FISHCAKE_REACTION: Readonly<Record<1 | 2, string>> = {
+  1: '"…음, 그런가. 그럼 자네가 가지고 가게."',
+  2: '"허허, 역시 그렇지. 사실 이건 내 거라네. 자네 양심이 어떤가 한번 떠본 걸세. ' +
+    '자네는 내 시험을 통과했어. 이건 그 보상이네."',
+}
+
 /** 자판기 3대 — `OBJ-06/07/08-VEND*` 솔리드 중심과 **같은 좌표**다 */
 export const VENDING_IDS = ['OBJ-06', 'OBJ-07', 'OBJ-08'] as const
 export type VendingId = (typeof VENDING_IDS)[number]
@@ -103,12 +133,19 @@ export const CP_IDS = ['ACT-CP', 'ACT-CP2', 'ACT-CP3'] as const
 export const INTERACTABLES: readonly Interactable[] = [
   // ───────────── Z1 (L0) ─────────────
   /**
-   * 붕어빵 노점(`OBJ-03-CART`)은 **상호작용이 없다** — 배경 소품이다(v0.3).
-   *
-   * P1 에서는 여기서 `I-12`(붕어빵)를 500원에 팔았다. `I-12` 가 양갱이 되면서
-   * 두 가지가 깨졌다: 붕어빵 노점이 양갱을 팔고, Z1 에서 정답을 직접 사면
-   * 편의점 5지 선택이 통째로 무의미해진다. 판매대를 걷어내고 수레만 남긴다.
+   * 붕어빵 노점(`OBJ-03-CART`) 자체는 여전히 배경 소품이다(v0.3 그대로) — P1 때
+   * `I-12`를 팔던 매대 기능은 되살리지 않는다. 대신 카트 뒤에 아저씨를 세운다:
+   * 무선이어폰(I-05)의 유일한 획득처(`branchesFor`의 `fishcakeBranches` 참고).
+   * 카트 솔리드(`at(-50, 32, 2.4, 1.6)`) 뒤쪽(북쪽, 벽 방향)에 서서 남쪽(열린 인도)을 본다 —
+   * 편의점 점원(`CLERK_POS`)과 같은 "카운터 뒤에 서서 손님을 본다" 배치다.
    */
+  {
+    id: FISHCAKE_ID,
+    kind: 'talk',
+    x: -50, y: 33.0, z: FLOOR.L0,
+    label: '붕어빵 아저씨',
+    once: true,
+  },
 
   // ───────────── Z2 (B1) ─────────────
   {
@@ -146,7 +183,7 @@ export const INTERACTABLES: readonly Interactable[] = [
     x: 13.03, y: 4.15, z: FLOOR.B1,
     label: '자판기 A',
     needs: 'I-01',
-    needReason: '막대기 같은 게 필요해 보인다',
+    needReason: '효자손을 쥐고 있어야 가능할 것 같다',
     once: true,
   },
   {
@@ -155,7 +192,7 @@ export const INTERACTABLES: readonly Interactable[] = [
     x: 21.63, y: 4.15, z: FLOOR.B1,
     label: '자판기 B',
     needs: 'I-01',
-    needReason: '막대기 같은 게 필요해 보인다',
+    needReason: '효자손을 쥐고 있어야 가능할 것 같다',
     once: true,
   },
   {
@@ -164,7 +201,7 @@ export const INTERACTABLES: readonly Interactable[] = [
     x: 25.93, y: 4.15, z: FLOOR.B1,
     label: '자판기 C',
     needs: 'I-01',
-    needReason: '막대기 같은 게 필요해 보인다',
+    needReason: '효자손을 쥐고 있어야 가능할 것 같다',
     once: true,
   },
   {
@@ -231,18 +268,6 @@ export const INTERACTABLES: readonly Interactable[] = [
   // ═══════════════ P2 신규 ═══════════════
   // 좌표는 전부 `data/world.ts` 의 솔리드에서 나온다. 접근 면을 명시한다 —
   // "어느 면에서 보이는가"로 P0에서 열한 번 데었다(면 방향 규약).
-
-  // ───────────── Z1 (L0) ─────────────
-  {
-    // 버스정류장 쉘터 안쪽 벤치. 기둥 4본이 x −60~−56 · y 23.4~25.4 를 두른다.
-    // 스폰(−58, 24)에서 1.5m — **첫 아이템은 출발선에서 보여야 한다**(P3 튜토리얼의 전제)
-    id: 'Z1-ITM05',
-    kind: 'pickup',
-    x: -56.9, y: 24.4, z: FLOOR.L0 + 0.5,
-    label: '무선이어폰',
-    gives: 'I-05',
-    once: true,
-  },
 
   // ───────────── Z2 (B1) ─────────────
   {

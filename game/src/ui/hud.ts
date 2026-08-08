@@ -270,7 +270,7 @@ export const createHud = (mount: HTMLElement): Hud => {
           `|${swapOn ? (swappable ? 's' : 'n') : ''}`
         if (key === slot.last) continue
         slot.glyph.textContent = def ? def.glyph : ''
-        // 아이콘 없는 아이템(이어폰·커피·신문지·캐리어·지갑·EMP)은 onerror가
+        // 아이콘 없는 아이템(커피·신문지·캐리어·지갑·EMP)은 onerror가
         // has-icon을 떼어내 위 glyph 텍스트가 그대로 보인다
         if (def) slot.icon.src = `${ICON_BASE}${def.node}.png`
         else { slot.icon.removeAttribute('src'); slot.box.classList.remove('has-icon') }

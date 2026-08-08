@@ -80,7 +80,10 @@ const succeed = (s: GameState, vendorId: string): Action[] => {
   ]
   if (coin > 0) {
     // 동전은 잔액으로 **직접** 흡수된다 — 획득과 사용 사이 절차가 0 (GDD §5.4 ⑤)
-    acts.push({ t: 'BALANCE', delta: coin, label: '동전' })
+    acts.push({
+      t: 'BALANCE', delta: coin, label: '동전',
+      text: `자판기 아래에서 ${coin.toLocaleString('ko-KR')}원을 주웠다`,
+    })
   } else {
     acts.push({ t: 'FX', kind: 'toast', text: '먼지만 나왔다', lifeMs: 1800, value: 0 })
   }

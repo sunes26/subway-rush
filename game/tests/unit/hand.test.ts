@@ -60,10 +60,11 @@ describe('슬롯 키 — 쓸 데가 없으면 든다', () => {
     expect(off.flags).not.toContain('CARRIER_ON')
   })
 
-  it('마스크는 토글이 없어져서 이제 그냥 손에 든다 (디렉터 지시)', () => {
+  it('마스크는 이어폰과 같이 손에도 안 든다 — 쓰는 물건이지 드는 물건이 아니다 (디렉터 지시 갱신)', () => {
     const s = tap(nowhere(['I-06']), { pressSlot: 1 })
     expect(s.flags, '슬롯 키로는 안 켜진다').not.toContain('MASK_ON')
-    expect(s.hand.item, '대신 다른 아이템처럼 손에 든다').toBe('I-06')
+    expect(s.hand.item, '손에도 안 든다').toBeNull()
+    expect(s.act.denyText, '거부도 아니다 — 조용히 아무 일도 안 한다').toBe('')
   })
 
   it('이어폰은 손에도 안 든다 — 귀에 꽂는 물건이지 드는 물건이 아니다 (디렉터 지시)', () => {

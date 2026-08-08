@@ -10,7 +10,7 @@ import { createInput, EMPTY_INPUT, type InputFrame } from './core/input'
 import { resolveSeed } from './core/rng'
 import { CAMERA, FPV, MAX_FRAME_MS, MAX_STEPS_PER_FRAME, MOVE, STEP_MS } from './data/tuning'
 import { FLOOR, GATES, GATE_BODY, GATE_LAMP_Z, ZONE_NAMES } from './data/world'
-import { byId, GIFT_STALL_ID, GRANDPA_ID, type InteractKind } from './data/interactables'
+import { byId, FISHCAKE_ID, GIFT_STALL_ID, GRANDPA_ID, type InteractKind } from './data/interactables'
 import { CHAR_SCALE, loadActors, type Actors } from './render/actors'
 import { createCameraRig } from './render/camera-rig'
 import { buildTraffic, type Traffic } from './render/cars'
@@ -198,8 +198,6 @@ let prevGateState = state.gates.state
 let prevCoins = state.tally.coinsEarned
 let prevHits = state.chase.hitCount
 let prevTrainState = state.train.state
-/** 편의점 상점·할아버지 대화는 마우스로 누른다 — 락 중엔 커서가 없어 클릭이 안 먹는다 */
-let prevDialogId = state.act.dialogId
 // ── P2 ──
 const ambience = createAmbience()
 const footsteps = createFootsteps()
@@ -489,11 +487,17 @@ const frame = (now: number): void => {
 
   hud.sync(state, sample.locked && cameraRig.mode() === 'fp')
   dialog.sync(state)
-  if (state.act.dialogId !== prevDialogId) {
-    const wantsMouse = state.act.dialogId === GIFT_STALL_ID || state.act.dialogId === GRANDPA_ID
-    if (wantsMouse && document.pointerLockElement) document.exitPointerLock()
-    prevDialogId = state.act.dialogId
-  }
+  /**
+   * 마우스로 고르는 대화 3종(할아버지·편의점·붕어빵 아저씨) — **매 프레임** 강제한다.
+   *
+   * 예전엔 `dialogId` 가 바뀌는 순간에만 한 번 풀었다. 그러면 대화가 열려 있는 동안
+   * 패널 밖(작은 패널이라 여백이 넓다)을 클릭하면 `core/input.ts` 의 "락 안 걸려 있으면
+   * 좌클릭 = 재진입" 규칙에 걸려 시선 회전이 도로 살아났다 — `setPointerLockAllowed`가
+   * 재진입 자체를 막는다.
+   */
+  const wantsMouse = state.act.dialogId === GIFT_STALL_ID || state.act.dialogId === GRANDPA_ID ||
+    state.act.dialogId === FISHCAKE_ID
+  input.setPointerLockAllowed(!wantsMouse)
   screens.sync(state)
   recordIfEnded(state)
   debug.sync(state)

@@ -304,6 +304,9 @@ test.describe('자판기 QTE — 타이밍 바 (P2 개편)', () => {
       g.look(Math.PI / 2)
     })
     await page.waitForTimeout(200)
+    // 1번 슬롯 — 첫 누름은 손에 쥔다, 두 번째 누름이 QTE 를 연다 (쥔 상태에서만 열린다)
+    await page.keyboard.press('Digit1')
+    await page.waitForTimeout(100)
     await page.keyboard.press('Digit1')
     await page.waitForFunction(() => window.__game!.state().qte.active, null, { timeout: 20_000 })
   }

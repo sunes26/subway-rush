@@ -196,13 +196,27 @@ describe('S9-6~S9-9 자판기 QTE', () => {
   const HAS_HYO: readonly (ItemId | null)[] = ['I-01', null, null]
 
   const atVend = (seed = 7, balance = 900): GameState =>
-    put(start(seed, { inventory: HAS_HYO, cardBalance: balance }), VEND_A.x, VEND_A.y - 1.1, FLOOR.B1)
+    put(
+      start(seed, {
+        inventory: HAS_HYO,
+        hand: { item: 'I-01', slot: 0, open: false },
+        cardBalance: balance,
+      }),
+      VEND_A.x, VEND_A.y - 1.1, FLOOR.B1,
+    )
 
   it('S9-9 효자손 없이 누르면 사유만 나온다', () => {
     const s0 = put(start(7), VEND_A.x, VEND_A.y - 1.1, FLOOR.B1)
     const s = tap(s0, { pressInteract: true }, yawTo(s0, VEND_A.x, VEND_A.y))
     expect(s.qte.active).toBe(false)
-    expect(s.act.denyText).toBe('막대기 같은 게 필요해 보인다')
+    expect(s.act.denyText).toBe('효자손을 쥐고 있어야 가능할 것 같다')
+  })
+
+  it('S9-9 효자손은 있지만 손에 안 쥐었으면 사유만 나온다', () => {
+    const s0 = put(start(7, { inventory: HAS_HYO }), VEND_A.x, VEND_A.y - 1.1, FLOOR.B1)
+    const s = tap(s0, { pressInteract: true }, yawTo(s0, VEND_A.x, VEND_A.y))
+    expect(s.qte.active).toBe(false)
+    expect(s.act.denyText).toBe('효자손을 쥐고 있어야 가능할 것 같다')
   })
 
   it('S9-6 3스트로크 성공 시 시드 결정 금액이 잔액에 정확히 가산된다', () => {
@@ -309,7 +323,9 @@ describe('S9-11 잔액 900 시드에서 체인 완주 → 개찰구 통과', () 
     const r = goto(s, VEND_A.x, VEND_A.y - 1.1, { r: 0.6, maxSec: 30 })
     expect(r.ok, '자판기까지 걸어갈 수 있다').toBe(true)
     const yaw = yawTo(r.s, VEND_A.x, VEND_A.y)
-    s = playQte(tap(r.s, { pressInteract: true }, yaw))
+    // QTE 는 손에 쥔 상태에서만 열린다 — 긁기 전에 먼저 손에 쥔다
+    const held = tap(r.s, { pressSlot: r.s.inventory.indexOf('I-01') + 1 }, yaw)
+    s = playQte(tap(held, { pressInteract: true }, yaw))
     expect(s.qte.active, 'QTE 종료').toBe(false)
     expect(s.cardBalance, `900 + ${coin}`).toBe(900 + coin)
     expect(s.cardBalance, '요금을 낼 수 있게 됐다').toBeGreaterThanOrEqual(FARE)

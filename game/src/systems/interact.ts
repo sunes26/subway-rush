@@ -9,8 +9,8 @@
  */
 
 import type { InputFrame } from '../core/input'
-import { GIFT_STALL_ID, GRANDPA_ID, INTERACTABLES, byId, coinValue, isCoin, isVending,
-  type InteractKind, type Interactable } from '../data/interactables'
+import { FISHCAKE_GREETING, FISHCAKE_ID, GIFT_STALL_ID, GRANDPA_ID, INTERACTABLES, byId,
+  coinValue, isCoin, isVending, type InteractKind, type Interactable } from '../data/interactables'
 import { GIFT_CORRECT, GIFT_ITEMS, itemDef } from '../data/items'
 import { CHASE, EMERGENCY, INTERACT, SLOTS, STAMINA } from '../data/tuning'
 import type { Action, Drop, GameState, ItemId } from '../state/types'
@@ -325,6 +325,10 @@ const begin = (s: GameState, it: Interactable): Action[] => {
   if (it.needs && !hasItem(s, it.needs)) {
     return [{ t: 'ACT_DENY', text: it.needReason ?? `${itemDef(it.needs).name}이 필요하다` }]
   }
+  // 자판기는 소지만으론 부족하다 — 효자손을 손에 쥔 상태여야 QTE 가 열린다
+  if (it.kind === 'scratch' && it.needs && s.hand.item !== it.needs) {
+    return [{ t: 'ACT_DENY', text: it.needReason ?? '손에 쥐고 있어야 한다' }]
+  }
   if (it.cost !== undefined && s.cardBalance < it.cost) {
     return [{ t: 'ACT_DENY', text: it.needReason ?? '돈이 부족하다' }]
   }
@@ -374,11 +378,21 @@ export const giftBranches = (s: GameState): readonly Branch[] => {
   }))
 }
 
+/**
+ * 붕어빵 아저씨 분실물 2지 — note 를 비워 둔다. 정답·오답이 아니라 **양심 시험**이라
+ * 어느 쪽이 "이득"인지 미리 보여주면 그 자체가 답을 흘리는 것과 같다.
+ */
+export const fishcakeBranches = (_s: GameState): readonly Branch[] => [
+  { key: 1, label: '내가 가진다', enabled: true, note: '' },
+  { key: 2, label: '경찰에 분실물 신고를 하자고 한다', enabled: true, note: '' },
+]
+
 /** 대화 상대 → 분기표. UI 와 시스템이 **같은 함수**를 읽는다 */
 export const branchesFor = (s: GameState, dialogId: string): readonly Branch[] =>
   dialogId === GRANDPA_ID ? grandpaBranches(s)
     : dialogId === GIFT_STALL_ID ? giftBranches(s)
-      : []
+      : dialogId === FISHCAKE_ID ? fishcakeBranches(s)
+        : []
 
 /** 선물 구매 — 1회 한정. 되돌리기가 없으므로 여기서 플래그를 못 박는다 */
 const buyGift = (_s: GameState, key: Branch['key']): Action[] => {
@@ -390,6 +404,31 @@ const buyGift = (_s: GameState, key: Branch['key']): Action[] => {
     { t: 'FLAG', id: 'GIFT_BOUGHT', on: true },
     { t: 'FX', kind: 'toast', text: `${itemDef(item).name}을(를) 샀다`, lifeMs: 1800, value: 0 },
   ]
+}
+
+/**
+ * 붕어빵 아저씨 분실물 — 어느 쪽을 골라도 이어폰(I-05)은 받는다. 갈리는 건 **대가**다.
+ * ①은 겉으론 아무 일도 안 일어난다 — 값은 개찰구 매복(`systems/ambush.ts`)에서 치른다.
+ * ②는 그 자리에서 바로 보상으로 이어진다.
+ *
+ * `PICKUP` 뒤에 `FLAG EARBUDS_ON`·`ITEM_USED` 를 직접 낸다 — 바닥 습득(`complete()`의
+ * `case 'pickup'`)을 안 거치므로 자동 착용(`autoWear`)이 저절로 안 붙는다.
+ *
+ * `DIALOG`(닫기) 대신 `DIALOG_CHOSEN` 을 낸다 — 대화창을 안 닫고 반응 대사
+ * (`FISHCAKE_REACTION`)를 먼저 보여준다. 예전엔 여기서 바로 닫고 반응을 토스트로
+ * 띄웠는데, 방금까지 읽던 대화창과 끊겨 보였다(디렉터 지적) — 닫기는 그 대사를
+ * 한 번 더 클릭했을 때(`interactSystem`)로 미룬다.
+ */
+const fishcakeChoice = (_s: GameState, key: Branch['key']): Action[] => {
+  const base: Action[] = [
+    { t: 'PICKUP', item: 'I-05', slot: -1, dropId: null },
+    { t: 'FLAG', id: 'EARBUDS_ON', on: true },
+    { t: 'ITEM_USED', item: 'I-05' },
+    { t: 'ACT_CONSUME', id: FISHCAKE_ID },
+    { t: 'DIALOG_CHOSEN', key: key === 1 ? 1 : 2 },
+  ]
+  if (key === 1) return [...base, { t: 'FLAG', id: 'EARBUDS_STOLEN', on: true }]
+  return base
 }
 
 /** [1] 훔치기 — 즉시. 0.6초 뒤 단소가 날아온다(O-14). UI는 그걸 미리 말하지 않는다 */
@@ -418,6 +457,7 @@ const dialogPick = (s: GameState, key: Branch['key']): Action[] => {
   if (!b) return []
   if (!b.enabled) return [{ t: 'ACT_DENY', text: b.note }]
   if (id === GIFT_STALL_ID) return buyGift(s, key)
+  if (id === FISHCAKE_ID) return fishcakeChoice(s, key)
   if (key === 1) return steal()
   const kind: InteractKind = key === 2 ? 'give' : 'story'
   return [
@@ -553,11 +593,14 @@ const contextUse = (s: GameState, slot: number, item: ItemId): Action[] | null =
       return null
 
     /**
-     * 효자손 — 자판기가 근처면 QTE.
+     * 효자손 — 손에 쥔 채로 자판기가 근처면 QTE.
      *
      * **추격 중이고 할아버지가 손 닿는 거리면 반납이 우선한다** (GDD §4.1 해제 3경로 중 하나).
      * 반납이 자판기보다 앞에 오는 이유: 단소에 맞으면서 자판기를 긁을 상황이라면
      * 플레이어가 원하는 건 긁기가 아니라 살아남기다.
+     *
+     * 손에 안 쥔 채 눌렀으면 `null`을 돌려 `equipToggle`로 떨어뜨린다 — 한 번 더 누르면
+     * (이제 쥔 상태이므로) QTE 로 이어진다. E키 조준 경로([begin])와 조건을 맞춘다.
      */
     case 'I-01': {
       if (s.chase.active &&
@@ -569,6 +612,7 @@ const contextUse = (s: GameState, slot: number, item: ItemId): Action[] | null =
           { t: 'FX', kind: 'toast', text: '효자손을 돌려줬다 — "어허, 진작 그럴 것이지."', lifeMs: 2600, value: 0 },
         ]
       }
+      if (s.hand.item !== 'I-01') return null
       const vend = INTERACTABLES.find(
         (it) => isVending(it.id) && !s.act.consumed.includes(it.id) && within(s, it, 2.2))
       if (!vend) return null
@@ -621,7 +665,30 @@ export const interactSystem = (s: GameState, ctx: ActCtx): Action[] => {
 
   // 2) 대화 UI가 열려 있으면 그것만 처리한다
   if (s.act.dialogId) {
-    if (f.pressCancel || moveAxis(f) > INTERACT.cancelAxis) return [...out, { t: 'DIALOG', id: null }]
+    const isFishcake = s.act.dialogId === FISHCAKE_ID
+    /**
+     * 붕어빵 아저씨 반응 대사 — 골랐지만 아직 안 닫힌 상태(`dialogChoice`).
+     * 클릭(=E) 한 번이면 그제야 닫힌다. `dialogPick`을 다시 태우지 않는다 —
+     * 이미 골랐다(두 번 고르면 `PICKUP`이 두 번 나간다).
+     */
+    if (isFishcake && s.act.dialogChoice !== 0) {
+      if (f.pressCancel || f.pressInteract) return [...out, { t: 'DIALOG', id: null }]
+      return out
+    }
+    /**
+     * 붕어빵 아저씨 인사말 — 마지막 줄 전까지는 **클릭(=E)으로만 넘어간다.**
+     * 이동으로 안 잠기는 이유: `movement.ts`가 이미 이 대화 동안 실제 이동을 막는다
+     * (`isTalkLocked`) — 그래서 여기 `moveAxis` 취소 검사도 이 상대에게는 안 먹인다.
+     * 안 먹이지 않으면 가만히 서서 방향키만 눌러도 대화가 닫혀 버린다.
+     */
+    if (isFishcake && s.act.dialogStep < FISHCAKE_GREETING.length - 1) {
+      if (f.pressCancel) return [...out, { t: 'DIALOG', id: null }]
+      if (f.pressInteract) return [...out, { t: 'DIALOG_ADVANCE' }]
+      return out
+    }
+    if (f.pressCancel || (!isFishcake && moveAxis(f) > INTERACT.cancelAxis)) {
+      return [...out, { t: 'DIALOG', id: null }]
+    }
     if (f.pressSlot >= 1 && f.pressSlot <= 5) return [...out, ...dialogPick(s, f.pressSlot as Branch['key'])]
     return out
   }

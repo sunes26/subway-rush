@@ -111,6 +111,7 @@ const DEFS: readonly ItemDef[] = [
     flag: 'MASK_ON',
     autoWear: true,
     toggleable: false,
+    holdable: false,
     negates: ['OBS-04'],
     glyph: '😷',
     noTargetReason: '이미 쓰고 있다',
