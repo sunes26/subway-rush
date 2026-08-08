@@ -82,10 +82,16 @@ export const SWAP_MS = INTRO_MS
 export const BUS_STOP_MS = 2550
 
 /** 문이 열리기 시작하는 시각 */
-export const DOORS_MS = 2880
+export const DOORS_MS = 2960
 
-/** 자리에서 일어서는 시각 — 문이 열리고 나서다 */
-export const STAND_MS = 3160
+/**
+ * 자리에서 일어서는 시각.
+ *
+ * ② 샷(1.4~2.8s) **안**이어야 한다. 컷 뒤에 일어나면 관객은 그 동작을 못 보고,
+ * ③ 샷에서 밖에 나와 있는 주인공이 **순간이동**처럼 느껴진다. 일어나는 것까지
+ * 보여 주고 문까지 걸어가는 사이를 컷으로 건너뛰는 것이 영화적 생략이다.
+ */
+export const STAND_MS = 2500
 
 /**
  * ■ 서쪽 끝이 이 연출의 진짜 제약이다
@@ -208,9 +214,13 @@ export const actorAt = (tMs: number): ActorState => {
    * 앉음 → 일어섬 → 문으로 → 내려섬 → 질주.
    * 구간이 겹치지 않아야 "앉은 채로 걸어 나가는" 그림이 안 나온다.
    */
-  const sit = 1 - seg(t, STAND_MS, STAND_MS + 340)
-  const toDoor = easeInOut(seg(t, STAND_MS + 300, 3820))
-  const down = seg(t, 3820, SHOT.door)
+  const sit = 1 - seg(t, STAND_MS, STAND_MS + 300)
+  const toDoor = easeInOut(seg(t, STAND_MS + 240, 3280))
+  /**
+   * 내려서는 구간. ③ 샷(2.8~4.1s) 안에서 **문 열림 → 하차**가 다 보여야 한다.
+   * 3.62s 에 시작했더니 문만 열린 빈 버스를 900ms 나 보게 됐다 — 앞당긴다.
+   */
+  const down = seg(t, 3300, SHOT.door)
   const run = seg(t, SHOT.door, INTRO_MS)
 
   const inBusX = lerp(SEAT.x, DOORWAY.x, toDoor) + dx
@@ -259,9 +269,12 @@ export const FINAL_POSE: IntroPose = {
 
 /**
  * ④ 질주 팔로우의 뒤따르는 거리 — 주인공 기준 (동쪽, 북쪽).
- * 동쪽으로 달리므로 음수 = 뒤.
+ *
+ * 동쪽으로 달리므로 e 는 음수(뒤)다. n 도 음수라 **정후방이 아니라 3/4 후방**이 된다 —
+ * 정중앙에서 멀리 따라가면 주인공만 크게 보이고 어디로 가는지가 안 읽힌다.
+ * 비스듬히 서면 주인공의 움직임과 **역 방향(동쪽)** 이 한 화면에 같이 들어온다.
  */
-const FOLLOW = { e: -1.85, n: -0.45 } as const
+const FOLLOW = { e: -1.72, n: -0.78 } as const
 
 
 
@@ -296,12 +309,24 @@ export const poseAt = (tMs: number): IntroPose => {
   const shake = busShake(t)
   const dx = busDx(t)
 
-  // ── ① 버스 실내 미디엄. 통로 쪽 3/4 측면 — 창·좌석·통로·봉·주인공이 다 든다
+  /**
+   * ── ① 버스 실내 미디엄. **3/4 정면**이다.
+   *
+   * ⚠ 처음엔 카메라를 주인공 **뒤쪽**(서쪽)에 뒀다. 주인공이 동쪽을 보고 앉아
+   *   있으니 화면 한복판이 뒤통수와 등받이가 됐고, 그 한 장으로는 아무것도
+   *   전달이 안 됐다 — "버스를 타고 역으로 가는 사람"이 안 읽힌다.
+   *
+   * 그래서 **앞쪽(동쪽) 통로**로 옮겨 돌아본다. 그러면
+   *   · 얼굴·상체·팔·다리와 좌석이 한 화면에 들어오고
+   *   · 창(북)이 인물 뒤에 놓여 지나가는 도심이 배경이 되며
+   *   · 앞좌석 등받이와 봉이 전경으로 깔린다
+   * 스토리보드 첫 컷의 구도가 정확히 이것이다.
+   */
   if (t < SHOT.interior) {
     const p = framed(
-      [SEAT.x - 1.52, SEAT.y - 1.06, 1.58],
-      [SEAT.x - 1.36, SEAT.y - 0.98, 1.55],
-      [SEAT.x + 0.05, SEAT.y, 1.16],
+      [SEAT.x + 1.66, SEAT.y - 1.08, 1.46],
+      [SEAT.x + 1.50, SEAT.y - 1.01, 1.42],
+      [SEAT.x + 0.02, SEAT.y + 0.02, 1.12],
       seg(t, 0, SHOT.interior), dx,
     )
     return { ...p, eye: p.eye + shake * 0.02, pitch: p.pitch + shake * 0.005 - brakeDip(t) }
@@ -316,9 +341,9 @@ export const poseAt = (tMs: number): IntroPose => {
    */
   if (t < SHOT.phone) {
     const p = framed(
-      [SEAT.x - 0.66, SEAT.y - 0.56, 1.70],
-      [SEAT.x - 0.54, SEAT.y - 0.47, 1.64],
-      [SEAT.x + 0.30, SEAT.y - 0.06, 1.15],
+      [SEAT.x - 0.58, SEAT.y - 0.50, 1.62],
+      [SEAT.x - 0.46, SEAT.y - 0.42, 1.56],
+      [SEAT.x + 0.34, SEAT.y - 0.24, 1.14],
       seg(t, SHOT.interior, SHOT.phone), dx,
     )
     return { ...p, eye: p.eye + shake * 0.015, pitch: p.pitch + shake * 0.004 - brakeDip(t) }
@@ -342,9 +367,9 @@ export const poseAt = (tMs: number): IntroPose => {
    */
   if (t < SHOT.door) {
     return framed(
-      [-63.1, 23.3, 1.82],
-      [-62.7, 23.05, 1.76],
-      [DOOR_X + 0.15, 22.25, 1.15],
+      [-63.7, 24.15, 2.02],
+      [-63.3, 23.75, 1.94],
+      [DOOR_X + 0.12, 22.30, 1.18],
       seg(t, SHOT.phone, SHOT.door),
     )
   }
@@ -360,7 +385,8 @@ export const poseAt = (tMs: number): IntroPose => {
   const k = 1 - close
   const camX = a.x + FOLLOW.e * k
   const camY = a.y + FOLLOW.n * k
-  const camZ = lerp(FPV.eyeHeight, a.z + 1.30, k)
+  // 카메라를 낮춘다 — 눈높이보다 아래에서 올려다보면 달리는 속도가 커 보인다
+  const camZ = lerp(FPV.eyeHeight, a.z + 1.12, k)
   const aimZ = a.z + 0.95
   const ddx = a.x - camX
   const ddy = a.y - camY

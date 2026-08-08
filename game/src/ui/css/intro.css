@@ -95,7 +95,7 @@
  * 마지막에 딱 한 번. 이 숫자가 인트로와 게임을 잇는 **유일한 문자**다 —
  * 나머지는 전부 그림으로만 말한다.
  */
-#intro .clock{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%) scale(1.22);
+#intro .clock{position:absolute;left:50%;top:27%;transform:translate(-50%,-50%) scale(1.22);
   font-size:clamp(46px,7.6vw,92px);font-weight:700;letter-spacing:.06em;
   color:#F2F0EA;text-shadow:0 0 22px rgba(255,138,30,.5);opacity:0;
   transition:opacity .18s,transform .5s cubic-bezier(.2,.9,.3,1)}

@@ -86,8 +86,12 @@ type BoneName = (typeof NAMES)[number]
 const SIT: Readonly<Partial<Record<BoneName, number>>> = {
   UpperLegL: -1.42,
   UpperLegR: -1.42,
-  LowerLegL: 1.30,
-  LowerLegR: 1.30,
+  /**
+   * 종아리 — 1.30 에서는 **발이 바닥에서 15cm 떠 있었다.** 무릎에서 아래가 덜 내려온
+   * 것이라 각을 더 준다. 앉은 사람은 발이 바닥에 닿아야 앉은 것으로 보인다.
+   */
+  LowerLegL: 1.62,
+  LowerLegR: 1.62,
   // 등을 아주 살짝 세운다 — 앉으면 골반이 뒤로 눕고 등이 그만큼 선다
   Spine: 0.07,
 }
@@ -102,8 +106,8 @@ const ARM_SIGN = typeof location !== 'undefined' && /[?&]armsign=-1/.test(locati
  * 휴대폰은 그 자리에 붙는다(`render/phone.ts`).
  */
 const PHONE: Readonly<Partial<Record<BoneName, number>>> = {
-  UpperArmR: ARM_SIGN * 0.95,
-  LowerArmR: ARM_SIGN * 1.15,
+  UpperArmR: ARM_SIGN * 0.72,
+  LowerArmR: ARM_SIGN * 0.98,
   // 화면을 내려다본다. 크게 숙이면 얼굴이 안 보인다
   Head: 0.28,
 }

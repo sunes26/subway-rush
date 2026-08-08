@@ -78,7 +78,7 @@ test('STEP 5·6 — 4샷', async ({ page }) => {
   await boot(page)
   const marks: [string, number][] = [
     ['c1-interior', 700], ['c2-ots', 2100], ['c2-ots-late', 2600],
-    ['c3-door-shut', 2850], ['c3-door-open', 3400], ['c3-alight', 3980],
+    ['c3-door-shut', 2860], ['c3-door-open', 3250], ['c3-alight', 3760], ['c3-out', 4050],
     ['c4-run', 4700], ['c4-late', 5450],
   ]
   for (const [name, t] of marks) {

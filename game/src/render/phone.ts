@@ -152,11 +152,14 @@ export const buildPhone = (): Phone => {
   root.add(screen)
 
   /**
-   * 팔뚝 본 기준 자리. 본의 로컬 축이 리그마다 달라 **실측으로 정했다** —
-   * 팔뚝 끝(손)이 오는 자리에 놓고 화면이 얼굴을 향하도록 눕힌다.
+   * 팔뚝 본 기준 자리.
+   *
+   * ⚠ 처음엔 −0.30 을 줬는데 **팔뚝 길이를 넘겨서** 휴대폰이 손에서 30cm 떨어져
+   *   몸 옆에 둥둥 떠 있었다. 이 캐릭터(키 1.48m)의 팔뚝은 0.18m 안팎이라
+   *   그만큼만 내려가야 팔 끝 = 손이 된다. 손 본이 없으니 이 값이 곧 손이다.
    */
-  root.position.set(0, -0.30, 0.10)
-  root.rotation.set(-1.05, 0, 0)
+  root.position.set(0.01, -0.17, 0.055)
+  root.rotation.set(-0.95, 0, 0)
   root.visible = false
 
   return {

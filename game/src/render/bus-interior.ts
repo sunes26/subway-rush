@@ -30,7 +30,8 @@
  *   앉아서 창밖을 볼 수 없다.
  */
 
-import { BoxGeometry, CylinderGeometry, Group, Mesh, TorusGeometry } from 'three'
+import { BoxGeometry, CylinderGeometry, Group, Mesh, PlaneGeometry, TorusGeometry } from 'three'
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { toonMat } from './toon'
 
 /**
@@ -80,23 +81,28 @@ export const DOOR_X = (DOOR.xMin + DOOR.xMax) / 2
  * 팔레트 — 외피(파랑 차체)와 충돌하지 않는 작은 조합.
  * 랜덤한 단색을 쌓지 않는다. 밝은 실내 + 절제된 좌석 + 노란 봉 하나.
  */
+/**
+ * 팔레트 — **좁게 묶는다.** 물체마다 색을 새로 고르면 그것만으로 프로토타입이 된다.
+ * 밝기 차이는 "무엇인지 구분될 정도"까지만 준다.
+ */
 const C = {
-  /** 실내 판넬 — 따뜻한 아이보리. 어두우면 "테스트 공간"으로 읽힌다 */
-  panel: 0xdedbd3,
-  ceiling: 0xeceae4,
-  /** 바닥 — 중간 톤 뉴트럴 그레이. 검정으로 문제를 숨기지 않는다 */
-  floor: 0x74777d,
-  /** 통로 미끄럼 방지대 — 바닥에 결을 준다 */
-  aisle: 0x63666c,
-  /** 좌석 — 절제된 청회색. 파랑 외피와 같은 계열이되 채도를 낮춘다 */
-  seat: 0x5d7c9e,
-  seatBack: 0x4d6987,
-  /** 좌석 다리·프레임 */
-  frame: 0x8d9298,
-  /** 봉·손잡이 — 노랑 하나만 */
-  pole: 0xdcb838,
-  /** 창틀 · 문틀 — 외피 트림과 같은 어두운 회색 */
-  trim: 0x2b2e33,
+  /** 실내 판넬 — 따뜻한 밝은 회색. 어두우면 그대로 "테스트 공간"이 된다 */
+  panel: 0xe2ded5,
+  ceiling: 0xf0ede6,
+  /** 바닥 — 중간 톤 뉴트럴 그레이 */
+  floor: 0x7c7f85,
+  /** 통로 — 바닥보다 한 단 어둡게. 결이 없으면 바닥이 판때기 한 장이 된다 */
+  aisle: 0x6b6e74,
+  /** 좌석 방석 — 살짝 밝은 네이비. 등받이와 갈라 놔야 두 부분으로 읽힌다 */
+  cushion: 0x51749b,
+  /** 등받이 — 한 단 어두운 네이비 */
+  seatBack: 0x3f5c7d,
+  /** 좌석 다리 — 금속 */
+  frame: 0x9aa0a6,
+  /** 봉·손잡이 — 교통 노랑 하나만 */
+  pole: 0xe0bc3c,
+  /** 창틀 · 문틀 — 차콜. 순검정으로 두면 실내가 검은 격자 구조물이 된다 */
+  trim: 0x3c4046,
 } as const
 
 const box = (
@@ -122,25 +128,49 @@ const IN = {
 const SKIN_OUT = BUS.skinN + 0.02
 
 /**
- * 좌석 한 벌 — **좌판 · 등받이 · 다리** 세 부분이 구분된다.
+ * 모서리를 죽인 상자. **날 선 박스 하나가 통째로 프로토타입처럼 보이게 만든다.**
+ * 반지름은 2~3cm — 로우폴리 실루엣은 그대로 두고 모서리 하이라이트만 만든다.
+ */
+const soft = (
+  w: number, h: number, d: number, r: number, color: number,
+  x: number, y: number, z: number,
+): Mesh => {
+  const rr = Math.min(r, Math.min(w, h, d) / 2 - 1e-3)
+  const m = new Mesh(new RoundedBoxGeometry(w, h, d, 2, rr), toonMat(color))
+  m.position.set(x, y, z)
+  return m
+}
+
+/**
+ * 좌석 한 벌 — **방석 · 등받이 · 다리** 세 부분이 눈으로 구분된다.
  *
- * 진행 방향(+x, 동쪽)을 보고 앉는다. 그래서 등받이는 좌판의 **서쪽**에 선다.
- * 치수는 3등신 SD(키 1.48m)의 앉은키에서 잡았다 — 좌면 0.42m 는 실물 버스와
- * 같고, 이 캐릭터의 엉덩이가 그 위에 얹힌다.
+ * 진행 방향(+x, 동쪽)을 보고 앉는다. 그래서 등받이는 방석의 **서쪽**에 선다.
+ * 좌면 0.42m · 등받이 위 0.98m 는 실물 시내버스 치수이고, 3등신 SD(키 1.48m)의
+ * 앉은키가 그 안에 들어간다.
+ *
+ * ★ 방석을 등받이보다 **밝게** 두는 것이 핵심이다. 같은 색이면 아무리 나눠 만들어도
+ *   한 덩어리 상자로 읽힌다 — 이전 판이 "얇은 직육면체를 반복 배치한 것" 처럼
+ *   보였던 이유의 절반이 여기 있었다. 나머지 절반은 날 선 모서리였다.
  */
 const seatUnit = (cx: number, cy: number, width: number): Group => {
   const g = new Group()
   const f = BUS.floor
   const z = tz(cy)
-  // 좌판
-  g.add(box(0.46, 0.09, width, C.seat, cx, f + 0.42, z))
-  // 등받이 — 살짝 뒤로 눕힌다
-  const back = box(0.10, 0.50, width, C.seatBack, cx - 0.24, f + 0.70, z)
-  back.rotation.z = 0.10
+  // 방석
+  g.add(soft(0.48, 0.11, width, 0.035, C.cushion, cx + 0.01, f + 0.42, z))
+  // 등받이 — 뒤로 조금 눕는다
+  const back = soft(0.09, 0.52, width, 0.028, C.seatBack, cx - 0.235, f + 0.72, z)
+  back.rotation.z = 0.09
   g.add(back)
-  // 다리 — 좌판이 떠 있으면 얹어 놓은 것처럼 보인다
-  g.add(box(0.06, 0.42, 0.06, C.frame, cx + 0.16, f + 0.21, z - width / 2 + 0.08))
-  g.add(box(0.06, 0.42, 0.06, C.frame, cx + 0.16, f + 0.21, z + width / 2 - 0.08))
+  // 등받이 위 손잡이 — 시내버스에 늘 있는 것. 이거 하나로 좌석이 가구가 된다
+  const grip = new Mesh(new CylinderGeometry(0.018, 0.018, width * 0.72, 8), toonMat(C.pole))
+  grip.rotation.x = Math.PI / 2
+  grip.position.set(cx - 0.20, f + 1.00, z)
+  g.add(grip)
+  // 다리 — 방석이 떠 있으면 얹어 놓은 것처럼 보인다
+  for (const side of [-1, 1]) {
+    g.add(box(0.05, 0.36, 0.05, C.frame, cx + 0.14, f + 0.185, z + side * (width / 2 - 0.10)))
+  }
   return g
 }
 
@@ -195,14 +225,18 @@ export const buildBusInterior = (): BusInterior => {
     (BUS.winTop + BUS.ceil) / 2, yN))
   // 창 위아래 테 — 판과 구멍의 경계를 끊어 준다
   for (const z of [BUS.winBottom, BUS.winTop]) {
-    root.add(box(len, 0.05, 0.08, C.trim, midX, z, yN))
+    root.add(box(len, 0.035, 0.06, C.trim, midX, z, yN))
   }
   /**
    * 창틀 세로살 — **실측 멀리언 위치 그대로**다. 균등 분할로 넣으면 밖에서 본
    * 창 분할과 안에서 본 창 분할이 어긋나 같은 버스로 안 읽힌다.
    */
+  /**
+   * ⚠ 세로살을 0.07 로 두었더니 **실내가 검은 격자 구조물**처럼 보였다. 실물
+   * 버스의 창 기둥은 5cm 안팎이고 색도 순검정이 아니다. 얇게, 차콜로.
+   */
   for (const x of BUS.mullions) {
-    root.add(box(0.07, BUS.winTop - BUS.winBottom, 0.07, C.trim, x,
+    root.add(box(0.038, BUS.winTop - BUS.winBottom, 0.05, C.trim, x,
       (BUS.winBottom + BUS.winTop) / 2, yN))
   }
 
@@ -245,7 +279,7 @@ export const buildBusInterior = (): BusInterior => {
    * 수직봉 x — 좌석(−61.28)과 문(−61.0~−59.6)을 **피한다.** 처음엔 −61.4 에 세웠는데
    * 앉은 사람 코앞이었고, 통로에서 그 사람을 보는 카메라의 시선을 정확히 가로막았다.
    */
-  for (const x of [-63.9, -62.35, -58.5, -56.6]) {
+  for (const x of [-64.2, -63.15, -58.4, -56.5]) {
     const p = new Mesh(new CylinderGeometry(0.032, 0.032, railZ - f, 10), toonMat(C.pole))
     p.position.set(x, f + (railZ - f) / 2, tz(20.83))
     root.add(p)
@@ -275,15 +309,31 @@ export const buildBusInterior = (): BusInterior => {
   const yOut = tz(SKIN_OUT)
   const dw = DOOR.xMax - DOOR.xMin
 
-  // 열렸을 때 드러나는 구멍 — 실내 그늘. 문짝보다 살짝 안쪽이다
-  root.add(box(dw - 0.04, doorH - 0.06, 0.03, 0x14161a, DOOR_X, (doorH + 0.06) / 2, yOut + 0.05))
+  /**
+   * 열렸을 때 드러나는 구멍 — 실내 그늘.
+   *
+   * ⚠ **상자로 만들면 안 된다.** 상자는 안쪽 면도 있어서, 버스 **안에서** 보면
+   *   창 자리에 시커먼 판이 걸린다. 실제로 그랬다 — ① 샷 오른쪽 절반이 통째로
+   *   검은 사각형이었고, 창밖이 하나도 안 보였다(마젠타로 칠해 범인을 확인했다).
+   *
+   *   바깥(북)만 향하는 **평면 한 장**이면 안에서는 뒷면이 컬링돼 사라진다.
+   */
+  const hole = new Mesh(new PlaneGeometry(dw - 0.04, doorH - 0.06), toonMat(0x14161a))
+  hole.position.set(DOOR_X, (doorH + 0.06) / 2, yOut + 0.05)
+  hole.rotation.y = Math.PI                 // +y(북)를 향한다
+  root.add(hole)
   // 문틀
   root.add(box(0.08, doorH, 0.09, C.trim, DOOR.xMin, doorH / 2 + 0.03, yOut))
   root.add(box(0.08, doorH, 0.09, C.trim, DOOR.xMax, doorH / 2 + 0.03, yOut))
   root.add(box(dw + 0.16, 0.08, 0.09, C.trim, DOOR_X, doorTop, yOut))
-  // 내릴 때 잡는 세로봉 — 문 안쪽
+  /**
+   * 내릴 때 잡는 세로봉 — 문 **동쪽**.
+   *
+   * ⚠ 서쪽(−61.2)에 세웠더니 주인공 좌석(−61.28)에서 8cm 앞이었다. ① 샷에서
+   *   노란 봉이 얼굴을 정확히 세로로 갈랐다. 좌석이 없는 쪽에 둔다.
+   */
   const grab = new Mesh(new CylinderGeometry(0.028, 0.028, doorH - 0.2, 10), toonMat(C.pole))
-  grab.position.set(DOOR.xMin - 0.20, doorH / 2 + 0.03, tz(21.10))
+  grab.position.set(DOOR.xMax + 0.20, doorH / 2 + 0.03, tz(21.10))
   root.add(grab)
 
   /**
@@ -291,15 +341,28 @@ export const buildBusInterior = (): BusInterior => {
    * 그래야 닫혀 있을 때 옆 칸 창과 높이가 이어져 한 대의 버스로 보인다.
    */
   const leafW = dw / 2 - 0.015
+  /**
+   * 문짝 — 아래는 차체 색 판, 위는 **유리**다. 외피의 창 하단(1.24)에서 갈린다.
+   * 그래야 닫혀 있을 때 옆 칸 창과 높이가 이어져 한 대의 버스로 보인다.
+   *
+   * ⚠ 유리를 **상자로 만들면 안 된다.** 상자는 안쪽 면이 있어서 버스 안에서 보면
+   *   문 자리가 시커먼 벽이 된다 — 실제로 ① 샷 오른쪽이 통째로 검은 사각형이었다.
+   *   실물 버스의 문은 안에서 유리 너머가 보인다. 그래서 유리는 **바깥만 향하는
+   *   평면 한 장**으로 둔다: 밖에서는 짙은 유리, 안에서는 그냥 창이 된다.
+   */
   const leafOf = (dir: -1 | 1): Group => {
     const g = new Group()
     const cx = DOOR_X + dir * leafW / 2
     const lower = BUS.winBottom - 0.06
+    // 아래 판 — 양면 다 차체 색이라 상자로 둬도 된다
     g.add(box(leafW, lower, 0.05, 0x1c6bc7, cx, 0.06 + lower / 2, yOut))
-    g.add(box(leafW, doorTop - BUS.winBottom, 0.05, 0x171c24, cx,
-      (BUS.winBottom + doorTop) / 2, yOut))
+    const glass = new Mesh(new PlaneGeometry(leafW - 0.02, doorTop - BUS.winBottom - 0.02),
+      toonMat(0x171c24))
+    glass.position.set(cx, (BUS.winBottom + doorTop) / 2, yOut - 0.01)
+    glass.rotation.y = Math.PI
+    g.add(glass)
     // 문짝 가운데 세로 몰딩 — 두 짝이 맞물린 자리
-    g.add(box(0.04, doorH - 0.1, 0.06, C.trim, DOOR_X + dir * 0.02, doorH / 2 + 0.03, yOut - 0.02))
+    g.add(box(0.035, doorH - 0.1, 0.055, C.trim, DOOR_X + dir * 0.018, doorH / 2 + 0.03, yOut - 0.02))
     return g
   }
   const dL = leafOf(-1)

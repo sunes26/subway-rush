@@ -29,9 +29,14 @@ export type Intro = Readonly<{
 
 /** 열차 시간을 알아보는 순간 — 화면을 아주 짧게 한 번 친다 */
 const BEAT_MS = SHOT.interior + 620
-/** `3:00` — 조작권이 넘어오기 직전에 떴다가 사라진다 */
-const CLOCK_IN = INTRO_MS - 900
-const CLOCK_OUT = INTRO_MS - 260
+/**
+ * `3:00` — **뛰기 시작하고 0.3초 뒤**에 뜬다.
+ *
+ * 내리자마자 크게 띄우면 하차 장면 위에 UI 가 얹혀 둘 다 죽는다. 몇 걸음
+ * 달린 뒤에 떠야 "여기서부터 게임이다" 라는 신호가 된다.
+ */
+const CLOCK_IN = SHOT.door + 300
+const CLOCK_OUT = INTRO_MS - 240
 
 const MARKUP = `
 <div class="rush"></div>
