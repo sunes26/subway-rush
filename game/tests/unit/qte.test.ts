@@ -12,9 +12,12 @@ import type { GameState } from '../../src/state/types'
 import { coinFor, inZone } from '../../src/systems/qte'
 import { holdFor, playQte, put, start, tap } from './_pilot'
 
-/** 자판기 A 앞에서 효자손을 들고 QTE 를 연 상태 */
+/** 자판기 A 앞에서 효자손을 손에 쥔 채 QTE 를 연 상태 (QTE 는 쥔 상태에서만 열린다) */
 const opened = (patch: Partial<GameState> = {}): GameState => {
-  const s = put(start(7, { inventory: ['I-01', null, null], ...patch }), 13.03, 4.15 - 1.2, FLOOR.B1)
+  const s = put(
+    start(7, { inventory: ['I-01', null, null], hand: { item: 'I-01', slot: 0, open: false }, ...patch }),
+    13.03, 4.15 - 1.2, FLOOR.B1,
+  )
   return tap(s, { pressSlot: 1 })        // 효자손 사용 → 근처 자판기 QTE
 }
 
@@ -41,7 +44,10 @@ describe('열림', () => {
    * 그래서 여기서는 반드시 **`pressInteract` 로** 연다.
    */
   it('E 로 열면 그 입력이 첫 판정으로 새지 않는다', () => {
-    const near = put(start(7, { inventory: ['I-01', null, null] }), 13.03, 4.15 - 1.2, FLOOR.B1)
+    const near = put(
+      start(7, { inventory: ['I-01', null, null], hand: { item: 'I-01', slot: 0, open: false } }),
+      13.03, 4.15 - 1.2, FLOOR.B1,
+    )
     const s = tap(near, { pressInteract: true })
     expect(s.qte.active, 'E 로도 열려야 한다').toBe(true)
     expect(s.qte.misses, '여는 입력이 미스로 세어지면 안 된다').toBe(0)

@@ -15,7 +15,7 @@ export type Phase = 'title' | 'playing' | 'boarding' | 'ended'
 export type EndingId =
   | 'E-01' | 'E-02' | 'E-03' | 'E-04' | 'E-05'
   | 'E-06' | 'E-07' | 'E-08' | 'E-09' | 'E-10' | 'E-11'
-  | 'E-12' | 'E-13' | 'E-14' | 'E-15' | 'E-16'
+  | 'E-12' | 'E-13' | 'E-14' | 'E-15' | 'E-16' | 'E-17'
 
 /** P1 예약 — 지금은 선언만 */
 export type ItemId =
@@ -45,6 +45,9 @@ export type FlagId =
   | 'OPPOSITE_SIDE'      // Z5 반대편 승강장 도달 (E-08)
   | 'BUSTED'             // 역무원에게 적발됐다 — E-09 의 단일 조건
   | 'GIFT_BOUGHT'        // 편의점 선물 구매 — 1회 한정. 되돌리기 없음
+  // ── 붕어빵 아저씨 분실물 (신규) ──
+  /** [1]"내가 가진다" 선택 — 개찰구 x≥57 매복(E-17)의 단일 조건 */
+  | 'EARBUDS_STOLEN'
 
 export type GateState = 'idle' | 'tagging' | 'open' | 'reject'
 
@@ -147,6 +150,19 @@ export type ActState = Readonly<{
   consumed: readonly string[]
   /** 선택 UI가 열린 대상 (P1은 할아버지 전용) */
   dialogId: string | null
+  /**
+   * 대화 진행 단계 — `DIALOG`로 새 상대가 열릴 때마다 0으로 돌아간다.
+   * 지금은 붕어빵 아저씨의 클릭 진행형 인사말(`FISHCAKE_GREETING`)만 쓴다 —
+   * 다른 대화는 즉시 선택지를 보여주므로 이 값을 읽지 않는다.
+   */
+  dialogStep: number
+  /**
+   * 선택 이후 반응 대사 단계 — 0이면 아직 안 골랐다. 지금은 붕어빵 아저씨만 쓴다:
+   * 고르면(`DIALOG_CHOSEN`) 대화창은 안 닫고 반응 대사(`FISHCAKE_REACTION`)를 먼저
+   * 보여준다 — 골랐다고 바로 닫으면 아저씨 대답이 대화창이 아니라 **토스트**로
+   * 따로 떠서 방금까지 읽던 대화창과 끊겨 보였다(디렉터 지적으로 갱신).
+   */
+  dialogChoice: 0 | 1 | 2
 }>
 
 /** 바닥에 떨어진 아이템 — 슬롯 교체 시 생긴다. 되돌아가 주울 수 있다 */
@@ -224,6 +240,19 @@ export type ChaseState = Readonly<{
   facing: number
   /** 실이동이 없는 상태의 누적(ms) — 끼임 탈출 판정 */
   stuckMs: number
+}>
+
+/**
+ * 개찰구 매복 — 붕어빵 아저씨 분실물을 챙긴 뒤(`EARBUDS_STOLEN`) x≥57에서 발동하는
+ * 강제 컷씬(E-17). 위치는 상태로 안 든다 — 이동이 잠기는 순간 `player.pos`가
+ * 그대로 고정되므로 렌더가 그 값을 그대로 읽으면 된다(`chase.pos`와 다른 이유).
+ *
+ * `phaseMs`는 `systems/ambush.ts`의 대사 표(`AMBUSH_LINES`) 누적 시간과 비교해
+ * 몇 번째 대사인지·언제 끝나는지를 판정한다.
+ */
+export type AmbushState = Readonly<{
+  active: boolean
+  phaseMs: number
 }>
 
 /**
@@ -336,6 +365,7 @@ export type GameState = Readonly<{
   inventory: readonly (ItemId | null)[]
   scores: Readonly<{ conscience: number; style: number; knowledge: number }>
   chase: ChaseState
+  ambush: AmbushState
   flags: readonly FlagId[]
 
   // ── P1 신설 ──
@@ -398,11 +428,15 @@ export type Action =
   | { t: 'ACT_DENY'; text: string }
   | { t: 'ACT_CONSUME'; id: string }
   | { t: 'DIALOG'; id: string | null }
+  /** 클릭 진행형 인사말 한 칸 전진 — 지금은 붕어빵 아저씨 전용 */
+  | { t: 'DIALOG_ADVANCE' }
+  /** 선택 확정 — 대화는 안 닫고 반응 대사 단계로 넘어간다 (지금은 붕어빵 아저씨 전용) */
+  | { t: 'DIALOG_CHOSEN'; key: 1 | 2 }
   /** slot < 0 이면 빈 칸 자동 선택. 가득 차면 slot 0 을 바닥에 떨군다 */
   | { t: 'PICKUP'; item: ItemId; slot: number; dropId: string | null }
   | { t: 'ITEM_SPEND'; slot: number }
   | { t: 'ITEM_USED'; item: ItemId }
-  | { t: 'BALANCE'; delta: number; label: string }
+  | { t: 'BALANCE'; delta: number; label: string; text?: string }
   | { t: 'CONSCIENCE'; delta: number }
   | { t: 'SECRET'; id: string }
   | { t: 'FLAG'; id: FlagId; on: boolean }
@@ -424,6 +458,12 @@ export type Action =
   | { t: 'CHASE_HIT' }
   /** 해제. `returned` 면 효자손을 반납한 것이다 — 2대째 즉사(E-16)는 `END` 로 직접 끝난다 */
   | { t: 'CHASE_END'; reason: 'gate' | 'timeout' | 'returned' }
+
+  // ── 개찰구 매복 (신규) ──
+  /** 발동 — 이동·시선이 잠긴다(`systems/movement.ts`) */
+  | { t: 'AMBUSH_START' }
+  /** 대사 진행. 총 길이를 넘기면 `systems/ambush.ts`가 곧바로 `END`를 낸다 */
+  | { t: 'AMBUSH_TICK'; dtMs: number }
 
   // ── P1 인파 (O-04) ──
   | { t: 'SURGE_FALL' }

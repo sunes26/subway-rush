@@ -81,6 +81,10 @@ const getHyoHonestly = (s0: GameState): GameState => {
 /** 효자손을 들고 자판기를 요금이 될 때까지 긁는다 */
 const scratchUntilAffordable = (s0: GameState): GameState => {
   let s = s0
+  // QTE 는 손에 쥔 상태에서만 열린다 — 아직 안 쥐었으면 먼저 손에 쥔다
+  if (s.inventory.includes('I-01') && s.hand.item !== 'I-01') {
+    s = tap(s, { pressSlot: s.inventory.indexOf('I-01') + 1 })
+  }
   for (const v of VENDS) {
     if (s.cardBalance >= FARE) break
     if (!s.inventory.includes('I-01')) break

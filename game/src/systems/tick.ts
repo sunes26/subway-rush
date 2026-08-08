@@ -11,6 +11,7 @@ import { resolveEnding } from '../data/endings'
 import { TRAFFIC_LIGHT, zoneAt } from '../data/world'
 import { applyAll } from '../state/reducer'
 import type { Action, GameState } from '../state/types'
+import { ambushSystem } from './ambush'
 import { chaseSolids, chaseSystem } from './chase'
 import { crowdSolids, crowdSystem } from './crowd'
 import { setDynamicSolids } from './collision'
@@ -98,6 +99,9 @@ export const tick = (state: GameState, dtMs: number, ctx: TickCtx): GameState =>
 
   /** 역무원도 이동 뒤다 — 추격과 같은 이유(한 프레임 늦은 위치를 보면 판정이 어긋난다) */
   s = applyAll(s, staffSystem(s))
+
+  /** 개찰구 매복 — x≥57 트리거도 이번 스텝의 최종 위치로 판정해야 한다 */
+  s = applyAll(s, ambushSystem(s, { dtMs }))
 
   /**
    * 인파 — 역류의 밀어내기는 `MOVE` 전량 재발행이라 반드시 이동 **뒤**여야 한다

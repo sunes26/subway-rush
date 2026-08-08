@@ -121,7 +121,9 @@ test('S9-12 QTE 중 시선이 얼고 포인터 락 상태가 유지된다', asyn
     g.look(Math.PI / 2)
   })
   await page.waitForTimeout(300)
-  // 1번 슬롯(효자손)으로 QTE를 연다
+  // 1번 슬롯(효자손) — 첫 누름은 손에 쥔다, 두 번째 누름이 QTE 를 연다 (쥔 상태에서만 열린다)
+  await page.keyboard.press('Digit1')
+  await page.waitForTimeout(100)
   await page.keyboard.press('Digit1')
   await page.waitForTimeout(200)
   const r = await page.evaluate(async () => {

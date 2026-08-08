@@ -11,10 +11,11 @@
 
 import { Group } from 'three'
 import { RIDER_SPOTS, disembarkAt, disembarkAtOpp } from '../data/crowd'
-import { CP_IDS, GRANDPA_ID, byId } from '../data/interactables'
+import { CP_IDS, FISHCAKE_ID, GRANDPA_ID, byId } from '../data/interactables'
 import { DISEMBARK, OBSTACLE, UMBRELLA } from '../data/tuning'
 import { ESCALATOR, FLOOR } from '../data/world'
 import type { GameState, ObsId } from '../state/types'
+import { ambushLineAt, AMBUSH_TASER_LINE_INDEX } from '../systems/ambush'
 import { rampZ } from '../systems/collision'
 import { secondsSinceDoorsOpen, secondsSinceDoorsOpenOpp } from '../systems/disembark'
 import { FLYER_AT, ajummaAt, zombieAt } from '../systems/obstacles'
@@ -143,7 +144,7 @@ export const CHAR_SCALE = 1.6
  *   멀쩡해 보인다 — 실제로 남북으로만 확인하다 두 번 놓쳤다.
  *   `tests/e2e/p2.spec.ts` 의 "네 방향" 테스트가 이걸 잠근다.
  */
-const YAW_FIX = { gp: 0, cp: 0, aj: 0, ajp: 0, zp: 0, ss: 0, cl: 0 } as const
+const YAW_FIX = { gp: 0, cp: 0, aj: 0, ajp: 0, zp: 0, ss: 0, cl: 0, fm: 0 } as const
 
 /**
  * 앉은 자세 보정(m) — **실척 가구와 축소 캐릭터의 간극**을 메운다.
@@ -180,6 +181,16 @@ export const CLERK_POS = { x: 25.8, y: 27.1, z: FLOOR.B1 } as const
  * `YAW_FIX.cl` 이 0 이 아니면 실측 후 이 값이 아니라 그쪽을 고친다.
  */
 const CL_FACING = -Math.PI / 2
+
+/**
+ * 붕어빵 아저씨 — 카트(`OBJ-03-CART`) 뒤(북쪽)에 서서 인도(남쪽, 열린 쪽)를 본다.
+ * 점원과 같은 근거(`CL_FACING`) — 등을 보이면 말 걸 대상으로 안 읽힌다.
+ * 전용 리그(`fm_character_rigged.glb`)도 CL 기반이라 전방축이 같다 — `YAW_FIX.fm` 도 0.
+ */
+const FM_FACING = -Math.PI / 2
+
+/** 개찰구 매복 역무원 — 매복 중엔 항상 플레이어를 정면으로 본다 */
+const AMBUSH_OFFICER_DIST_M = 2.4
 
 /**
  * 에스컬레이터 승객 — **장식이지만 우산은 맞는다** (디렉터 지시 2026-08-07:
@@ -223,7 +234,7 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
    * `loadNpcRig` 이 스켈레톤까지 복제하므로 셋이 각자 움직인다(얕은 복제는 본을 공유한다).
    * 브라우저가 같은 URL 을 캐시하므로 네트워크 비용은 1회다.
    */
-  const [gp, cp0, cp1, cp2, ajp, aj, zp, ss, cl, ...riders] = await Promise.all([
+  const [gp, cp0, cp1, cp2, ajp, aj, zp, ss, cl, fm, ao, ...riders] = await Promise.all([
     loadOr(`${dir}gp_character_rigged.glb`, 'GP', YAW_FIX.gp),
     loadOr(`${dir}cp_character_rigged.glb`, 'CP0', YAW_FIX.cp),
     loadOr(`${dir}cp_character_rigged.glb`, 'CP1', YAW_FIX.cp),
@@ -233,10 +244,18 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
     loadOr(`${dir}${OBS_ACTORS[2].file}`, 'ZP', YAW_FIX.zp),
     loadOr(`${dir}${OBS_ACTORS[3].file}`, 'SS', YAW_FIX.ss),
     loadOr(`${dir}cl_character_rigged.glb`, 'CL', YAW_FIX.cl),
+    // 붕어빵 아저씨 — 전용 리그(CL 베이스에 갈색 앞치마·분홍 팔토시로 분화, 완전 대체 아님)
+    loadOr(`${dir}fm_character_rigged.glb`, 'FM', YAW_FIX.fm),
+    // 개찰구 매복 역무원 — 방해요소 `ss`(OBS-13 순찰)와 별개다. OBS-13이 이번 판에 안 뽑히면
+    // `ss`는 몸이 없다(`obsOff`) — 매복은 그 롤과 무관하게 **항상** 일어나야 하므로 전용 인스턴스를 둔다
+    loadOr(`${dir}ss_character_rigged.glb`, 'AO', YAW_FIX.ss),
     ...RIDER_SPOTS.map((_, i) => loadOr(`${dir}cp_character_rigged.glb`, `RIDER${i}`, YAW_FIX.cp)),
   ])
   const cps = [cp0, cp1, cp2] as const
-  // 이름 충돌 회피 — 위 헤더 주석 참고
+  // FM 은 전용 glb 라 이름 충돌은 없지만, e2e 접두어 매칭(위 헤더 주석 참고)이 기대하는
+  // 안정된 이름을 위해 명시적으로 붙인다. AO/rider 는 여전히 공유 glb 라 충돌 회피가 필요하다.
+  fm.root.name = 'npc:fishcake-man'
+  ao.root.name = 'npc:ambush-officer'
   for (const r of riders) r.root.name = 'npc:esc-rider'
   const riderAnchors: readonly Anchor[] = RIDER_SPOTS.map((spot) =>
     ({ x: spot.x, y: spot.y, z: rampZ(ESCALATOR, spot.x, spot.y) ?? FLOOR.B1 }))
@@ -265,13 +284,15 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
 
   const root = new Group()
   root.name = 'actors'
-  root.add(gp.root, cp0.root, cp1.root, cp2.root, ajp.root, aj.root, zp.root, ss.root, cl.root)
+  root.add(gp.root, cp0.root, cp1.root, cp2.root, ajp.root, aj.root, zp.root, ss.root, cl.root,
+    fm.root, ao.root)
   for (const r of riders) root.add(r.root)
   for (const r of disembarkRigs) root.add(r.root)
   for (const r of disembarkRigs2) root.add(r.root)
 
   const gpHome = anchorOf(GRANDPA_ID)
   const cpHomes = CP_IDS.map((id) => anchorOf(id))
+  const fmHome = anchorOf(FISHCAKE_ID)
 
   /** 발도 이후 경과(s). 화가 풀리는 경로는 없으므로 되돌리지 않는다 */
   /** 비켜선 이후 경과(s) — 횡이동 보간의 유일한 입력 */
@@ -554,6 +575,40 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
   }
 
   /**
+   * 붕어빵 아저씨 — 무선이어폰의 유일한 획득처. 카운터가 없는 노점이라
+   * 점원처럼 파묻힐 걱정은 없다 — 카트 솔리드 뒤 빈 인도에 그냥 세운다.
+   */
+  const syncFishcake = (s: GameState, dtSec: number): void => {
+    fm.place(fmHome.x, fmHome.y, fmHome.z, FM_FACING)
+
+    const visible = near(s, fmHome)
+    fm.setVisible(visible)
+    if (!visible) return
+
+    fm.play('FM_Idle')
+    fm.update(dtSec)
+  }
+
+  /**
+   * 개찰구 매복 역무원 — 좌표를 안 둔다. `s.ambush.active` 동안 **플레이어 앞에서
+   * 마주 본다**(`AMBUSH_OFFICER_DIST_M`) — 어느 게이트 레인에서 걸렸든 항상 화면에 잡힌다.
+   * 마지막 대사 줄(`AMBUSH_TASER_LINE_INDEX`)에서만 `SS_TaserFire` — 그 전엔 `SS_Idle`.
+   */
+  const syncAmbushOfficer = (s: GameState, dtSec: number): void => {
+    if (!s.ambush.active) { ao.setVisible(false); return }
+    const p = s.player.pos
+    const facing = s.player.facing
+    const x = p.x + Math.cos(facing) * AMBUSH_OFFICER_DIST_M
+    const y = p.y + Math.sin(facing) * AMBUSH_OFFICER_DIST_M
+    ao.place(x, y, p.z, facing + Math.PI)
+    ao.setVisible(true)
+
+    const { index } = ambushLineAt(s.ambush.phaseMs)
+    ao.play(index >= AMBUSH_TASER_LINE_INDEX ? 'SS_TaserFire' : 'SS_Idle')
+    ao.update(dtSec)
+  }
+
+  /**
    * 하차 인파 40명 — 자리는 순수함수(`data/crowd.ts disembarkAt`)가 정한다.
    * 걷는 클립이 없다(`cp_character_rigged.glb` 는 Idle·MoveAside뿐) — 제자리 자세로
    * 미끄러지듯 이동한다. 눈에 띄면 그때 걷기 클립을 추가하거나 렌더 방식을 바꾼다
@@ -601,6 +656,8 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
       syncZombie(s, dtSec)
       syncStaff(s, dtSec)
       syncClerk(s, dtSec)
+      syncFishcake(s, dtSec)
+      syncAmbushOfficer(s, dtSec)
       syncDisembark(s, dtSec)
       syncDisembarkOpp(s, dtSec)
     },
@@ -610,6 +667,7 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
       for (const r of riders) r.dispose()
       ajp.dispose(); aj.dispose(); zp.dispose(); ss.dispose()
       cl.dispose()
+      fm.dispose(); ao.dispose()
       for (const r of disembarkRigs) r.dispose()
       for (const r of disembarkRigs2) r.dispose()
     },

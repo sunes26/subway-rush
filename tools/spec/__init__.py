@@ -15,12 +15,12 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
-CODES = ("zp", "cp", "ss", "cl")
+CODES = ("zp", "cp", "ss", "cl", "fm")
 
 # index.html 의 정규 배치 순서. 페이지 드라이버가 이걸 보고 자리를 정한다 —
 # 매번 목록 끝에 끼워 넣으면 재생성할 때마다 순서가 뒤집힌다(실측).
 # mc·gp·aj 는 이 파이프라인 이전에 만들어진 항목이라 선언이 없지만 자리는 지킨다.
-PAGE_ORDER = ("mc", "gp", "aj", "zp", "cp", "ss", "cl")
+PAGE_ORDER = ("mc", "gp", "aj", "zp", "cp", "ss", "cl", "fm")
 
 
 def load(code):

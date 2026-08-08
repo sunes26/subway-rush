@@ -13,8 +13,8 @@ import { BALANCE_POOL, CHASE, FARE, GATE, INTERACT, QTE, SLOTS, SURGE, SWAP_WIND
 import { GRANDPA_ID } from '../data/interactables'
 import { rollObstacles, rollQueues, type ObsId } from '../data/obstacles'
 import { GATES, SPAWN, TRAFFIC_LIGHT, zoneAt } from '../data/world'
-import type { Action, ActState, ChaseState, Drop, GameState, Fx, HandState, ItemId, QteState,
-  SurgeState, SwapState, TallyState } from './types'
+import type { Action, ActState, AmbushState, ChaseState, Drop, GameState, Fx, HandState, ItemId,
+  QteState, SurgeState, SwapState, TallyState } from './types'
 
 const MAX_FX = 12
 
@@ -33,6 +33,8 @@ const EMPTY_ACT: ActState = {
   denyMs: 0,
   consumed: [],
   dialogId: null,
+  dialogStep: 0,
+  dialogChoice: 0,
 }
 
 const EMPTY_QTE: QteState = {
@@ -57,6 +59,8 @@ const EMPTY_CHASE: ChaseState = {
   facing: 0,
   stuckMs: 0,
 }
+
+const EMPTY_AMBUSH: AmbushState = { active: false, phaseMs: 0 }
 
 const EMPTY_SURGE: SurgeState = { fell: false, stallMs: 0 }
 
@@ -164,6 +168,7 @@ export const initialState = (seed: number, freeplay = false, allObstacles = fals
     inventory: Array.from({ length: SLOTS }, () => null),
     scores: { conscience: 0, style: 0, knowledge: 0 },
     chase: EMPTY_CHASE,
+    ambush: EMPTY_AMBUSH,
     flags: [],
     act: EMPTY_ACT,
     drops: [],
@@ -448,7 +453,15 @@ export const reducer = (s: GameState, a: Action): GameState => {
         : { ...s, act: { ...s.act, consumed: [...s.act.consumed, a.id] } }
 
     case 'DIALOG':
-      return s.act.dialogId === a.id ? s : { ...s, act: { ...s.act, dialogId: a.id } }
+      return s.act.dialogId === a.id
+        ? s
+        : { ...s, act: { ...s.act, dialogId: a.id, dialogStep: 0, dialogChoice: 0 } }
+
+    case 'DIALOG_ADVANCE':
+      return { ...s, act: { ...s.act, dialogStep: s.act.dialogStep + 1 } }
+
+    case 'DIALOG_CHOSEN':
+      return { ...s, act: { ...s.act, dialogChoice: a.key } }
 
     /**
      * 습득. 슬롯이 가득하면 0번을 **그 자리 바닥에 떨군다** — 사라지면 억울하다(P1-SPEC §3).
@@ -610,7 +623,7 @@ export const reducer = (s: GameState, a: Action): GameState => {
         },
         {
           kind: 'balance',
-          text: `${a.delta > 0 ? '+' : ''}${a.delta.toLocaleString('ko-KR')}원 ${a.label}`,
+          text: a.text ?? `${a.delta > 0 ? '+' : ''}${a.delta.toLocaleString('ko-KR')}원 ${a.label}`,
           lifeMs: 1600,
           value: a.delta,
         },
@@ -786,6 +799,14 @@ export const reducer = (s: GameState, a: Action): GameState => {
           sprinting: false,
         },
       }
+
+    // ─────────────────── 개찰구 매복 (신규) ───────────────────
+
+    case 'AMBUSH_START':
+      return s.ambush.active ? s : { ...s, ambush: { active: true, phaseMs: 0 } }
+
+    case 'AMBUSH_TICK':
+      return { ...s, ambush: { ...s.ambush, phaseMs: s.ambush.phaseMs + a.dtMs } }
   }
 }
 

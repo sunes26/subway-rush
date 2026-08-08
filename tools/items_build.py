@@ -727,6 +727,62 @@ for _p in _parts:
         shade(_p, False)
 ITEMS["ITM09_UmbrellaOpen"] = finish("ITM09_UmbrellaOpen", _parts)
 
+# ============================================== ITM-05 무선이어폰 케이스
+# 항상 닫힌 채로만 보인다 — `holdable:false` 라 귀에 꽂는 순간 손에도 안
+# 잡히므로 열림 상태를 만들 이유가 없다. 스폰 벤치 옆 첫 픽업(P3 튜토리얼의
+# 전제)이라 실루엣이 즉시 읽혀야 한다 — 세로로 긴 라운드 캡슐(필통형) +
+# 위쪽 힌지선 하나로 "이건 케이스다"는 신호를 준다.
+#
+# 원점은 바닥 접지점(하단 중앙) — 벤치에 놓인 채로 발견되는 물건이라 손에
+# 붙는 소품(우산)이 아니라 동전·ITM-12 와 같은 규약을 따른다.
+EW, EH, ET = 0.068, 0.091, 0.033   # 실물(45×60×22mm) × 1.5배 과장 — 카드·마스크와 같은 비율
+ER = 0.026                         # 큰 라운딩 — 옆면이 거의 남지 않는 캡슐. 굵은 베벨(아래)이
+                                    # 더 파먹으므로 너무 크면 힌지·LED 자리가 곡면에 걸린다
+ESEG = 6
+
+M_EAR = new_mat("ITM_EarbudsBody", "F4F8F8", 0.34)           # 본체 오프화이트
+M_EAR_LIT = new_mat("ITM_EarbudsLit", "FCFEFE", 0.28)        # 베벨 하이라이트(빛 받는 모서리)
+M_EAR_EDGE = new_mat("ITM_EarbudsEdge", "E3E8EA", 0.40)      # 옆면 그늘 — 순수 회색 대신 같은 계열
+M_EAR_HINGE = new_mat("ITM_EarbudsHinge", "D3DADD", 0.42)    # 뚜껑 이음선 밴드
+M_EAR_AXLE = new_mat("ITM_EarbudsAxle", "AEB6BA", 0.36, metallic=0.35)  # 힌지 축
+M_EAR_LED = new_mat("ITM_EarbudsLed", "6FE7DD", 0.30)        # 충전 LED — 세트에서 유일한 포인트
+
+_ey = -ET / 2.0 - FLAT
+_body = plate("ear_body", EW, EH, ER, ET, M_EAR, seg=ESEG, edge_mat=M_EAR_EDGE, cz=EH / 2.0)
+_body.data.materials.append(M_EAR_LIT)          # 슬롯 2 = 깎인 모서리
+# 실제 에어팟 케이스는 앞뒤 판이 아니라 **비누 덩이**에 가깝다 — 옆면과
+# 앞뒤 면 사이 각을 얇게 깎는 카드식 베벨(BEVEL_S) 대신, 두께(ET)의 1/3
+# 가까이 되는 굵은 베벨을 여러 세그먼트로 먹여 둥근 필렛을 만든다. 각짐이
+# 남지 않게 본체만 매끈 셰이딩(둥근 덩어리로 읽혀야 광택 케이스가 된다).
+bevel(_body, ET * 0.30, 6, mat_index=2)
+shade(_body, True)
+_parts = [_body]
+
+# 힌지 이음선 — 뚜껑과 본체가 갈리는 자리를 앞면에 얕은 밴드로만 낸다.
+# 카드의 하단 바(card_band)와 같은 방법 — 부품을 더 만들지 않고 색 하나로
+# 구조를 읽힌다. 굵은 베벨이 위쪽 둥근 캡을 넓게 파먹으므로, 밴드는 그
+# 곡면에 걸리지 않는 평평한 중단부에 둔다.
+_parts.append(plate("ear_hinge_band", EW * 0.86, EH * 0.045, 0.0016, FLAT * 2, M_EAR_HINGE,
+                    seg=2, y=_ey, cz=EH * 0.64))
+
+# 충전 LED — 정면 하단 중앙의 작은 원판. 코인의 안쪽 판과 같은 트릭
+# (w=h, r=w/2 로 두면 원판이 된다). 아래쪽 캡 곡면 반경 안쪽이라 평면에 붙는다.
+_parts.append(plate("ear_led", 0.007, 0.007, 0.0035, FLAT * 2, M_EAR_LED,
+                    seg=6, y=_ey, cz=EH * 0.16))
+
+shade(_parts[1], False)
+shade(_parts[2], False)
+
+# 힌지 축 — 뒷면 중상단을 가로지르는 얇은 금속 원통. 밴드와 같은 평평한
+# 구간(0.64) 높이에 둬 굵은 베벨 곡면 밖으로 뜨지 않게 한다.
+_axle_y = ET / 2.0 + FLAT * 3
+_axle_z = EH * 0.64
+_parts.append(shade(tube("ear_hinge_axle",
+                         [(-EW * 0.28, _axle_y, _axle_z), (EW * 0.28, _axle_y, _axle_z)],
+                         0.0030, 8, M_EAR_AXLE), True))
+
+ITEMS["ITM05_Earbuds"] = finish("ITM05_Earbuds", _parts)
+
 # ======================================= ITM-13 노선도 (종이)
 # **이 저장소에서 텍스처를 쓰는 유일한 물건이다.** 역명을 폴리곤으로 넣으면
 # 글리프 하나가 폴리곤 덩어리라 43개 역만으로 역사 전체보다 무거워진다.

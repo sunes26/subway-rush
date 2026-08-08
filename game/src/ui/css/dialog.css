@@ -55,14 +55,24 @@
   padding:3px 10px;white-space:nowrap}
 
 #dlg .conv{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:12px}
-#dlg .bubble{background:rgba(14,16,23,.8);border:1px solid rgba(255,255,255,.08);
+#dlg .bubble{position:relative;background:rgba(14,16,23,.8);border:1px solid rgba(255,255,255,.08);
   border-radius:12px;padding:12px 14px;box-shadow:0 10px 24px rgba(0,0,0,.25)}
 #dlg .bubble .kick{display:flex;align-items:center;gap:6px;font-family:var(--mono);
   font-size:10px;font-weight:800;letter-spacing:.1em;color:var(--accent);
   text-transform:uppercase;margin-bottom:7px}
 #dlg .bubble .kick::before{content:'';width:7px;height:7px;border-radius:50%;
   background:var(--accent);box-shadow:0 0 6px var(--accent)}
-#dlg .bubble p{font-size:14px;line-height:1.5;color:#fff;margin:0}
+#dlg .bubble p{font-size:20px;line-height:1.5;color:#fff;margin:0}
+/* 붕어빵 아저씨 클릭 진행형 인사말 — 말풍선 전체가 "다음" 버튼이다.
+   `.next`는 말풍선 안, 텍스트와 같은 박스의 **오른쪽 하단 모서리**에 붙는다(디렉터 지시) —
+   흐름에 놔두면 박스 바깥 아래로 떨어져 보인다. `has-next`가 그 자리만큼 하단 여백을 미리 비운다. */
+#dlg .bubble{cursor:pointer}
+#dlg .bubble.has-next{padding-bottom:32px}
+#dlg .bubble .next{display:none;position:absolute;right:14px;bottom:10px;
+  font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--muted);
+  animation:nextpulse 1.4s ease-in-out infinite}
+#dlg .bubble .next.on{display:block}
+@keyframes nextpulse{0%,100%{opacity:.5}50%{opacity:1}}
 #dlg .choices{display:flex;flex-direction:column;gap:7px}
 #dlg .gp-choice{display:flex;align-items:center;gap:11px;padding:10px 14px;border-radius:8px;
   border:1.5px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);cursor:pointer;
@@ -98,6 +108,27 @@
 #gpstory .bar i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left;
   background:var(--gold);transition:transform .1s linear}
 #gpstory .cap{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--muted)}
+
+/* 개찰구 매복(E-17) — 강제 컷씬. `#gpstory`와 **같은 카드 UI**로 통일한다(디렉터 지시) —
+   초상화 카드(`.actor-card`는 공용 규칙)+대사창+진행바, 같은 자리(같은 bottom)를 쓰되
+   동시에 뜨는 일이 없으므로(매복 중엔 다른 대화·QTE가 안 열린다) 겹침 걱정은 없다.
+   유일한 차이는 위험색(`--crit`) 강조 — 위기 상황이라는 것만 톤으로 알려준다. */
+#ambush{position:absolute;left:50%;bottom:210px;transform:translateX(-50%);
+  width:min(620px,88vw);display:none;align-items:center;gap:20px;font-family:var(--sans);
+  background:var(--panel);border:1.5px solid var(--crit);border-radius:var(--r-panel);
+  padding:20px;box-shadow:0 16px 32px rgba(0,0,0,.8),inset 0 0 24px rgba(229,72,77,.16)}
+#ambush.on{display:flex;animation:rpop .22s ease both}
+#ambush .conv{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:10px}
+#ambush .bubble{background:rgba(14,16,23,.8);border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;padding:14px 16px;box-shadow:0 10px 24px rgba(0,0,0,.25);min-height:52px}
+#ambush .who{display:block;font-family:var(--mono);font-size:10px;font-weight:800;
+  letter-spacing:.08em;margin-bottom:5px;color:var(--muted)}
+#ambush .who.danger{color:var(--crit)}
+#ambush .bubble p{font-size:14px;line-height:1.5;color:#fff;margin:0}
+#ambush .bar{height:4px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden}
+#ambush .bar i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left;
+  background:var(--crit);transition:transform .1s linear}
+#ambush .cap{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--muted)}
 
 /* QTE — 리듬창을 **눈으로 볼 수 있어야** 실력이 성립한다.
    창이 안 보이면 판정은 그냥 운으로 읽힌다 */

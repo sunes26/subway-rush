@@ -1,7 +1,7 @@
 /** 타이틀 · 로딩 · 엔딩 화면. */
 
 import { formatClock } from '../core/math'
-import { pickHint, resolveEnding } from '../data/endings'
+import { ENDINGS, pickHint, resolveEnding } from '../data/endings'
 import type { GameState } from '../state/types'
 // 스타일은 `css/screens.css` 가 단일 원천이다 — UI 킷(/uikit.html)이 같은 파일을 읽는다.
 // `?inline` 은 파일 내용을 문자열로 준다: 주입 방식(<style> 삽입)은 예전과 같다.
@@ -46,7 +46,15 @@ export const createScreens = (mount: HTMLElement): Screens => {
     </div>`
 
   const ending = (s: GameState): string => {
-    const e = resolveEnding(s)
+    /**
+     * `s.endingId` 로 직접 찾는다 — `resolveEnding(s)` 를 다시 부르면 안 된다.
+     *
+     * 강제 엔딩(E-15·E-16·E-17)은 `when` 이 **항상 거짓**이라(`data/endings.ts`),
+     * 여기서 `resolveEnding` 을 다시 돌리면 그 셋을 절대 못 찾고 그 순간 우연히
+     * 참인 다른 엔딩(예: 양심 파산)이 대신 뜬다 — id·타이틀·대사가 전부 엉뚱해진다.
+     * `endingId` 는 이미 `END` 액션이 확정해 둔 값이므로 그걸 그대로 찾아 쓴다.
+     */
+    const e = ENDINGS.find((x) => x.id === s.endingId) ?? resolveEnding(s)
     const win = e.tone === 'success'
     el.className = `on ${win ? 'win' : 'lose'}`
     // 엔딩 고유 힌트가 있으면 그것을 쓴다. 없으면 시드 기반 공용 풀.
