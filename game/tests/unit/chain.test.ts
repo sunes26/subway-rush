@@ -59,14 +59,14 @@ describe('S9-1 할아버지 3분기 — 전부 효자손을 얻는다', () => {
     expect(sec).toBeLessThan(1.75)
   })
 
-  it('[3] 말 걸기 — 15.0s, 양심 +1, 힌트 + 지식', () => {
+  it('[3] 말 걸기 — 30.0s, 양심 +1, 힌트 + 지식', () => {
     const { s, sec } = pick(start(7), 3)
     expect(s.inventory.includes('I-01')).toBe(true)
     expect(s.scores.conscience).toBe(1)
     expect(s.flags.includes('HINT_GRANDPA'), '개찰구 힌트 해금').toBe(true)
     expect(s.scores.knowledge, '시크릿 1건').toBe(1)
-    expect(sec, `소요 ${sec.toFixed(1)}s`).toBeGreaterThan(14.9)
-    expect(sec).toBeLessThan(15.3)
+    expect(sec, `소요 ${sec.toFixed(1)}s`).toBeGreaterThan(29.9)
+    expect(sec).toBeLessThan(30.3)
   })
 
   it('효자손을 넘긴 뒤에는 다시 상호작용되지 않는다', () => {
@@ -93,7 +93,7 @@ describe('S9-2 [2]는 양갱 보유 시에만 활성', () => {
   })
 })
 
-describe('S9-3 대화 완주 → 안내 LED가 고장 게이트를 지목한다', () => {
+describe('S9-3 대화 완주 → 안내 LED가 정상 게이트를 지목한다 (디렉터 지시 2026-08-08)', () => {
   it('힌트 꺼진 시드에서도 번호가 나온다 (시드 60개)', () => {
     let checked = 0
     for (let seed = 0; seed < 200 && checked < 60; seed++) {
@@ -102,49 +102,54 @@ describe('S9-3 대화 완주 → 안내 LED가 고장 게이트를 지목한다'
       checked++
       const s = start(seed, { flags: ['HINT_GRANDPA'] })
       const txt = ledText(s)
-      expect(txt, `seed ${seed}`).toMatch(/번 게이트 점검중/)
-      // 지목된 번호가 진짜 고장이어야 한다 — 거짓 표시는 GDD §11 위반
+      expect(txt, `seed ${seed}`).toMatch(/번 게이트를 이용해 주십시오/)
+      // 지목된 번호가 진짜 정상이어야 한다 — 거짓 표시는 GDD §11 위반
       const n = Number(txt.split('번')[0]?.split('·').pop())
-      expect(roll.workingIds.includes(n), `seed ${seed}: ${n}번은 정상이면 안 된다`).toBe(false)
+      expect(roll.workingIds.includes(n), `seed ${seed}: ${n}번은 고장이면 안 된다`).toBe(true)
     }
     expect(checked, '힌트 꺼진 시드를 60개 확인했다').toBe(60)
   })
 
-  it('이미 켜진 시드에서는 **다른** 번호를 추가로 알려준다', () => {
+  it('LED 자체 힌트가 켜진 시드에서도 정상 게이트 번호가 따로 붙는다', () => {
     for (let seed = 0; seed < 300; seed++) {
       const roll = rollSeed(seed)
       if (!roll.ledHint || roll.ledBrokenId === null) continue
       const before = ledText(start(seed))
       const after = ledText(start(seed, { flags: ['HINT_GRANDPA'] }))
       expect(after, `seed ${seed}`).not.toBe(before)
-      expect(after.split('·').length, '번호가 두 개').toBeGreaterThan(1)
+      expect(after.split('·').length, '번호가 두 개(고장 하나·정상 하나)').toBeGreaterThan(1)
+      // 새로 붙는 번호는 LED 자체가 이미 알려준 고장 번호가 아니라 정상 번호여야 한다
+      // ("N번 게이트 점검중 · M번 게이트를 이용해 주십시오" — 마지막 조각의 앞 숫자가 M)
+      const lastPart = after.split('·').pop() ?? ''
+      const n = Number(lastPart.trim().split('번')[0])
+      expect(roll.workingIds.includes(n), `seed ${seed}: 추가 번호(${n})는 정상이어야 한다`).toBe(true)
       return
     }
     throw new Error('힌트 켜진 시드를 못 찾았다')
   })
 })
 
-describe('S9-4 대화는 취소할 수 있고 시간은 환불되지 않는다', () => {
-  it('이동 입력으로 끊으면 효자손 없이 경과 시간만 잃는다', () => {
+describe('S9-4 말동무는 도중에 끊을 수 없다 (디렉터 지시 2026-08-08)', () => {
+  it('이동 입력으로도 안 끊긴다 — 이동 자체가 막혀 있다', () => {
     const opened = openDialog(start(7))
     const yaw = yawTo(opened, GP.x, GP.y)
     let s = tap(opened, { pressSlot: 3 }, yaw)
-    const t0 = s.timeLeftMs
+    const pos0 = s.player.pos
     s = wait(s, 5000, yaw)                       // 5초 듣다가
-    s = holdFor(s, { moveY: 1 }, 4, yaw)         // 걸어나간다
-    expect(s.act.busyId, '중단됐다').toBeNull()
-    expect(s.inventory.includes('I-01'), '효자손 없다').toBe(false)
-    const spent = (t0 - s.timeLeftMs) / 1000
-    expect(spent, `${spent.toFixed(1)}s 를 잃었다 — 환불 없음`).toBeGreaterThan(4.9)
+    s = holdFor(s, { moveY: 1 }, 4, yaw)         // 걸어나가려 해도
+    expect(s.act.busyId, '안 끊긴다').toBe(GRANDPA_ID)
+    // `systems/movement.ts` 가 이동 입력 자체를 씹으므로 위치도 그대로다
+    expect(s.player.pos.x, '위치도 그대로다').toBeCloseTo(pos0.x, 3)
+    expect(s.player.pos.y).toBeCloseTo(pos0.y, 3)
   })
 
-  it('ESC로도 끊긴다', () => {
+  it('ESC로도 안 끊긴다', () => {
     const opened = openDialog(start(7))
     const yaw = yawTo(opened, GP.x, GP.y)
     let s = wait(tap(opened, { pressSlot: 3 }, yaw), 2000, yaw)
     s = tap(s, { pressCancel: true }, yaw)
-    expect(s.act.busyId).toBeNull()
-    expect(s.inventory.includes('I-01')).toBe(false)
+    expect(s.act.busyId, '안 끊긴다').toBe(GRANDPA_ID)
+    expect(s.inventory.includes('I-01'), '아직 30초가 안 지나 완료 전이다').toBe(false)
   })
 })
 
@@ -197,7 +202,7 @@ describe('S9-6~S9-9 자판기 QTE', () => {
     const s0 = put(start(7), VEND_A.x, VEND_A.y - 1.1, FLOOR.B1)
     const s = tap(s0, { pressInteract: true }, yawTo(s0, VEND_A.x, VEND_A.y))
     expect(s.qte.active).toBe(false)
-    expect(s.act.denyText).toBe('효자손이 필요하다')
+    expect(s.act.denyText).toBe('막대기 같은 게 필요해 보인다')
   })
 
   it('S9-6 3스트로크 성공 시 시드 결정 금액이 잔액에 정확히 가산된다', () => {

@@ -35,28 +35,69 @@
 @keyframes rpop{from{opacity:0;transform:translateX(-50%) translateY(6px)}
   to{opacity:1;transform:translateX(-50%)}}
 
-/* 대화 선택 — 3분기. 회색 항목도 **왜** 회색인지 한 줄로 말한다 */
-/*
-  ⚠ 하단 여백은 **소지품 패널을 피해야** 한다. Figma 레이아웃 적용으로 소지품이
-  하단 중앙(bottom 40 · 높이 133 → 상단 173)에 왔고, 예전 값(120)이면 선택지가
-  슬롯을 덮어 둘 다 못 읽는다. 양심 게이지(bottom 184) 위로 띄운다.
-*/
-#dlg{position:absolute;left:50%;bottom:210px;transform:translateX(-50%);width:min(520px,88vw);
-  display:none;flex-direction:column;gap:6px;font-family:var(--sans);
-  background:rgba(8,8,10,.9);border:1px solid rgba(255,255,255,.14);border-radius:9px;
-  padding:14px 16px;backdrop-filter:blur(8px)}
+/* ─────────────── UI-13 할아버지 대화 — Figma `dialogue-ui`(node 57:4) ───────────────
+   ⚠ 하단 여백은 **소지품 패널을 피해야** 한다. 소지품이 하단 중앙(bottom 40 · 높이 133
+   → 상단 173)에 있으므로 그 위, 양심 게이지(bottom 184) 위로 띄운다. */
+#dlg{position:absolute;left:50%;bottom:210px;transform:translateX(-50%);
+  width:min(760px,90vw);display:none;align-items:center;gap:20px;font-family:var(--sans);
+  background:var(--panel);border:1.5px solid var(--accent);border-radius:var(--r-panel);
+  padding:20px;box-shadow:0 16px 32px rgba(0,0,0,.8),inset 0 0 24px rgba(0,240,255,.16);
+  pointer-events:auto}
 #dlg.on{display:flex;animation:rpop .22s ease both}
-#dlg .who{font-family:var(--mono);font-size:11px;letter-spacing:.2em;opacity:.5;
-  text-transform:uppercase;margin-bottom:3px}
-#dlg .op{display:flex;align-items:baseline;gap:10px;padding:7px 9px;border-radius:6px;
-  background:rgba(255,255,255,.05);font-size:14px}
-#dlg .op kbd{font-family:var(--mono);font-size:11px;font-weight:700;color:#0b0b0a;
-  background:#F5F5F0;border-radius:3px;padding:2px 6px}
-#dlg .op .note{margin-left:auto;font-family:var(--mono);font-size:11px;opacity:.62}
-#dlg .op.off{opacity:.38}
-#dlg .op.off kbd{background:rgba(245,245,240,.35)}
-#dlg .esc{font-family:var(--mono);font-size:10px;letter-spacing:.16em;opacity:.4;
-  margin-top:4px;text-align:right}
+
+/* 초상화 + 이름표 — 대화 패널과 15초 이야기 오버레이(`#gpstory`)가 같은 마크업을 쓴다 */
+.actor-card{display:flex;flex-direction:column;align-items:center;gap:10px;flex:0 0 auto;width:110px}
+.actor-card .frame{width:88px;height:88px;border-radius:14px;border:1.5px solid var(--accent);
+  overflow:hidden;background:#12131a;box-shadow:inset 0 0 8px rgba(0,240,255,.2)}
+.actor-card .frame img{width:100%;height:100%;object-fit:cover}
+.actor-card .tag{font-size:12px;font-weight:800;color:var(--accent);
+  background:rgba(0,240,255,.15);border:1px solid var(--accent);border-radius:6px;
+  padding:3px 10px;white-space:nowrap}
+
+#dlg .conv{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:12px}
+#dlg .bubble{background:rgba(14,16,23,.8);border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;padding:12px 14px;box-shadow:0 10px 24px rgba(0,0,0,.25)}
+#dlg .bubble .kick{display:flex;align-items:center;gap:6px;font-family:var(--mono);
+  font-size:10px;font-weight:800;letter-spacing:.1em;color:var(--accent);
+  text-transform:uppercase;margin-bottom:7px}
+#dlg .bubble .kick::before{content:'';width:7px;height:7px;border-radius:50%;
+  background:var(--accent);box-shadow:0 0 6px var(--accent)}
+#dlg .bubble p{font-size:14px;line-height:1.5;color:#fff;margin:0}
+#dlg .choices{display:flex;flex-direction:column;gap:7px}
+#dlg .gp-choice{display:flex;align-items:center;gap:11px;padding:10px 14px;border-radius:8px;
+  border:1.5px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);cursor:pointer;
+  font:inherit;color:inherit;text-align:left;transition:border-color .12s,background .12s}
+#dlg .gp-choice:hover:not(.off){border-color:rgba(0,240,255,.4)}
+#dlg .gp-choice .badge{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--muted);
+  background:rgba(255,255,255,.1);border-radius:4px;padding:2px 6px;flex:0 0 auto}
+#dlg .gp-choice .label{flex:1 1 0;font-size:14px;font-weight:600}
+#dlg .gp-choice .note{font-family:var(--mono);font-size:11px;opacity:.62;flex:0 0 auto}
+#dlg .gp-choice.off{opacity:.4;cursor:default}
+#dlg .gp-choice.sel{border-color:var(--accent);background:rgba(0,240,255,.15);
+  box-shadow:0 0 8px var(--accent)}
+#dlg .gp-choice.sel .badge{background:var(--accent);color:#050608}
+#dlg .gp-choice.sel .label{color:var(--accent)}
+#dlg .esc{font-family:var(--mono);font-size:10px;letter-spacing:.16em;opacity:.4;text-align:right}
+
+/* 이야기 듣는 중(15s) — `#iring` 대신 같은 패널에서 대사가 흘러간다(`ui/dialog.ts` STORY_BEATS) */
+#gpstory{position:absolute;left:50%;bottom:210px;transform:translateX(-50%);
+  width:min(620px,88vw);display:none;align-items:center;gap:20px;font-family:var(--sans);
+  background:var(--panel);border:1.5px solid var(--accent);border-radius:var(--r-panel);
+  padding:20px;box-shadow:0 16px 32px rgba(0,0,0,.8),inset 0 0 24px rgba(0,240,255,.16)}
+#gpstory.on{display:flex;animation:rpop .22s ease both}
+#gpstory .conv{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:10px}
+#gpstory .bubble{background:rgba(14,16,23,.8);border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;padding:14px 16px;box-shadow:0 10px 24px rgba(0,0,0,.25);min-height:52px}
+/* 화자 표시 — 할아버지는 그의 색(accent), 플레이어는 gold로 갈라 한눈에 구분되게 */
+#gpstory .who{display:block;font-family:var(--mono);font-size:10px;font-weight:800;
+  letter-spacing:.08em;margin-bottom:5px;color:var(--accent)}
+#gpstory .who.player{color:var(--gold)}
+#gpstory .bubble p{font-size:14px;line-height:1.5;color:#fff;margin:0;transition:opacity .18s}
+#gpstory .bar{height:4px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden}
+/* width가 아니라 transform으로 채운다 — 레이아웃을 안 건드리는 스케일만 애니메이션 */
+#gpstory .bar i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left;
+  background:var(--gold);transition:transform .1s linear}
+#gpstory .cap{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--muted)}
 
 /* QTE — 리듬창을 **눈으로 볼 수 있어야** 실력이 성립한다.
    창이 안 보이면 판정은 그냥 운으로 읽힌다 */

@@ -10,7 +10,7 @@ import { createInput, EMPTY_INPUT, type InputFrame } from './core/input'
 import { resolveSeed } from './core/rng'
 import { CAMERA, FPV, MAX_FRAME_MS, MAX_STEPS_PER_FRAME, MOVE, STEP_MS } from './data/tuning'
 import { FLOOR, GATES, GATE_BODY, GATE_LAMP_Z, ZONE_NAMES } from './data/world'
-import { byId, type InteractKind } from './data/interactables'
+import { byId, GIFT_STALL_ID, GRANDPA_ID, type InteractKind } from './data/interactables'
 import { CHAR_SCALE, loadActors, type Actors } from './render/actors'
 import { createCameraRig } from './render/camera-rig'
 import { buildTraffic, type Traffic } from './render/cars'
@@ -198,6 +198,8 @@ let prevGateState = state.gates.state
 let prevCoins = state.tally.coinsEarned
 let prevHits = state.chase.hitCount
 let prevTrainState = state.train.state
+/** 편의점 상점·할아버지 대화는 마우스로 누른다 — 락 중엔 커서가 없어 클릭이 안 먹는다 */
+let prevDialogId = state.act.dialogId
 // ── P2 ──
 const ambience = createAmbience()
 const footsteps = createFootsteps()
@@ -487,6 +489,11 @@ const frame = (now: number): void => {
 
   hud.sync(state, sample.locked && cameraRig.mode() === 'fp')
   dialog.sync(state)
+  if (state.act.dialogId !== prevDialogId) {
+    const wantsMouse = state.act.dialogId === GIFT_STALL_ID || state.act.dialogId === GRANDPA_ID
+    if (wantsMouse && document.pointerLockElement) document.exitPointerLock()
+    prevDialogId = state.act.dialogId
+  }
   screens.sync(state)
   recordIfEnded(state)
   debug.sync(state)

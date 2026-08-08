@@ -109,16 +109,16 @@ describe('S22-3 소지품 10칸 (디렉터 지시)', () => {
   it('SLOTS 는 10 이고 마지막 칸(키 `0`)도 쓸 수 있다', () => {
     expect(SLOTS).toBe(10)
     const inv: (ItemId | null)[] = Array.from({ length: SLOTS }, () => null)
-    inv[SLOTS - 1] = 'I-05'
+    inv[SLOTS - 1] = 'I-10'
     const s = tap(start(7, { inventory: inv }), { pressSlot: SLOTS })
-    expect(s.flags, '경계 칸이 안 먹으면 마지막 슬롯이 죽은 칸이 된다').toContain('EARBUDS_ON')
+    expect(s.flags, '경계 칸이 안 먹으면 마지막 슬롯이 죽은 칸이 된다').toContain('CARRIER_ON')
   })
 
   it('슬롯 수를 넘는 입력은 무시한다', () => {
     const inv: (ItemId | null)[] = Array.from({ length: SLOTS }, () => null)
-    inv[0] = 'I-05'
+    inv[0] = 'I-10'
     const s = tap(start(7, { inventory: inv }), { pressSlot: SLOTS + 1 })
-    expect(s.flags).not.toContain('EARBUDS_ON')
+    expect(s.flags).not.toContain('CARRIER_ON')
   })
 })
 
@@ -130,17 +130,36 @@ describe('S22-2 즉시 착용 (디렉터 지시)', () => {
       .toContain('EARBUDS_ON')
   })
 
-  it('즉시 착용도 되돌릴 수 있다 — 대가가 있는 착용이므로', () => {
+  it('이어폰은 슬롯 키를 눌러도 꺼지지 않는다 — 토글이 없다 (디렉터 지시)', () => {
     const s = grab('Z1-ITM05')
     const slot = s.inventory.indexOf('I-05') + 1
     const off = tap(s, { pressSlot: slot })
-    expect(off.flags).not.toContain('EARBUDS_ON')
+    expect(off.flags, '따로 껐다 켰다 하는 대상이 아니다').toContain('EARBUDS_ON')
   })
 
-  it('즉시 착용은 대가가 가벼운 착용형에만 준다', () => {
-    // 손이 묶이거나 시야가 막히는 착용형까지 자동으로 켜지면 그건 선택이 아니라 사고다
+  it('마스크(I-06)도 줍는 즉시 켜져 있다 (디렉터 지시)', () => {
+    const s = grab('OBJ-19-MASK')
+    expect(s.inventory).toContain('I-06')
+    expect(s.flags).toContain('MASK_ON')
+  })
+
+  it('마스크도 슬롯 키를 눌러도 꺼지지 않는다', () => {
+    const s = grab('OBJ-19-MASK')
+    const slot = s.inventory.indexOf('I-06') + 1
+    const off = tap(s, { pressSlot: slot })
+    expect(off.flags).toContain('MASK_ON')
+  })
+
+  it('즉시 착용은 캐리어만 예외다', () => {
+    // 이동속도를 깎는 캐리어만 켜는 순간이 판단이라 자동으로 안 켠다
     const auto = ITEMS_AUTO()
-    expect(auto).toEqual(['I-05'])
+    expect(auto).toEqual(['I-05', 'I-06'])
+  })
+
+  it('토글 자체가 없는 것도 이어폰·마스크뿐이다', () => {
+    expect(ITEMS['I-05']?.toggleable).toBe(false)
+    expect(ITEMS['I-06']?.toggleable).toBe(false)
+    expect(ITEMS['I-10']?.toggleable).not.toBe(false)
   })
 })
 
@@ -151,7 +170,8 @@ describe('S15-2 착용형 토글', () => {
   const wear = (item: ItemId): GameState =>
     tap(start(7, { inventory: [item, null, null] }), { pressSlot: 1 })
 
-  for (const def of WEARABLES) {
+  // 토글 가능한 착용형만(디렉터 지시로 이어폰·마스크는 토글이 없다 — 아래 별도 테스트)
+  for (const def of WEARABLES.filter((d) => d.toggleable !== false)) {
     it(`${def.name} — 켜고 끌 수 있다`, () => {
       const on = wear(def.id)
       expect(def.flag).toBeDefined()
@@ -159,6 +179,16 @@ describe('S15-2 착용형 토글', () => {
       const off = tap(on, { pressSlot: 1 })
       expect(off.flags, 'P2는 되돌릴 수 있다 — 대가 있는 착용이 들어왔으므로').not.toContain(def.flag)
       expect(off.inventory[0], '착용형은 슬롯을 안 비운다').toBe(def.id)
+    })
+  }
+
+  for (const def of WEARABLES.filter((d) => d.toggleable === false)) {
+    it(`${def.name} — 슬롯 키로 껐다 켰다 할 수 없다(소지 자체가 능력)`, () => {
+      // 줍기(pickup)가 아니라 인벤토리에 직접 놓았다 — autoWear 트리거는 안 탄다.
+      // 그 상태에서 슬롯 키를 눌러도 예전처럼 켜지지 않는다는 게 이 테스트의 핵심이다.
+      const pressed = wear(def.id)
+      expect(pressed.flags, '토글이 없으니 슬롯 키로는 안 켜진다').not.toContain(def.flag)
+      expect(pressed.inventory[0], '대신 손에 든다').toBe(def.id)
     })
   }
 
@@ -186,34 +216,28 @@ describe('S15-3 소모형', () => {
   })
 
   it('스타일 축은 종류 수다 — 같은 걸 두 번 써도 1', () => {
-    const s1 = tap(start(7, { inventory: ['I-06', null, null] }), { pressSlot: 1 })
+    // 이어폰·마스크는 토글이 없어졌으므로(디렉터 지시) 여전히 토글인 캐리어로 잰다
+    const s1 = tap(start(7, { inventory: ['I-10', null, null] }), { pressSlot: 1 })
     const s2 = tap(tap(s1, { pressSlot: 1 }), { pressSlot: 1 })
-    expect(s2.tally.itemsUsed.filter((i) => i === 'I-06').length).toBe(1)
+    expect(s2.tally.itemsUsed.filter((i) => i === 'I-10').length).toBe(1)
   })
 })
 
 describe('S15-4 동전 (I-02)', () => {
   const coins = INTERACTABLES.filter((i) => isCoin(i.id))
 
-  it('바닥 동전이 6개다', () => {
-    expect(coins.length).toBe(6)
+  it('바닥 동전이 3개다', () => {
+    expect(coins.length).toBe(3)
   })
 
-  it('가치가 100~300원 · 50원 단위', () => {
+  it('가치가 전부 100원 고정이다 (디렉터 지시)', () => {
     for (const seed of [1, 7, 99, 4242]) {
       for (const c of coins) {
-        const v = coinValue(seed, c.id)
-        expect(v).toBeGreaterThanOrEqual(COIN.min)
-        expect(v).toBeLessThanOrEqual(COIN.max)
-        expect(v % COIN.step).toBe(0)
+        expect(coinValue(seed, c.id)).toBe(100)
       }
     }
-  })
-
-  it('같은 시드는 같은 값, 다른 동전은 다른 값이 섞인다', () => {
-    expect(coinValue(7, coins[0]!.id)).toBe(coinValue(7, coins[0]!.id))
-    const vals = new Set(coins.map((c) => coinValue(7, c.id)))
-    expect(vals.size).toBeGreaterThan(1)
+    expect(COIN.min).toBe(100)
+    expect(COIN.max).toBe(100)
   })
 
   it('주우면 잔액이 늘고 슬롯은 안 건드린다 — 가득 차 있어도 주울 수 있다', () => {

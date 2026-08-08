@@ -20,8 +20,15 @@ export type ActCtx = Readonly<{ dtMs: number; input: InputFrame; cameraYaw: numb
 /** 같은 층인가 — 대합실에서 지상 노점이 켜지는 일을 막는다 */
 const SAME_FLOOR_M = 2.5
 
-/** 이동 입력으로 취소되는 종류 — 서서 하는 일들 */
-const CANCEL_ON_MOVE: ReadonlySet<InteractKind> = new Set(['buy', 'give', 'story', 'aside'])
+/**
+ * 이동 입력으로 취소되는 종류 — 서서 하는 일들.
+ *
+ * `story`(말동무 해주기)는 여기 없다 — 디렉터 지시로 **진짜 이동 락**이 걸린다
+ * (`systems/movement.ts` 가 이동 입력 자체를 무시한다)이라 "움직이면 취소"가 필요 없고,
+ * ESC 도 안 듣는다(아래 `interactSystem` 의 `kind !== 'story'` 가드). `story` 는 이 게임에서
+ * 유일하게 중간에 못 빠져나가는 상호작용이다.
+ */
+const CANCEL_ON_MOVE: ReadonlySet<InteractKind> = new Set(['buy', 'give', 'aside'])
 
 /** 종류별 소요(ms) */
 const durationOf = (kind: InteractKind): number => {
@@ -181,7 +188,8 @@ const complete = (s: GameState): Action[] => {
         ...(auto && def.flag
           ? [{ t: 'FLAG', id: def.flag, on: true } as Action,
              { t: 'ITEM_USED', item: it.gives } as Action,
-             { t: 'FX', kind: 'toast', text: `${def.name} 착용`, lifeMs: 1400, value: 0 } as Action]
+             // 디렉터 지시 — "OO 착용" 대신 두루뭉실한 능력 힌트(`cost`)를 보여준다
+             { t: 'FX', kind: 'toast', text: def.cost ?? `${def.name} 착용`, lifeMs: 1400, value: 0 } as Action]
           : []),
         ...(it.once && !isDrop ? [{ t: 'ACT_CONSUME', id } as Action] : []),
       ]
@@ -215,6 +223,10 @@ const complete = (s: GameState): Action[] => {
      * 구매가 1회 한정(`GIFT_BOUGHT`)이라 소지한 선물은 항상 최대 하나다.
      * 어느 것을 드릴지 다시 고를 필요가 없어 인벤토리의 첫 선물이 곧 답이다.
      */
+    /**
+     * 플레이어가 먼저 제안하고 할아버지가 답하는 두 줄이 `ui/dialog.ts` 의 대화 패널에
+     * 이미 뜬다(`GIVE_LINES`) — 여기서 또 토스트를 띄우면 같은 말을 두 번 하는 꼴이라 뺐다.
+     */
     case 'give': {
       const held = GIFT_ITEMS.find((i) => slotOf(s, i) >= 0)
       if (held === undefined) return [{ t: 'ACT_DENY', text: '선물이 필요하다' }]
@@ -222,7 +234,6 @@ const complete = (s: GameState): Action[] => {
       if (held !== GIFT_CORRECT) {
         return [
           { t: 'ITEM_SPEND', slot },
-          { t: 'FX', kind: 'toast', text: '"이놈아, 내가 이런 걸 먹게 생겼냐?"', lifeMs: 2600, value: 0 },
           { t: 'END', endingId: 'E-15' },
         ]
       }
@@ -233,13 +244,14 @@ const complete = (s: GameState): Action[] => {
         { t: 'CONSCIENCE', delta: 1 },
         { t: 'FLAG', id: 'GRANDPA_HELPED', on: true },
         { t: 'ACT_CONSUME', id: GRANDPA_ID },
-        { t: 'FX', kind: 'toast', text: '"고맙네, 젊은이."', lifeMs: 2200, value: 0 },
       ]
     }
 
     /**
-     * [3] 인생 이야기 완청 — 15초를 지불하고 **정보를 산다.**
-     * `HINT_GRANDPA` 가 안내 LED에 고장 게이트를 띄운다 → Z3에서 회수한다(GDD §8.1.1).
+     * [3] 말동무 해주기 완주 — 30초(3초×10줄, 플레이어 5·할아버지 5)를 들여 **정보를 산다.**
+     * `HINT_GRANDPA` 가 안내 LED에 정상 게이트를 띄운다 → Z3에서 다시 확인한다.
+     * 10줄 자체가 이미 대화 패널에서 다 보였으므로(`ui/dialog.ts` STORY_LINES) 완료 토스트는
+     * 뺐다 — 마지막 줄("이건 답례라네")이 곧 이 `PICKUP I-01` 이다.
      */
     case 'story':
       return [
@@ -249,7 +261,6 @@ const complete = (s: GameState): Action[] => {
         { t: 'FLAG', id: 'HINT_GRANDPA', on: true },
         { t: 'SECRET', id: 'gp-story' },
         { t: 'ACT_CONSUME', id: GRANDPA_ID },
-        { t: 'FX', kind: 'toast', text: '"3번 개찰구가 아침부터 먹통이야."', lifeMs: 2600, value: 0 },
       ]
 
     /**
@@ -343,7 +354,7 @@ export const grandpaBranches = (s: GameState): readonly Branch[] => [
     enabled: GIFT_ITEMS.some((i) => hasItem(s, i)),
     note: GIFT_ITEMS.some((i) => hasItem(s, i)) ? '+1.5s' : '선물이 없다',
   },
-  { key: 3, label: '말을 건다', enabled: true, note: '+15s' },
+  { key: 3, label: '말을 건다', enabled: true, note: '+30s' },
 ]
 
 /**
@@ -460,17 +471,32 @@ const contextUse = (s: GameState, slot: number, item: ItemId): Action[] | null =
 
   /**
    * 착용형은 **토글**이다 (P2). P1은 마스크를 켜기만 했다 —
-   * 캐리어(−20% 속도)·이어폰(힌트 차단)처럼 **대가가 있는 착용**이 들어오면서
-   * 끌 수 없다는 것이 곧 되돌릴 수 없는 실수가 됐다.
+   * 캐리어(−20% 속도)처럼 **대가가 있는 착용**이 들어오면서 끌 수 없다는 것이 곧
+   * 되돌릴 수 없는 실수가 됐다.
+   *
+   * ★ 이어폰·마스크(`toggleable: false`)는 예외다(디렉터 지시) — 대가가 없는
+   *   착용이라 끄고 켜는 판단 자체가 없다. 줍는 순간(`auto`, 위 pickup 분기) 켜진
+   *   뒤로는 슬롯 키가 토글을 안 낸다 — `contextUse`가 `null`을 돌려주면 아래
+   *   `equipToggle`(손에 든다)로 자연히 떨어진다.
    */
-  if (def.use === 'wear' && def.flag) {
+  if (def.use === 'wear' && def.flag && def.toggleable !== false) {
     const on = s.flags.includes(def.flag)
+    // 디렉터 지시 — "OO 착용/해제" 대신 몸으로 느껴지는 감각을 준다
+    const toastText = on
+      ? (def.wearOffText ?? `${def.name} 해제`)
+      : (def.wearOnText ?? `${def.name} 착용`)
     return [
       { t: 'FLAG', id: def.flag, on: !on },
       ...(on ? [] : [{ t: 'ITEM_USED', item } as Action]),
-      { t: 'FX', kind: 'toast', text: `${def.name} ${on ? '해제' : '착용'}`, lifeMs: 1400, value: 0 },
+      { t: 'FX', kind: 'toast', text: toastText, lifeMs: 1400, value: 0 },
     ]
   }
+
+  /**
+   * 이어폰(`holdable: false`)은 손에도 안 든다 — 귀에 꽂는 물건이지 드는 물건이 아니다.
+   * `[]`(빈 배열)을 돌려줘야 한다 — `null`이면 아래 `equipToggle`(손에 든다)로 떨어진다.
+   */
+  if (def.use === 'wear' && def.toggleable === false && def.holdable === false) return []
 
   /**
    * 선물 5종 — 할아버지가 근처면 전달로 직행한다 (선택 UI를 다시 열지 않는다).
@@ -603,8 +629,11 @@ export const interactSystem = (s: GameState, ctx: ActCtx): Action[] => {
   // 3) 진행 중 상호작용
   if (s.act.busyId) {
     const kind = s.act.busyKind
-    const cancelled =
-      f.pressCancel || (kind !== null && CANCEL_ON_MOVE.has(kind) && moveAxis(f) > INTERACT.cancelAxis)
+    // 말동무 해주기(`story`)는 디렉터 지시로 중간에 못 나간다 — ESC도, 이동도 안 먹는다
+    // (이동은 애초에 `movement.ts` 가 입력을 씹어서 여기까지 안 온다)
+    const cancellable = kind !== 'story'
+    const cancelled = cancellable &&
+      (f.pressCancel || (kind !== null && CANCEL_ON_MOVE.has(kind) && moveAxis(f) > INTERACT.cancelAxis))
     if (cancelled) return [...out, { t: 'ACT_CANCEL' }]
     /**
      * 완료 뒤 `ACT_CANCEL` 을 꼬리에 붙인다 — **진행 상태를 확실히 비우기 위해서다.**

@@ -35,6 +35,14 @@ export type SweepRow = Readonly<{
   ending: EndingId
   /** 진행 불가로 멈춘 지점 (없으면 null) */
   stuckAt: string | null
+  /**
+   * 소프트락이 아니라 **정당하게 죽었는가** (`phase === 'ended'`).
+   * 좀비폰족 스턴(4s)이 할아버지 몽둥이 쿨다운(1.5s)보다 길어지면서,
+   * 절도 직후 도주 중 좀비에 붙잡히면 그 자리에서 두 대를 맞고 즉사(E-16)할 수 있다 —
+   * 디렉터 확인 결과 **의도된 리스크**로 유지한다. `stuckAt` 이 있어도 `died` 면
+   * 진행이 막힌 게 아니라 라운드가 끝난 것이므로 소프트락 집계에서 뺀다.
+   */
+  died: boolean
 }>
 
 const GP = { x: 42, y: 14.9 }
@@ -133,6 +141,7 @@ const row = (
   conscience: s.scores.conscience,
   ending: resolveEnding(s).id,
   stuckAt,
+  died: s.phase === 'ended',
 })
 
 /** 한 시드 · 한 루트를 완주 시도한다 */

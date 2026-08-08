@@ -128,11 +128,12 @@ describe('S12-4~S12-6 채점 축', () => {
   })
 
   it('S12-5 스타일 = 사용 아이템 **종류** 수 (같은 종류 2회는 1)', () => {
-    // 마스크를 두 번 쓴다 — 두 번째는 이미 착용 중이라 사유만 나온다
-    const s0 = put(start(7, { inventory: ['I-06', null, null] }), 30, 15, FLOOR.B1)
+    // 캐리어를 두 번 쓴다 — 두 번째는 이미 끌고 있다가 놓는 것뿐이다
+    // (이어폰·마스크는 토글이 없어졌으므로 여전히 토글인 캐리어로 잰다)
+    const s0 = put(start(7, { inventory: ['I-10', null, null] }), 30, 15, FLOOR.B1)
     let s = tap(s0, { pressSlot: 1 })
     expect(s.scores.style).toBe(1)
-    expect(s.tally.itemsUsed).toEqual(['I-06'])
+    expect(s.tally.itemsUsed).toEqual(['I-10'])
     s = tap(wait(s, 100), { pressSlot: 1 })
     expect(s.scores.style, '종류가 늘지 않았으므로 그대로').toBe(1)
   })

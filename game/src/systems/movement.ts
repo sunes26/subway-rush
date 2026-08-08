@@ -13,6 +13,16 @@ import type { Action, GameState } from '../state/types'
 import { resolveMove, sampleGround, depenetrate } from './collision'
 import { WET_ZONE } from './obstacles'
 
+/**
+ * 말동무 해주기(`story`) 중엔 **진짜로 못 움직인다** (디렉터 지시 2026-08-08).
+ *
+ * 이 게임의 다른 모든 상호작용은 "움직이면 취소"(`CANCEL_ON_MOVE`)일 뿐 입력 자체를
+ * 막지는 않는다. `story` 만 예외인 이유는 30초짜리 자동 진행 대화라 — 취소가 아니라
+ * 이동 자체가 봉쇄돼야 어색하게 걸어 나가면서 할아버지가 계속 혼잣말하는 그림이 안 나온다.
+ * `story` 는 오직 할아버지(`ACT-02-GP`)만 쓰는 종류라 상대를 따로 확인할 필요가 없다.
+ */
+const isTalkLocked = (s: GameState): boolean => s.act.busyKind === 'story'
+
 export type MoveCtx = Readonly<{ dtMs: number; input: InputFrame; cameraYaw: number }>
 
 /** 램프 종류에 따른 기본 속도 (MAP §1.3) */
@@ -62,10 +72,11 @@ export const movementSystem = (s: GameState, ctx: MoveCtx): Action[] => {
   const dt = ctx.dtMs / 1000
   const p = s.player
   const { input } = ctx
+  const talkLocked = isTalkLocked(s)
 
   // ── 입력 → 카메라 기준 월드 방향
-  const ix = input.moveX
-  const iy = input.moveY
+  const ix = talkLocked ? 0 : input.moveX
+  const iy = talkLocked ? 0 : input.moveY
   const mag = Math.hypot(ix, iy)
   const hasInput = mag > 0.001
   const cos = Math.cos(ctx.cameraYaw)
@@ -183,7 +194,7 @@ export const movementSystem = (s: GameState, ctx: MoveCtx): Action[] => {
   let grounded = p.grounded
   let airborneMs = p.airborneMs
   // 입력 버퍼 — 착지 직전에 누른 점프를 착지 순간에 살려준다
-  let jumpBufferMs = ctx.input.jump ? JUMP.bufferMs : Math.max(0, p.jumpBufferMs - ctx.dtMs)
+  let jumpBufferMs = ctx.input.jump && !talkLocked ? JUMP.bufferMs : Math.max(0, p.jumpBufferMs - ctx.dtMs)
   let jumped = false
 
   if (grounded) {
