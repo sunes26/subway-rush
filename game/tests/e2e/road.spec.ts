@@ -45,17 +45,22 @@ const place = async (page: Page, x: number, y: number): Promise<void> => {
 const distFromSpawn = (p: { x: number; y: number }): number =>
   Math.hypot(p.x - SPAWN.x, p.y - SPAWN.y)
 
-test('차선 한복판에 서 있으면 차에 치여 스폰으로 돌아간다', async ({ page }) => {
+test('적신호에 횡단보도에서 치이면 그 자리에서 끝난다 (E-17)', async ({ page }) => {
   await boot(page)
-  // 이면도로 남행 차선(x −28.8). 횡단보도 한복판이라 보행 녹색이면 차가 서 있고,
-  // 적색으로 바뀌면 달려온다.
+  /**
+   * 이면도로 남행 차선(x −28.8) · 횡단보도 한복판. 보행 녹색이면 차가 서 있고
+   * 적색으로 바뀌면 달려온다 — 즉 여기서 치이는 것은 **언제나 무단횡단**이다.
+   *
+   * 예전엔 스폰으로 되돌렸다. 지금은 적신호 횡단만 즉사다(E-17) — 차도를 막지
+   * 않는 대신 대가를 청구한다는 규칙은 그대로고, 그 대가가 시간에서 런으로 올라갔다.
+   */
   await place(page, -28.8, 27.5)
 
-  await expect.poll(async () => {
-    const p = await page.evaluate(() => window.__game!.state().player.pos)
-    // 치이면 스폰으로 순간이동하므로 거리로 본다 (플레이어는 스스로 안 움직인다)
-    return distFromSpawn(p) < 1.0
-  }, { timeout: 90_000, intervals: [500] }).toBe(true)
+  await expect.poll(
+    async () => page.evaluate(() => window.__game!.state().endingId),
+    { timeout: 90_000, intervals: [500] },
+  ).toBe('E-17')
+  expect(await page.evaluate(() => window.__game!.state().phase)).toBe('ended')
 })
 
 test('인도에 서 있으면 아무 일도 없다 — 오탐이 없다', async ({ page }) => {

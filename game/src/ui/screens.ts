@@ -80,11 +80,12 @@ const WHAT_HAPPENED: Readonly<Record<EndingId, string>> = {
   'E-09': '요금을 내지 않고 통과하다 적발됐습니다.',
   'E-10': '훔친 채로 승강장에 도달했습니다.',
   'E-11': '우산으로 인파를 밀어냈습니다.',
-  'E-12': '열차는 떠났고, 승강장에 남았습니다.',
-  'E-13': '화장실에 들렀습니다.',
+  'E-12': '열차가 떠났습니다.',
+  'E-13': '볼일을 보는 사이 열차가 떠났습니다.',
   'E-14': '동전을 모아 열차에 탑승했습니다.',
   'E-15': '할아버지가 선물을 돌려주셨습니다.',
   'E-16': '도망치지 못했습니다.',
+  'E-17': '적신호에 건너다 차에 치였습니다.',
 }
 
 /** 화면에 띄우는 결과값 한 칸. `wide` 면 두 칸을 합쳐 한 줄로 쓴다. */
@@ -197,7 +198,7 @@ export const createScreens = (mount: HTMLElement): Screens => {
       <div class="face">
         <div class="row s1">
           <div class="logo">
-            <span class="train" aria-hidden="true"></span>
+            <span class="train" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
             <b class="ko"><em>지하철</em> <u>러쉬</u></b>
             <span class="speed" aria-hidden="true"><i></i><i></i><i></i></span>
             <small>SUBWAY RUSH</small>

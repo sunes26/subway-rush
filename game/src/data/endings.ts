@@ -82,11 +82,11 @@ export const ENDINGS: readonly EndingDef[] = [
      */
     id: 'E-05',
     priority: 100,
-    title: '지하철 마스터',
+    title: '아무 일도 없었다',
     lines: [
       '이 역은 다 외웠다.',
       '눈 감고도 간다.',
-      '환승 통로 길이까지 안다.',
+      '오늘은 순조로웠다.',
     ],
     tone: 'hidden',
     when: (s) =>
@@ -119,23 +119,33 @@ export const ENDINGS: readonly EndingDef[] = [
      */
     id: 'E-12',
     priority: 85,
-    title: '평화로운 역',
+    title: '나만 남았다',
     lines: [
-      '나 빼고.',
-      '승강장에 나만 남았다.',
+      '조용하다.',
       '다음 거나 기다린다.',
+      '승강장이 넓다.',
     ],
     tone: 'hidden',
+    /**
+     * ★ **`SEAT_YIELDED` 를 조건에서 뺐다 — 그 플래그를 켜는 코드가 없다.**
+     *
+     * 타입 선언(`state/types.ts`)과 이 조건식에만 존재하고, 임산부·배려석
+     * 상호작용 자체가 게임에 없다. 즉 이 엔딩은 **실제 플레이로는 도달이
+     * 불가능**했다. 유닛 테스트가 통과한 건 플래그를 배열에 직접 넣기 때문이다
+     * (`ending14.test.ts`) — 판정기는 맞았지만 그 상태에 이르는 길이 없었다.
+     *
+     * 없는 조건을 지우는 쪽을 골랐다. 배려석 상호작용을 새로 만드는 것은
+     * NPC·좌표·대화가 붙는 별건이고, 그 전까지 엔딩 하나를 죽여 둘 이유가 없다.
+     */
     when: (s) =>
       !s.boarded &&
       s.flags.includes('WALLET_RETURNED') &&
-      s.flags.includes('GRANDPA_HELPED') &&
-      s.flags.includes('SEAT_YIELDED'),
+      s.flags.includes('GRANDPA_HELPED'),
   },
   {
     id: 'E-11',
     priority: 84,
-    title: '에스컬레이터 참사',
+    title: '다 넘어졌다',
     lines: [
       '뒤는 안 봤다.',
       '아래쪽이 조용해졌다.',
@@ -166,11 +176,11 @@ export const ENDINGS: readonly EndingDef[] = [
   {
     id: 'E-10',
     priority: 80,
-    title: '양심 파산',
+    title: '아무도 안 비켜준다',
     lines: [
       '다들 쳐다본다.',
-      '아무도 옆에 안 선다.',
       '손잡이가 유난히 멀다.',
+      '옆자리가 비어 있다.',
     ],
     hint: '훔치면 빠르다. 빠른 만큼 뒤에서 따라온다.',
     tone: 'fail',
@@ -181,7 +191,7 @@ export const ENDINGS: readonly EndingDef[] = [
   {
     id: 'E-13',
     priority: 70,
-    title: '해방',
+    title: '화장실 다녀왔다',
     lines: [
       '열차보다 급했다.',
       '이건 어쩔 수 없었다.',
@@ -223,7 +233,7 @@ export const ENDINGS: readonly EndingDef[] = [
     title: '문 닫히기 1초 전',
     lines: [
       '가방은 아직 밖이다.',
-      '반은 탔다.',
+      '문이 어깨를 물었다.',
       '탔다. 됐다.',
     ],
     tone: 'success',
@@ -240,7 +250,17 @@ export const ENDINGS: readonly EndingDef[] = [
       '숨 고를 시간은 있었다.',
     ],
     tone: 'success',
-    when: (s) => s.boarded && s.timeLeftMs >= 30_000,
+    /**
+     * 문턱을 30 → 15초로 낮췄다.
+     *
+     * 30초로 두면 **잔여 1.1초부터 29초까지가 전부 E-01 「아슬아슬 탑승」**이었다
+     * (실측). 180초 중 29초를 남긴 건 아슬아슬한 게 아닌데 화면은 그렇다고 말한다.
+     * GDD §6.2 도 E-01 을 "잔여 0~10s" 로 규정하는데 코드에는 하한이 없었다.
+     *
+     * 15초는 3분의 1/12 다 — 이 아래면 실제로 뛰어야 하고, 위면 걸어도 탄다.
+     * 조정하려면 이 상수 하나만 만지면 된다.
+     */
+    when: (s) => s.boarded && s.timeLeftMs >= 15_000,
   },
   {
     id: 'E-01',
@@ -281,11 +301,11 @@ export const ENDINGS: readonly EndingDef[] = [
   {
     id: 'E-15',
     priority: 4,
-    title: '이걸 누가 먹어',
+    title: '선물이 돌아왔다',
     lines: [
-      '봉지째 돌아왔다.',
       '표정이 그게 아니었다.',
       '한참을 들고 계셨다.',
+      '다른 걸 드셨어야.',
     ],
     hint: '벤치 근처 바닥을 살펴보면 뭘 드셨는지 알 수 있다.',
     tone: 'fail',
@@ -294,7 +314,7 @@ export const ENDINGS: readonly EndingDef[] = [
   {
     id: 'E-16',
     priority: 3,
-    title: '단소는 악기다',
+    title: '단소에 졌다',
     lines: [
       '원래는 부는 거다.',
       '소리가 좀 컸다.',
@@ -303,6 +323,27 @@ export const ENDINGS: readonly EndingDef[] = [
     // "두 대까지"는 "두 대를 맞아도 괜찮다"로 잘못 읽힌다 — 실제로는 두 번째가 즉사다.
     // 살아남는 수는 "안 맞는다"뿐이라는 걸 분명히 한다.
     hint: '단소는 두 번째로 맞으면 그걸로 끝이다. 개찰구를 넘으면 멈추신다.',
+    tone: 'fail',
+    when: () => false,
+  },
+  {
+    /**
+     * 🚗 무단횡단 사망 — `main.ts` 의 차량 충돌 판정이 직접 발행한다.
+     *
+     * **적신호에 건널 때만** 즉사다. 보행 녹색에 치이면 예전처럼 스폰으로 돌아간다.
+     * 차도를 막지 않고 대가를 청구하는 것이 이 게임의 규칙인데(GDD §4),
+     * 무조건 즉사로 두면 그 원칙이 Z1 에서만 깨진다 — 초록불에 건너다 죽는 건
+     * 플레이어의 선택이 아니기 때문이다. 적신호는 명백한 선택이라 즉사가 성립한다.
+     */
+    id: 'E-17',
+    priority: 2,
+    title: '빨간불이었다',
+    hint: '보행 신호가 초록이면 차가 멈춰 선다.',
+    lines: [
+      '안 올 줄 알았다.',
+      '클랙슨은 들었다.',
+      '여기서 끝날 줄은.',
+    ],
     tone: 'fail',
     when: () => false,
   },

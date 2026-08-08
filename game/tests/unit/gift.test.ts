@@ -12,11 +12,12 @@ import { GIFT_ITEMS } from '../../src/data/items'
 import { CLERK_POS } from '../../src/render/actors'
 
 describe('선물 퍼즐 엔딩', () => {
-  it('E-15 · E-16 이 등록돼 있다', () => {
+  it('강제 엔딩 E-15 · E-16 · E-17 이 등록돼 있다', () => {
     const ids = ENDINGS.map((e) => e.id)
     expect(ids).toContain('E-15')
     expect(ids).toContain('E-16')
-    expect(ENDINGS.length).toBe(16)
+    expect(ids).toContain('E-17')
+    expect(ENDINGS.length).toBe(17)
   })
 
   /**
@@ -24,7 +25,7 @@ describe('선물 퍼즐 엔딩', () => {
    * 열차 출발 경로에서 엉뚱하게 뽑힌다 — 그래서 항상 거짓이어야 한다.
    */
   it('강제 엔딩의 when 은 어떤 상태에서도 거짓이다', () => {
-    const forced = ENDINGS.filter((e) => e.id === 'E-15' || e.id === 'E-16')
+    const forced = ENDINGS.filter((e) => e.id === 'E-15' || e.id === 'E-16' || e.id === 'E-17')
     const s = start(1)
     for (const e of forced) {
       expect(e.when(s)).toBe(false)

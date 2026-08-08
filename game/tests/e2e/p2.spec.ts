@@ -29,7 +29,7 @@ const boot = async (page: Page, query = '?seed=7'): Promise<string[]> => {
 }
 
 test.describe('S18-4/5 엔딩 도감', () => {
-  test('C 를 누르면 16칸이 열리고 미해금은 ??? 다', async ({ page }) => {
+  test('C 를 누르면 17칸이 열리고 미해금은 ??? 다', async ({ page }) => {
     const errs = await boot(page)
     await page.evaluate((k) => localStorage.removeItem(k), SAVE_KEY)
 
@@ -37,9 +37,9 @@ test.describe('S18-4/5 엔딩 도감', () => {
     await page.waitForTimeout(250)
 
     const cells = page.locator('#collection .cell')
-    await expect(cells).toHaveCount(16)
-    await expect(page.locator('#collection .cell.locked')).toHaveCount(16)
-    await expect(page.locator('#collection .sub')).toContainText('0 / 16')
+    await expect(cells).toHaveCount(17)
+    await expect(page.locator('#collection .cell.locked')).toHaveCount(17)
+    await expect(page.locator('#collection .sub')).toContainText('0 / 17')
     // 조건식이 노출되면 안 된다 — 도감이 체크리스트가 되면 수집이 아니라 심부름이다
     const text = await page.locator('#collection').innerText()
     expect(text).not.toContain('>=')
@@ -75,7 +75,7 @@ test.describe('S18-4/5 엔딩 도감', () => {
     await page.keyboard.press('KeyC')
     await page.waitForTimeout(250)
     await expect(page.locator('#collection .cell.got')).toHaveCount(1)
-    await expect(page.locator('#collection .sub')).toContainText('1 / 16')
+    await expect(page.locator('#collection .sub')).toContainText('1 / 17')
   })
 
   test('같은 엔딩 화면이 떠 있어도 횟수가 한 번만 는다', async ({ page }) => {

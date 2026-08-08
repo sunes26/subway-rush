@@ -49,6 +49,26 @@ describe('엔딩 카피 톤', () => {
     }
   })
 
+  it('제목이 단독으로 상황을 말한다 — 한마디가 제목을 설명하지 않는다', () => {
+    /**
+     * 제목이 추상적이면 한마디가 그걸 풀어 주는 구조가 된다. 그러면 제목은
+     * 혼자서는 아무 뜻이 없는 라벨이 되고, 도감에 늘어놨을 때 무엇이 무엇인지
+     * 안 읽힌다(실제로 `해방` · `양심 파산` · `단소는 악기다` 가 그랬다).
+     *
+     * 완벽히 잡을 수는 없으니 **겹침**만 막는다 — 제목과 한마디가 같은 말을
+     * 하고 있으면 둘 중 하나가 제 몫을 못 하고 있다는 뜻이다.
+     */
+    const stem = (t: string): string => t.replace(/[.\s]/g, '').replace(/(다|요|지)$/, '')
+    for (const e of ENDINGS) {
+      for (const line of e.lines) {
+        const a = stem(e.title)
+        const b = stem(line)
+        expect(a.length >= 4 && b.includes(a), `${e.id} "${e.title}" ↔ "${line}" 가 겹친다`)
+          .toBe(false)
+      }
+    }
+  })
+
   it('한마디는 짧다 — 전광판에서는 끊는 편이 강하다', () => {
     for (const e of ENDINGS) {
       for (const line of e.lines) {

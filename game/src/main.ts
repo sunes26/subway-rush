@@ -9,7 +9,8 @@ import { createSfx } from './audio/sfx'
 import { createInput, EMPTY_INPUT, type InputFrame } from './core/input'
 import { resolveSeed } from './core/rng'
 import { CAMERA, FPV, MAX_FRAME_MS, MAX_STEPS_PER_FRAME, MOVE, STEP_MS } from './data/tuning'
-import { FLOOR, GATES, GATE_BODY, GATE_LAMP_Z, TRAFFIC_LIGHT, ZONE_NAMES } from './data/world'
+import { CROSSWALK, FLOOR, GATES, GATE_BODY, GATE_LAMP_Z, TRAFFIC_LIGHT,
+  ZONE_NAMES } from './data/world'
 import { byId, type InteractKind } from './data/interactables'
 import { CHAR_SCALE, loadActors, type Actors } from './render/actors'
 import { createCameraRig } from './render/camera-rig'
@@ -459,11 +460,33 @@ const frame = (now: number): void => {
       Math.abs(state.player.pos.z - FLOOR.L0) < 1.2 &&
       carHits(traffic.bodies(), state.player.pos.x, state.player.pos.y, MOVE.radius)
     ) {
-      state = applyAll(state, [
-        { t: 'RESPAWN' },
-        { t: 'FX', kind: 'toast', text: '차에 치였다 — 처음 위치로', lifeMs: 2200, value: 0 },
-        { t: 'FX', kind: 'shake', text: '', lifeMs: 420, value: 1 },
-      ])
+      /**
+       * **적신호에 건너다 치이면 그 자리에서 끝난다(E-17).** 보행 녹색이면
+       * 예전처럼 스폰으로 되돌린다.
+       *
+       * 무조건 즉사로 두지 않은 이유: 이 게임은 차도를 막지 않는 대신 대가를
+       * 청구한다(GDD §4). 초록불에 건너다 죽는 건 플레이어의 선택이 아니라
+       * 사고라, 거기까지 즉사로 만들면 그 원칙이 Z1 에서만 깨진다.
+       * 적신호 횡단은 명백한 선택이므로 즉사가 성립한다 — GDD 가 즉사를
+       * 허용하는 기준("전부 명백한 선택의 결과")과도 맞는다.
+       */
+      const p = state.player.pos
+      const inCrosswalk =
+        p.x >= CROSSWALK.xMin && p.x <= CROSSWALK.xMax &&
+        p.y >= CROSSWALK.yMin && p.y <= CROSSWALK.yMax
+      // 신호 상태만 보면 **횡단보도 밖**에서 치인 것까지 무단횡단이 된다.
+      // 차도 한복판에 서 있다 치이는 것과 신호를 무시하고 건너는 것은 다른 일이다.
+      const jaywalking = inCrosswalk && !lightIsGreen(state)
+      state = applyAll(state, jaywalking
+        ? [
+            { t: 'END', endingId: 'E-17' },
+            { t: 'FX', kind: 'shake', text: '', lifeMs: 620, value: 1 },
+          ]
+        : [
+            { t: 'RESPAWN' },
+            { t: 'FX', kind: 'toast', text: '차에 치였다 — 처음 위치로', lifeMs: 2200, value: 0 },
+            { t: 'FX', kind: 'shake', text: '', lifeMs: 420, value: 1 },
+          ])
       prevPos = state.player.pos
       hitCooldownMs = HIT_COOLDOWN_MS
     }

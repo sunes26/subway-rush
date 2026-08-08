@@ -67,22 +67,56 @@ body.run-ended #gl{filter:blur(5px) saturate(.90) brightness(.80);
 /* ─────────────── 안내판 본체 ─────────────── */
 #screen .board{position:relative;width:min(1040px,92vw);background:var(--frame);
   border:1px solid var(--edge);border-radius:2px;padding:6px;font-family:var(--mono)}
-#screen .brackets{position:absolute;top:-16px;left:0;right:0;height:16px;
+/*
+ * 천장 매달림.
+ *
+ * 예전엔 판 위로 가느다란 막대 둘만 세워 뒀는데, **위에 아무것도 없어서** 매달린
+ * 게 아니라 안테나가 솟은 것처럼 보였다. 실물은 천장 슬래브에 행어 봉이 박히고
+ * 봉 끝에 판이 물린다 — 그 셋(천장선 · 봉 · 물림쇠)을 다 그려야 매달려 보인다.
+ */
+#screen .brackets{position:absolute;top:-30px;left:0;right:0;height:30px;
   display:flex;justify-content:space-between;padding:0 13%}
-#screen .brackets i{width:6px;height:16px;background:var(--frame);
-  border-left:1px solid var(--edge);border-right:1px solid var(--edge)}
-#screen .face{position:relative;background:var(--panel);border-radius:1px;padding:16px 22px}
+#screen .brackets i{position:relative;width:7px;height:30px;
+  background:linear-gradient(#3a3a3d,#232326)}
+/* 천장 쪽 고정판 */
+#screen .brackets i::before{content:'';position:absolute;top:0;left:-7px;right:-7px;height:4px;
+  background:#3a3a3d;border-radius:1px}
+/* 판을 무는 물림쇠 */
+#screen .brackets i::after{content:'';position:absolute;bottom:0;left:-4px;right:-4px;height:6px;
+  background:var(--frame);border:1px solid var(--edge);border-bottom:none}
+/* 천장 슬래브 — 봉이 어디에 박혀 있는지 보여 주는 선 */
+#screen .board::before{content:'';position:absolute;top:-30px;left:-6%;right:-6%;height:3px;
+  background:rgba(58,58,61,.85)}
+#screen .face{position:relative;background:var(--panel);border-radius:1px;
+  padding:16px 22px;overflow:hidden}
 #screen .face::after{content:'';position:absolute;inset:0;background-image:var(--px);
   background-size:3px 3px;pointer-events:none;will-change:transform;transform:translateZ(0)}
 
 /* ─────────────── 타이틀 ─────────────── */
 #screen .title .row{display:flex;align-items:center;gap:30px}
 #screen .logo{flex:1;min-width:0;display:flex;align-items:center;gap:13px;flex-wrap:wrap}
-/* 앰버 픽셀 열차 — 창 두 칸 + 차체. box-shadow 로 찍은 도트라 이미지가 없다 */
-#screen .train{width:30px;height:23px;flex:none;background:var(--led-amber);
-  border-radius:3px 3px 1px 1px;
-  box-shadow:inset 0 0 0 4px var(--panel),inset 0 -8px 0 4px var(--led-amber),
-    inset 8px 0 0 4px var(--panel),inset -8px 0 0 4px var(--panel)}
+/*
+ * 앰버 픽셀 열차.
+ *
+ * 예전엔 `box-shadow` 를 겹쳐 한 덩어리로 찍었는데, 그러면 창·전조등·바퀴가
+ * 서로 먹혀 **주황색 뭉텅이**가 됐다(실측: 무엇인지 안 읽힘). 부품을 따로 두고
+ * 실제 전동차 실루엣을 만든다 — 둥근 앞머리 · 창 두 칸 · 전조등 둘 · 바퀴 둘.
+ */
+#screen .train{position:relative;width:34px;height:22px;flex:none;
+  background:var(--led-amber);border-radius:8px 8px 2px 2px}
+/* 창 두 칸 — 판 색으로 뚫는다 */
+#screen .train i:nth-child(1),#screen .train i:nth-child(2){position:absolute;top:5px;
+  width:10px;height:7px;background:var(--panel);border-radius:1px}
+#screen .train i:nth-child(1){left:4px}
+#screen .train i:nth-child(2){right:4px}
+/* 전조등 — 아래 모서리 둘 */
+#screen .train i:nth-child(3){position:absolute;bottom:3px;left:4px;width:4px;height:3px;
+  background:var(--panel)}
+#screen .train i:nth-child(4){position:absolute;bottom:3px;right:4px;width:4px;height:3px;
+  background:var(--panel)}
+/* 바퀴 — 차체 밖으로 살짝 */
+#screen .train::after{content:'';position:absolute;bottom:-3px;left:6px;right:6px;height:3px;
+  background:var(--led-amber);border-radius:0 0 2px 2px}
 /* 화면에서 가장 먼저 읽혀야 하는 것 — 앞선 판보다 18% 키웠다 */
 #screen .logo .ko{font-family:var(--sans);font-size:clamp(36px,5.2vw,62px);font-weight:800;
   letter-spacing:-.025em;line-height:1;display:inline-flex;gap:.2em}
@@ -115,16 +149,25 @@ body.run-ended #gl{filter:blur(5px) saturate(.90) brightness(.80);
  * 2단 — **목표.** 처음 오는 사람이 이 화면에서 규칙을 얻어 가는 유일한 자리다.
  * 광고 문구가 아니라 규칙이라, 흰 LED 로 크게 적고 보조 줄만 앰버로 낮춘다.
  */
-#screen .goal{margin-top:15px;padding-top:14px;border-top:1px solid #232326}
+#screen .goal{margin-top:15px;padding-top:14px;border-top:1px solid #232326;
+  margin-inline:-22px;padding-inline:22px}
 #screen .goal b{display:block;font-family:var(--sans);font-weight:700;font-size:23px;
   letter-spacing:-.01em;color:var(--led-white)}
 #screen .goal span{display:block;margin-top:5px;font-size:14px;letter-spacing:.04em;
   color:var(--led-amber)}
 
 /* ─────────────── 엔딩 ─────────────── */
+/*
+ * 행 구분선은 **판 끝에서 끝까지** 간다.
+ *
+ * `.face` 의 좌우 패딩(22px) 안에 border 를 두면 선이 글자 폭에서 끊겨,
+ * 실물 안내판의 칸 나눔이 아니라 문단 사이 밑줄처럼 보인다. 음수 마진으로
+ * 패딩을 되돌려 발광면 전체를 가로지르게 한다.
+ */
+#screen .rule{margin-inline:-22px;padding-inline:22px}
 #screen .head{display:flex;justify-content:space-between;align-items:center;font-size:13px;
   letter-spacing:.14em;color:var(--led-dim);border-bottom:1px solid #232326;
-  padding-bottom:10px;margin-bottom:16px}
+  padding-bottom:10px;margin-bottom:16px;margin-inline:-22px;padding-inline:22px}
 #screen .head>span{display:inline-flex;align-items:center;gap:9px;white-space:nowrap}
 /*
  * 제목이 화면에서 가장 강하다. 상태는 그 **옆에 작게** 붙는 유형 표시다.
@@ -144,7 +187,7 @@ body.run-ended #gl{filter:blur(5px) saturate(.90) brightness(.80);
   color:var(--led-amber)}
 /* 상태 + 관련 값 최대 2개. 라벨은 작고 값은 크다 */
 #screen .facts{display:flex;gap:44px;margin-top:20px;padding-top:17px;
-  border-top:1px solid #1d1d20;flex-wrap:wrap}
+  border-top:1px solid #1d1d20;flex-wrap:wrap;margin-inline:-22px;padding-inline:22px}
 #screen .facts dl{margin:0;display:flex;align-items:baseline;gap:11px}
 #screen .facts dl.wide{flex:1 1 100%}
 #screen .facts dt{font-size:13px;letter-spacing:.14em;color:var(--led-dim);
@@ -154,6 +197,7 @@ body.run-ended #gl{filter:blur(5px) saturate(.90) brightness(.80);
 
 /* 속마음 — 마지막에 온다. 짧고 건조하게 */
 #screen .say{margin-top:19px;padding-top:16px;border-top:1px solid #1d1d20;
+  margin-inline:-22px;padding-inline:22px;
   font-family:var(--sans);font-size:21px;color:var(--led-white);opacity:.82}
 
 /* 상태색은 **판정어 하나에만** 붙는다. 테두리도 배경도 물들이지 않는다 */
@@ -174,7 +218,8 @@ body.run-ended #gl{filter:blur(5px) saturate(.90) brightness(.80);
  * 검은 판 위라 대비가 보장되고 새 요소도 안 생긴다.
  */
 #screen .keys{position:relative;display:flex;gap:40px;margin-top:18px;padding-top:15px;
-  border-top:1px solid #1d1d20;font-size:16px;letter-spacing:.08em;color:#9A948A}
+  border-top:1px solid #1d1d20;font-size:16px;letter-spacing:.08em;color:#9A948A;
+  margin-inline:-22px;padding-inline:22px}
 #screen .keys b{font-weight:400;color:var(--led-amber);margin-right:8px}
 /* 시작만 흰 LED — 같은 행에 있어도 무엇이 주 동작인지 갈린다.
    느린 점멸은 실물 전광판이 하는 정도(1.8s)로만 두고 완전히 끄지 않는다 */
