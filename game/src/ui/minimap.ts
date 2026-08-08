@@ -4,15 +4,25 @@
  * P1까지 이건 **잠긴 껍데기**였다(Figma 적용 때 컨테이너와 존 배너만 넣었다).
  * 그 상태는 의도된 것이었다 — P2 아이템의 가치를 미리 광고한다.
  *
- * ★ **적을 안 찍는다.** 역무원·아주머니·좀비폰족의 위치는 표시하지 않는다.
- *   미니맵이 레이더가 되면 고개를 돌려 볼 이유가 사라지고, 이 게임의 관찰이 죽는다.
- *   찍는 것은 **고정된 것**뿐이다: 존 평면 · 목표 · 열차 문 · 대기줄.
+ * ★ **적도 찍는다(디렉터 지시로 뒤집었다).** 예전엔 "관찰이 죽는다"는 이유로 뺐었는데,
+ *   지금은 반대로 요구가 들어왔다 — 물건이 어디 떨어져 있는지, 유닛이 어디 있는지
+ *   전체가 다 보여야 한다. 대신 **가구·장식은 여전히 안 찍는다** — 여긴 판정·시간에
+ *   실제로 걸리는 것만 올린다(방해요소·NPC·드랍), 벤치·화분 같은 장식은 원래도
+ *   여기 들어올 자리가 없었다(이 파일이 아예 안 읽는다).
+ *   방해요소 액터(아주머니·좀비폰족·전단지 배포원·역무원)는 **시간의 순수 함수**라
+ *   판정(`systems/obstacles.ts`·`systems/staff.ts`)과 같은 식을 그대로 가져다 쓴다 —
+ *   좌표를 여기서 새로 만들면 판정과 렌더가 갈라진다(이 프로젝트가 열한 번 데었던 실수).
+ *   그 시드에 **꺼진 방해요소는 안 찍는다**(`s.obstacles`) — 없는 걸 찍으면 오정보다.
  *
  * Canvas 2D 로 그린다. Three 씬에 얹으면 드로우 콜 예산(<210)을 건드리는데,
  * 미니맵은 초당 몇 번만 다시 그려도 되는 물건이라 그 값을 낼 이유가 없다.
  */
 
+import { byId, CP_IDS, FISHCAKE_ID, GRANDPA_ID } from '../data/interactables'
+import { itemDef } from '../data/items'
 import { DOOR_XS, FLOOR, PLATFORM, QUEUE_MARKERS } from '../data/world'
+import { ajummaAt, FLYER_AT, zombieAt } from '../systems/obstacles'
+import { staffAt } from '../systems/staff'
 import type { GameState } from '../state/types'
 
 /** 원형 미니맵 지름(px) — `hud.css` 의 `#mini-r` 과 같은 값 */
@@ -44,6 +54,47 @@ const ZONE_RECTS: readonly (readonly [number, number, number, number, number])[]
   [72, 2, 95.8, 12, FLOOR.B1],
   [PLATFORM.xMin, PLATFORM.yMin, PLATFORM.xMax, 12.3, FLOOR.B2],
 ]
+
+/** 항상 제자리인 NPC — `interactables.ts`가 단일 원천이다(좌표를 여기서 새로 안 만든다) */
+const GRANDPA = byId(GRANDPA_ID)
+const FISHCAKE = byId(FISHCAKE_ID)
+const CP_SPOTS = CP_IDS.map((id) => byId(id)).filter((it): it is NonNullable<typeof it> => it !== null)
+
+export type Unit = Readonly<{ x: number; y: number; z: number; danger: boolean }>
+
+/**
+ * 이번 프레임의 유닛 목록. `export` 하는 이유는 헤드리스 테스트뿐이다 — 캔버스 픽셀은
+ * 못 재도 "이 시드에 좀비폰족이 켜져 있으면 목록에 잡히는가"는 순수 함수로 잴 수 있다.
+ *
+ * 방해요소 액터는 **이번 시드에 켜져 있을 때만** 찍는다(`s.obstacles`) — 8종만 켜지는
+ * 게임이라 꺼진 방해요소를 찍으면 "왜 안 보이지"가 아니라 "왜 여기 없지"가 된다.
+ * 할아버지는 추격 중이면 벤치 좌표 대신 `chase.pos`를 쓴다 — 같은 사람 두 점을
+ * 동시에 찍으면 헷갈린다.
+ */
+export const unitsOf = (s: GameState): readonly Unit[] => {
+  const units: Unit[] = []
+  if (s.chase.active) {
+    units.push({ x: s.chase.pos.x, y: s.chase.pos.y, z: FLOOR.B1, danger: true })
+  } else if (GRANDPA) {
+    units.push({ x: GRANDPA.x, y: GRANDPA.y, z: GRANDPA.z, danger: false })
+  }
+  if (FISHCAKE) units.push({ x: FISHCAKE.x, y: FISHCAKE.y, z: FISHCAKE.z, danger: false })
+  for (const cp of CP_SPOTS) units.push({ x: cp.x, y: cp.y, z: cp.z, danger: false })
+  if (s.obstacles.includes('OBS-07')) {
+    const p = ajummaAt(s.elapsedMs)
+    units.push({ x: p.x, y: p.y, z: FLOOR.B1, danger: true })
+  }
+  if (s.obstacles.includes('OBS-08')) {
+    const p = zombieAt(s.elapsedMs)
+    units.push({ x: p.x, y: p.y, z: FLOOR.B1, danger: true })
+  }
+  if (s.obstacles.includes('OBS-06')) units.push({ x: FLYER_AT.x, y: FLYER_AT.y, z: FLOOR.L0, danger: true })
+  if (s.obstacles.includes('OBS-13')) {
+    const p = staffAt(s.elapsedMs)
+    units.push({ x: p.x, y: p.y, z: FLOOR.B1, danger: true })
+  }
+  return units
+}
 
 /** 존 배너(`#mini-z`)는 HUD 가 이미 갱신한다 — 여기서 또 쓰면 두 곳이 다투게 된다 */
 export const createMinimap = (mount: HTMLElement): Minimap => {
@@ -99,6 +150,40 @@ export const createMinimap = (mount: HTMLElement): Minimap => {
       ctx.fillText(String(s.queues[i] ?? ''), p.x + 5, p.y + 3)
       ctx.fillStyle = 'rgba(127,224,160,.9)'
     })
+
+    /**
+     * 바닥 드랍 — 슬롯 교체로 떨어뜨린 물건(`s.drops`). 아이콘 대신 HUD와 같은
+     * 1글자 글리프(`itemDef().glyph`)를 쓴다 — 이 게임엔 아이콘 에셋이 없다.
+     */
+    for (const d of s.drops) {
+      if (Math.abs(d.z - s.player.pos.z) >= 3.0) continue
+      const p = project({ x: d.x, y: d.y }, c, mPerPx)
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, 5, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(20,22,28,.75)'
+      ctx.fill()
+      ctx.font = '8px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(itemDef(d.item).glyph, p.x, p.y + 0.5)
+    }
+    ctx.textAlign = 'start'
+    ctx.textBaseline = 'alphabetic'
+
+    // 유닛 — 위험(방해요소·추격 중 할아버지)은 빨강, 그 외(NPC·승객)는 중립 톤
+    for (const u of unitsOf(s)) {
+      if (Math.abs(u.z - s.player.pos.z) >= 3.0) continue
+      const p = project({ x: u.x, y: u.y }, c, mPerPx)
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, u.danger ? 4 : 3.4, 0, Math.PI * 2)
+      ctx.fillStyle = u.danger ? 'rgba(229,72,77,.92)' : 'rgba(220,225,235,.85)'
+      ctx.fill()
+      if (u.danger) {
+        ctx.strokeStyle = 'rgba(229,72,77,.45)'
+        ctx.lineWidth = 1
+        ctx.stroke()
+      }
+    }
 
     ctx.restore()
 
