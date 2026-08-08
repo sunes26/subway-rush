@@ -101,7 +101,8 @@ describe('편의점 매대', () => {
 describe('대화창 라우팅', () => {
   it('대화 상대에 따라 분기가 갈린다', () => {
     const s = start(1)
-    expect(branchesFor(s, GIFT_STALL_ID).length).toBe(5)
+    // 5지(선물) + 마스크(6번 칸, 별개 구매) — 디렉터 지시로 매대 상품 목록에 편입
+    expect(branchesFor(s, GIFT_STALL_ID).length).toBe(6)
     expect(branchesFor(s, GRANDPA_ID).length).toBe(3)
   })
 
@@ -289,6 +290,69 @@ describe('ACT-12 편의점 점원', () => {
   /** 매대(x=26.0) 정면이어야 말을 거는 그림이 된다 — x 로 1.5m 안 */
   it('매대 정면에 선다', () => {
     expect(Math.abs(CLERK_POS.x - 26.0)).toBeLessThan(1.5)
+  })
+})
+
+describe('마스크 — 선물 퍼즐과 무관한 별개 구매', () => {
+  /**
+   * 물리 진열대(`OBJ-19-MASK`)는 없앴다(디렉터 지시) — 편의점 상점
+   * (`GIFT_STALL_ID`) 대화의 6번 칸이 마스크의 유일한 구매처다.
+   */
+  const stall = INTERACTABLES.find((i) => i.id === GIFT_STALL_ID)!
+  const openStall = (patch: Partial<GameState> = {}): GameState => {
+    const s0 = put(start(7, { cardBalance: 1500, ...patch }), stall.x, stall.y - 1.1, stall.z)
+    return tap(s0, { pressInteract: true }, yawTo(s0, stall.x, stall.y))
+  }
+  const buyMask = (patch: Partial<GameState> = {}): GameState => {
+    const opened = openStall(patch)
+    return tap(opened, { pressSlot: 6 }, yawTo(opened, stall.x, stall.y))
+  }
+
+  it('물리 진열대는 더 이상 없다', () => {
+    expect(INTERACTABLES.some((i) => i.id === 'OBJ-19-MASK')).toBe(false)
+  })
+
+  it('편의점 상점 6번 칸에서 살 수 있다', () => {
+    const s = buyMask()
+    expect(s.inventory).toContain('I-06')
+    expect(s.flags).toContain('MASK_ON')
+    expect(s.cardBalance).toBe(0)
+  })
+
+  it('선물(GIFT_BOUGHT)을 이미 골랐어도 마스크는 따로 살 수 있다', () => {
+    const s = buyMask({ flags: ['GIFT_BOUGHT'] })
+    expect(s.inventory).toContain('I-06')
+    expect(s.flags).toContain('MASK_ON')
+  })
+
+  it('마스크를 사도 GIFT_BOUGHT 는 안 켜진다 — 선물 5지는 그대로 열려 있다', () => {
+    const s = buyMask()
+    expect(s.flags).not.toContain('GIFT_BOUGHT')
+    expect(giftBranches(s).every((x) => x.enabled)).toBe(true)
+  })
+
+  it('잔액이 모자라면 못 산다', () => {
+    const s = buyMask({ cardBalance: 0 })
+    expect(s.inventory).not.toContain('I-06')
+  })
+
+  it('6번 칸의 note 가 상태를 반영한다', () => {
+    const before = branchesFor(start(7, { cardBalance: 1500 }), GIFT_STALL_ID).find((b) => b.key === 6)!
+    expect(before.enabled).toBe(true)
+    expect(before.note).toBe('')
+
+    const after = branchesFor(buyMask(), GIFT_STALL_ID).find((b) => b.key === 6)!
+    expect(after.enabled).toBe(false)
+    expect(after.note).toBe('이미 샀다')
+  })
+
+  it('한 번 사면 다시 눌러도 재차감되지 않는다', () => {
+    const owned = buyMask()
+    const opened = openStall({ ...owned, cardBalance: 1500 })
+    const balanceBefore = opened.cardBalance
+    const s = tap(opened, { pressSlot: 6 }, yawTo(opened, stall.x, stall.y))
+    expect(s.cardBalance).toBe(balanceBefore)
+    expect(s.inventory.filter((i) => i === 'I-06').length).toBe(1)
   })
 })
 

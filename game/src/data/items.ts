@@ -334,6 +334,12 @@ export const SHOP_PRICE: Readonly<Partial<Record<ItemId, number>>> = {
   'I-18': 200,
 }
 
+/**
+ * 마스크 실가격(원) — 편의점 상점 6번 칸의 **유일한 구매처**다(디렉터 지시로
+ * 물리 진열대를 없앴다). `SHOP_PRICE`와 달리 꾸밈이 아니라 `BALANCE`를 실제로 깎는다.
+ */
+export const MASK_PRICE = 1500
+
 /** 착용형 — HUD가 켜짐/꺼짐을 표시한다 */
 export const WEARABLES: readonly ItemDef[] = DEFS.filter((d) => d.use === 'wear')
 
