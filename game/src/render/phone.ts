@@ -94,16 +94,38 @@ const drawScreen = (): HTMLCanvasElement => {
   /**
    * 숫자와 단위를 갈라 **「3」과 「분」의 크기를 다르게** 준다. 같은 크기로 쓰면
    * 세 글자가 뭉쳐 한 덩어리로 보이고, 작아지면 그 덩어리가 먼저 뭉갠다.
+   *
+   * ■ ★ 크기는 **화면 픽셀로 환산해서** 정한다 — 캔버스 px 는 아무 뜻이 없다
+   *
+   * 한동안 `3` 168 · `분` 96 · `후` 74 였다. 캔버스에서는 커 보이지만 실제로
+   * 화면에 몇 px 로 맺히는지 재 보면 다른 이야기가 나온다:
+   *
+   *   폰 화면 0.168m · 카메라 0.71m · FOV 74°
+   *   → 프레임 높이 2·0.71·tan37° = 1.07m → 폰은 세로 **113px**(720 중)
+   *   → 캔버스 1px = 113/900 = **0.126 화면px**
+   *   → `3` 15px · `분` 12px · `후` **9px**
+   *
+   * 한글 9~12px 를 14° 기울여 1.4초 안에 읽으라는 뜻이었다. 폰 크기도 거리도
+   * 각도(14°)도 정상이었고 **글자만 작았다.**
+   *
+   * 그래서 둘을 같이 고친다 — 여기서 자체를 키우고(아래), 샷 ② 가 0.72m 에서
+   * 0.44m 로 밀고 들어간다(`intro.ts`). 합쳐서 대략 2배가 된다:
+   *
+   *   `3` 30px · `분` 24px · `후` 21px  ← 이 정도면 한 번에 읽힌다
+   *
+   * ⚠ 「3」만 키우면 안 된다. 숫자만 읽히고 단위가 안 읽히면 "3"이 무엇의 3인지
+   *   모른다 — 읽어야 하는 것은 숫자가 아니라 **「3분 후」라는 한 덩어리**다.
+   *   그래서 `3` 은 오히려 조금 줄이고 `분`·`후` 를 올려 셋의 격차를 좁혔다.
    */
   g.fillStyle = '#FF8A1E'
-  g.font = `800 168px ${sans}`
+  g.font = `800 150px ${sans}`
   g.fillText('3', 22, 372)
   const w3 = g.measureText('3').width
-  g.font = `800 96px ${sans}`
-  g.fillText('분', 22 + w3 + 6, 372)
+  g.font = `800 118px ${sans}`
+  g.fillText('분', 22 + w3 + 8, 372)
   const wm = g.measureText('분').width
-  g.font = `700 74px ${sans}`
-  g.fillText('후', 22 + w3 + wm + 20, 372)
+  g.font = `800 104px ${sans}`
+  g.fillText('후', 22 + w3 + wm + 22, 372)
 
   // ── 다음 열차 — 보조. 여기가 크면 위가 안 읽힌다
   rule(424)
@@ -112,7 +134,7 @@ const drawScreen = (): HTMLCanvasElement => {
   g.fillText('다음 열차', 26, 472)
   g.fillStyle = '#b8b6b0'
   g.font = `600 40px ${sans}`
-  g.fillText('7분 30초 후', 26, 524)
+  g.fillText('20분 26초 후', 26, 524)
 
   /**
    * 출근 시각 — 08:47 과 나란히 놓이면 "놓치면 지각"이 저절로 만들어진다.
@@ -138,8 +160,10 @@ export type Phone = Readonly<{
    *
    * @param eye   카메라의 월드 위치(three 좌표)
    * @param face  주인공 얼굴의 월드 위치(three 좌표)
+   * @param up    **카메라의 up 벡터**(three 좌표). 폰의 세로축이 이것에 맞춰진다 —
+   *              화면의 글자가 프레임에서 똑바로 서게 하는 기준이다. 아래 참고.
    */
-  aim(eye: Vector3, face: Vector3): void
+  aim(eye: Vector3, face: Vector3, up: Vector3): void
   setVisible(on: boolean): void
   dispose(): void
 }>
@@ -269,12 +293,30 @@ export const buildPhone = (): Phone => {
      * 65% 는 "옆자리 시선을 피해 폰을 살짝 안쪽으로 트는" 실제 각과 겹친다.
      * 브리프가 허용한 cinematic cheat 는 이 한 번으로 끝난다.
      */
-    aim(eye, face) {
+    /**
+     * ★ **세로축은 카메라의 up 에 맞춘다 — 월드 up 이 아니다.**
+     *
+     * 한동안 `UP = (0,1,0)`(월드 위)로 `lookAt` 했다. 카메라가 인물 옆에서 볼
+     * 때는 멀쩡했는데, OTS 를 폰 쪽으로 밀어 넣자 **글자가 옆으로 누웠다.**
+     * 실측하면 화면 세로축의 프레임 기울기가 컷 동안 **29° → 64°** 로 벌어졌다.
+     *
+     * 원인은 `lookAt` 의 성질이다. 시선이 기준 up 과 나란해질수록 롤이 불안정해지고,
+     * 카메라가 붙으면서 내려다보는 각이 55° → 65° 로 서자 그 구간에 들어갔다.
+     * 각도를 손으로 맞춰 덮을 수 있는 종류가 아니다 — 기준을 바꿔야 사라진다.
+     *
+     * 카메라의 up 을 기준으로 삼으면 폰의 세로축이 **화면의 세로**에 맞춰지므로
+     * 롤은 구조적으로 작게 유지된다. 카메라를 어디로 옮겨도 다시 안 생긴다.
+     *
+     * ⚠ 이것이 "폰을 화면에 붙여 놓는" 것은 아니다. 위치는 여전히 손 본에서 오고,
+     *   법선도 여전히 얼굴 쪽으로 35% 틀어져 있다(아래). 정하는 것은 **비틀림 하나**다.
+     *   실제로 사람은 글자가 똑바로 보이도록 폰을 돌려 쥔다 — 그 동작에 해당한다.
+     */
+    aim(eye, face, up) {
       root.getWorldPosition(here)
       target.copy(face).lerp(eye, 0.65)
       // `Matrix4.lookAt(eye, target, up)` 은 **+Z 가 target → eye** 를 향하게 만든다.
       // 즉 −Z 가 here → target 이다. 화면이 −Z 이므로 이대로 맞는다.
-      m.lookAt(here, target, UP)
+      m.lookAt(here, target, up.lengthSq() > 1e-6 ? up : UP)
       want.setFromRotationMatrix(m)
       root.parent?.getWorldQuaternion(inv)
       root.quaternion.copy(inv.invert()).multiply(want)

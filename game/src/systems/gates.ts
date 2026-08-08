@@ -146,7 +146,7 @@ export const ledText = (s: GameState): string => {
   const working = hintedWorkingId(s)
   const led = s.gates.ledHint && s.gates.ledBrokenId !== null ? s.gates.ledBrokenId : null
   if (led === null && working === null) {
-    return '신도림 방면 열차가 곧 도착합니다 · 안전선 뒤로 물러나 주십시오'
+    return '신촌 방면 열차가 곧 도착합니다 · 안전선 뒤로 물러나 주십시오'
   }
   const brokenPart = led !== null ? `${led}번 게이트 점검중 · ` : ''
   const tail = working !== null ? `${working}번 게이트를 이용해 주십시오` : '다른 게이트를 이용해 주십시오'

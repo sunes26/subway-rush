@@ -617,9 +617,22 @@ const frame = (now: number): void => {
          */
         if (a.phone > 0.02 && phone) {
           const p2 = poseAt(t)
+          /**
+           * 카메라의 up 을 **계산으로** 낸다 — 이 시점의 `stage.camera` 행렬은
+           * 아직 **지난 프레임** 것이다(카메라는 아래에서 세운다). 그걸 읽으면
+           * 폰이 한 프레임 늦게 따라와 밀 때 미세하게 떤다.
+           *
+           * 인트로 카메라는 롤이 0 이다(`rotation.set(pitch, yaw − π/2, 0)`).
+           * 그러면 up 은 pitch·yaw 만으로 닫힌 형태로 나온다. 월드(x 동 · y 북 ·
+           * z 상)에서 up = (−sin p·cos y, −sin p·sin y, cos p) 이고, three 좌표는
+           * (x, z, −y) 이므로 아래처럼 옮겨 담는다.
+           */
+          const cp = Math.cos(p2.pitch), sp = Math.sin(p2.pitch)
+          const cy = Math.cos(p2.yaw), sy = Math.sin(p2.yaw)
           phone.aim(
             new Vector3(p2.x, p2.eye, -p2.y),
             new Vector3(a.x, a.z + 1.12, -a.y),
+            new Vector3(-sp * cy, cp, sp * sy),
           )
         }
       }

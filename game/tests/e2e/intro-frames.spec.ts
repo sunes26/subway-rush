@@ -6,6 +6,7 @@
  * 기록한다. 판정은 사람이 아니라 아래 단정들이 한다.
  */
 import { expect, test, type Page } from '@playwright/test'
+import { SHOT } from '../../src/render/intro'
 
 const boot = async (page: Page): Promise<void> => {
   await page.goto('/?seed=7')
@@ -26,8 +27,12 @@ test('B→C→D 프레임 검사 — 흰 플래시·순간이동·버스 소실'
   await boot(page)
 
   const rows: Row[] = []
-  // 휴대폰 끝(2.6s) → 하차 → 질주 시작(4.6s). 30fps 기준 33ms 간격
-  for (let t = 2600; t <= 4600; t += 33) {
+  /**
+   * ⚠ 구간을 **`SHOT` 에서 파생시킨다.** 2600~4600 으로 박아 뒀다가 ② 를 늘리자
+   *   검사 창이 옛 경계에 남아 엉뚱한 구간을 훑었다. 컷 스킵 목록도 마찬가지다.
+   */
+  // ② 후반 → 하차 → 질주 시작. 30fps 기준 33ms 간격
+  for (let t = SHOT.phone - 900; t <= SHOT.door + 500; t += 33) {
     await page.evaluate((ms) => window.__game!.seekIntro(ms), t)
     await page.waitForTimeout(120)
     /**
@@ -48,7 +53,7 @@ test('B→C→D 프레임 검사 — 흰 플래시·순간이동·버스 소실'
   const fmt = (r: Row): string =>
     `${r.t}ms L${r.lum.toFixed(0)} cam(${r.cam[0].toFixed(1)},${r.cam[2].toFixed(1)}) ` +
     `actor(${r.actor[0].toFixed(1)},${r.actor[1].toFixed(1)}) vis=${r.vis} bus=${r.busOn}`
-  console.log(rows.filter((r) => r.t >= 3690 && r.t <= 4000).map(fmt).join('\n'))
+  console.log(rows.filter((r) => r.t >= 4200 && r.t <= 4700).map(fmt).join('\n'))
 
   /**
    * ① **한 프레임짜리 밝기 스파이크**가 없다 — 그것이 "화면이 번쩍했다"의 정체다.
@@ -61,12 +66,33 @@ test('B→C→D 프레임 검사 — 흰 플래시·순간이동·버스 소실'
    *   플래시는 **양쪽 이웃보다 혼자 밝은** 프레임이다. 램프는 항상 두 이웃 사이에
    *   놓이므로 이 식이 0 이하가 된다.
    *
-   * 컷(2.8s·4.1s)은 장면이 통째로 바뀌므로 건너뛴다.
+   * 컷(② 끝 · ③ 끝)은 장면이 통째로 바뀌므로 건너뛴다.
+   *
+   * ■ ★ 하나 더 건너뛴다 — **주인공이 외피 뒤에서 나오는 순간**
+   *
+   *   외피 버스에는 문 구멍이 없다(`render/intro.ts` 의 `down` 주석). 그래서
+   *   주인공은 `merged:BUS_GLASS` 뒤에 완전히 가려져 있다가 북면(y 21.58)을
+   *   넘는 순간 **한꺼번에 드러난다.** 실측:
+   *
+   *     4382ms L104 (y 22.0)  ← 아직 가려짐
+   *     4415ms L137 (y 22.1)  ← 드러남
+   *     4448ms L154 (y 22.3)
+   *     4481ms L138 → 4547ms L110 …
+   *
+   *   0.1m 움직이는 동안 밝기가 +33 뛴다. 이동 때문이 아니라 **가림막이 걷혀서**다.
+   *   컷과 같은 부류의 '동기가 있는 변화'이므로 컷처럼 명시적으로 뺀다 —
+   *   임계값을 올려서 덮지 않는다. 그러면 진짜 플래시까지 같이 통과한다.
+   *
+   *   ⚠ 이 예외는 **외피에 문 구멍이 없다는 사실에 딸린 것**이다. 언젠가 문이
+   *     뚫리면(GLB 교체) 이 구간은 저절로 매끄러워지므로 예외를 지워야 한다.
    */
-  const CUTS = [2800, 4100]
+  const CUTS = [SHOT.phone, SHOT.door]
+  /** 북면(21.58)을 넘는 앞뒤 — 이 사이에서만 가림막이 걷힌다 */
+  const emerging = (r: Row): boolean => r.actor[1] > 21.4 && r.actor[1] < 22.45
   for (let i = 1; i < rows.length - 1; i++) {
     const a = rows[i - 1]!, b = rows[i]!, c = rows[i + 1]!
     if (CUTS.some((x) => b.t > x - 90 && b.t < x + 90)) continue
+    if (emerging(a) || emerging(b) || emerging(c)) continue
     const spike = b.lum - Math.max(a.lum, c.lum)
     expect(spike, `${b.t}ms 한 프레임 플래시\n${fmt(a)}\n${fmt(b)}\n${fmt(c)}`).toBeLessThan(10)
   }
@@ -85,11 +111,17 @@ test('B→C→D 프레임 검사 — 흰 플래시·순간이동·버스 소실'
 
   // ④ 버스는 정차 이후 계속 켜져 있다 — 하차부터 게임까지 같은 개체다
   for (const r of rows) {
-    if (r.t < 2900) continue
+    if (r.t < SHOT.phone + 100) continue
     expect(r.busOn, `${r.t}ms 버스 외피가 꺼졌다`).toBe(4)
   }
 
-  // ⑤ 하차 순서 — 문이 열린 뒤에 주인공이 밖(y>22)으로 나온다
-  expect(at(2900).actor[1], '2.9s 에는 아직 버스 안').toBeLessThan(21.7)
-  expect(at(4090).actor[1], '4.1s 에는 인도 위').toBeGreaterThan(22.2)
+  /**
+   * ⑤ 하차 **순서** — 문이 열린 뒤에 주인공이 밖(y>22)으로 나온다.
+   *
+   * ⚠ 시각을 `SHOT` 에서 뽑는다. 2900·4090 으로 박아 뒀다가 ② 가 700ms 길어지자
+   *   4090 이 "인도 위"가 아니라 아직 버스 안(y 21.05)인 시각이 됐다. 검사가
+   *   의도한 것은 **특정 밀리초**가 아니라 "③ 이 끝날 무렵엔 나와 있다"는 순서다.
+   */
+  expect(at(SHOT.phone).actor[1], '② 끝(컷)에는 아직 버스 안').toBeLessThan(21.7)
+  expect(at(SHOT.door - 100).actor[1], '③ 끝에는 인도 위').toBeGreaterThan(22.2)
 })

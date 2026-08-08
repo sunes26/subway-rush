@@ -35,7 +35,7 @@ export type Screens = Readonly<{
  * 두 안내판이 서로 다른 말을 하게 된다. 시뮬에 없는 값이라 표시 상수로만 둔다
  * (열차 스케줄은 `systems/train.ts` 가 이번 편성 하나만 다룬다).
  */
-const NEXT_TRAIN = '4분 30초'
+const NEXT_TRAIN = '20분 26초'
 
 /**
  * 최종 상태 셋. **`실패` 라는 한글 라벨은 쓰지 않는다.**
@@ -180,7 +180,7 @@ export const createScreens = (mount: HTMLElement): Screens => {
    * 타이틀 — 매달린 안내판 한 장. **가로 3단 사인 구조**다.
    *
    *   1단  로고 | 행선 정보
-   *   2단  목표 — "180초 안에 지하철에 타세요."
+   *   2단  목표 — "180초 안에 신촌 방면 지하철에 탑승하세요."
    *   3단  입력 — ENTER 게임 시작 | ESC 설정
    *
    * 2단이 이번에 새로 들어갔다. 처음 오는 사람은 앞선 판을 보고 **무엇을 해야
@@ -211,13 +211,13 @@ export const createScreens = (mount: HTMLElement): Screens => {
             <small>SUBWAY RUSH</small>
           </div>
           <div class="arrive">
-            <div class="dir"><span class="line2">2</span>신도림 방면</div>
+            <div class="dir"><span class="line2">2</span>신촌 방면</div>
             <dl><dt>이번 열차</dt><dd class="soon">잠시 후 도착</dd></dl>
             <dl><dt>다음 열차</dt><dd>${NEXT_TRAIN}</dd></dl>
           </div>
         </div>
         <div class="goal s2">
-          <b>180초 안에 지하철에 타세요.</b>
+          <b>180초 안에 신촌 방면 지하철에 탑승하세요.</b>
           <span>서두르되, 아무거나 고르진 마세요.</span>
         </div>
         <div class="keys s3">
@@ -251,7 +251,7 @@ export const createScreens = (mount: HTMLElement): Screens => {
         <div class="brackets"><i></i><i></i></div>
         <div class="face">
           <div class="head s1">
-            <span><span class="line2">2</span>2호선 신도림 방면</span>
+            <span><span class="line2">2</span>2호선 신촌 방면</span>
             <span class="eid">${e.id}</span>
           </div>
           <div class="title-row s2">
