@@ -199,7 +199,8 @@ describe('S18-1 신규 8종이 각각 도달 가능하다', () => {
       at({ boarded: false, flags: ['TOILET_USED'] }),
       at({ boarded: true, timeLeftMs: 40_000, flags: ['OPPOSITE_SIDE'] }),
       at({ boarded: true, timeLeftMs: 48_000, boardedDoorX: QUEUE_MARKERS[0].x }),
-      at({ boarded: true, timeLeftMs: 900 }),
+      // E-04 — 전체 잔여가 아니라 **탑승 순간 문이 닫히기까지 남은 시간**으로 잰다
+      at({ boarded: true, boardedCloseInMs: 500 }),
       at({ boarded: true, timeLeftMs: 35_000 }),
       at({ boarded: true, timeLeftMs: 12_000 }),
       // E-07 — 미탑승 + 양심 < 0

@@ -406,6 +406,17 @@ export type GameState = Readonly<{
    * 밀어 준다 — 늦게 탄 경우(이미 172초를 넘겼으면)에는 아무것도 안 바뀐다.
    */
   boardedAtMs: number | null
+  /**
+   * 탑승한 순간, **문이 닫히기 시작하기까지 남아 있던 ms**. 음수면 이미 닫히는 중이었다.
+   *
+   * JUST IN TIME 판정의 단일 근거다(E-04 · `TRAIN.justInTimeMs`). `boardedDoorX`·
+   * `boardedAtMs` 와 같은 성격 — **탑승 순간의 사실**이라 그때 적어 두지 않으면
+   * 나중에 되살릴 수 없다. 엔딩은 열차가 떠난 뒤(`departed`)에 판정되는데, 그 시점의
+   * 열차 시계는 이미 닫힘을 지나 있어 "얼마나 아슬아슬했는가"를 아무도 모른다.
+   *
+   * 값을 내는 곳은 `systems/train.ts` 뿐이다 — 열차 시계를 아는 유일한 자리다.
+   */
+  boardedCloseInMs: number | null
   /** 탄 게 `train2`(반대 방면)인가 — 출발 판정이 어느 열차를 볼지 이걸로 가른다 */
   boardedTrain2: boolean
   endingId: EndingId | null
@@ -463,8 +474,11 @@ export type Action =
   | { t: 'GATE_SET'; state: GateState; timerMs: number }
   | { t: 'GATE_PASSED' }
   | { t: 'TIME_PENALTY'; ms: number; label: string }
-  /** `opp` 면 반대 방면 열차 — `boardedTrain2` 로 기록해서 종료 판정이 어느 열차를 볼지 안다 */
-  | { t: 'BOARD'; doorX: number; opp?: boolean }
+  /**
+   * `opp` 면 반대 방면 열차 — `boardedTrain2` 로 기록해서 종료 판정이 어느 열차를 볼지 안다.
+   * `closeInMs` 는 이 순간 문이 닫히기까지 남은 시간 — `boardedCloseInMs` 로 그대로 남는다.
+   */
+  | { t: 'BOARD'; doorX: number; closeInMs: number; opp?: boolean }
   /** 계단/엘리베이터 위치 트리거 — 한 번만 유효(멱등) */
   | { t: 'TRAIN_TRIGGER' }
   | { t: 'TRAIN_TRIGGER2' }

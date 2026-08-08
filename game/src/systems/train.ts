@@ -210,6 +210,16 @@ export const nearestDoorX = (px: number): number => {
  *
  * `boardedDoorX` 는 어느 문으로 탔는지의 기록일 뿐이라 가장 가까운 문으로 남긴다.
  */
+/**
+ * 지금 타면 문이 닫히기 시작할 때까지 몇 ms 남는가. 음수면 이미 닫히는 중이다.
+ *
+ * **`s.boarded` 가 아직 거짓일 때만 부른다.** 탄 뒤에는 `withBoarding` 이 시계를
+ * 닫힘 쪽으로 밀어 버려서(`TRAIN.boardDwellMs`) 이 값이 항상 1초 근처로 뭉개진다 —
+ * 재야 하는 것은 **밀리기 전의 자연 시계**, 즉 "원래 스케줄에서 얼마나 늦게 왔는가"다.
+ * `trainSystem` 은 `s.boarded` 를 확인한 뒤에만 여기 도달하므로 그 조건이 지켜진다.
+ */
+const closeInMsOf = (clock: number): number => TRAIN.closeStartMs - clock
+
 export const trainSystem = (s: GameState): Action[] => {
   if (s.phase !== 'playing' || s.boarded) return []
   if (!doorsPassable(s.train)) return []
@@ -218,7 +228,7 @@ export const trainSystem = (s: GameState): Action[] => {
   if (p.z > FLOOR.B2 + 1) return []
   if (p.y < TRAIN.cabinBoardY || p.y > CABIN_Y1) return []
 
-  return [{ t: 'BOARD', doorX: nearestDoorX(p.x) }]
+  return [{ t: 'BOARD', doorX: nearestDoorX(p.x), closeInMs: closeInMsOf(trainClock(s)) }]
 }
 
 /** 반대 방면 안전문 — PSD_Y_OPP 만 다르다 */
@@ -248,7 +258,7 @@ export const trainSystem2 = (s: GameState): Action[] => {
   if (p.y < TRAIN.cabinBoardY + Y_OFFSET_OPP || p.y > CABIN_Y1 + Y_OFFSET_OPP) return []
 
   return [
-    { t: 'BOARD', doorX: nearestDoorX(p.x), opp: true },
+    { t: 'BOARD', doorX: nearestDoorX(p.x), closeInMs: closeInMsOf(trainClock2(s)), opp: true },
     { t: 'FLAG', id: 'OPPOSITE_SIDE', on: true },
   ]
 }

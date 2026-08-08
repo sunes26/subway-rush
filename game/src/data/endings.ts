@@ -6,6 +6,7 @@
  * 4축 채점이 막 들어온 단계에서 복합식을 섞으면 어느 축이 엔딩을 결정했는지 못 읽는다.
  */
 
+import { TRAIN } from './tuning'
 import { QUEUE_MARKERS } from './world'
 import type { EndingId, GameState } from '../state/types'
 
@@ -186,12 +187,30 @@ export const ENDINGS: readonly EndingDef[] = [
     reason: (s) => `잔여 ${Math.round(s.timeLeftMs / 1000)}s · 3-1 승차위치`,
   },
   {
+    /**
+     * ⏱ JUST IN TIME — **닫히는 문에 몸을 밀어 넣었는가.**
+     *
+     * 조건이 `timeLeftMs <= 1000` 이었다. 그건 "3분 예산을 다 썼는가"이지
+     * "아슬아슬하게 탔는가"가 아니다. 둘은 같은 값이 아니다:
+     *
+     *  · 게이트 페널티(`TIME_PENALTY`)로 `timeLeftMs` 만 따로 깎인다 — 문은 그대로인데
+     *    화면상으로는 다 쓴 판이 된다
+     *  · 위치 트리거를 밟으면 열차가 70초에도 온다(`trainClock`). 여유롭게 걸어 들어가도
+     *    `timeLeftMs` 는 110초나 남아 있고, 반대로 트리거를 안 밟으면 172초까지 문이
+     *    아예 안 열린다 — 어느 쪽도 "아슬아슬"과 무관하다
+     *
+     * 그래서 **탑승 순간 문이 닫히기까지 남아 있던 시간**(`boardedCloseInMs`)으로 잰다.
+     * 그 값은 `systems/train.ts` 가 탄 프레임에 적어 둔다 — 엔딩이 판정되는 시점
+     * (열차가 떠난 뒤)에는 이미 되살릴 수 없는 사실이기 때문이다.
+     *
+     * `<= 0` 은 닫히기 시작한 뒤 0.775초 안에 밀고 들어간 경우다. 같은 부등식이 덮는다.
+     */
     id: 'E-04',
     priority: 40,
     title: '문틈 낑김',
     line: '가방이… 가방이 안 빠진다.',
     tone: 'success',
-    when: (s) => s.boarded && s.timeLeftMs <= 1000,
+    when: (s) => s.boardedCloseInMs !== null && s.boardedCloseInMs <= TRAIN.justInTimeMs,
   },
   {
     id: 'E-02',
