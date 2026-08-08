@@ -71,6 +71,7 @@ ORDER = [
     "hq_entrance.py",            # ← 지상 출입구 계단통 내부 마감
     "hq_street.py",              # ← 지상 가로 — 도로 양쪽 건물군 · 횡단보도 신호등
     "hq_fixups.py",              # ← 플레이 중 눈으로 잡힌 결함 (개구부 뒤에 와야 한다)
+    "hq_train.py",               # ← 차문/안전문 두 짝 분리 + 객실 실내
     "hq_fill_lights.py",
     "import_props.py",
     "hq_merge_materials.py",     # ← 반드시 소품 반입 뒤

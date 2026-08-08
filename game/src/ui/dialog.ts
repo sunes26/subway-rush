@@ -11,12 +11,12 @@
 
 import { byId, FISHCAKE_GREETING, FISHCAKE_ID, FISHCAKE_REACTION, GIFT_STALL_ID, GRANDPA_ID }
   from '../data/interactables'
-import { GIFT_CORRECT, GIFT_ITEMS, itemDef, SHOP_PRICE } from '../data/items'
+import { GIFT_CORRECT, GIFT_ITEMS, itemDef, MASK_PRICE, SHOP_PRICE } from '../data/items'
 import { QTE } from '../data/tuning'
 import { AMBUSH_DIALOGUE_MS, ambushCollapseT, ambushLineAt } from '../systems/ambush'
 import { knockdownT } from '../systems/knockdown'
 import { branchesFor, hasItem } from '../systems/interact'
-import type { GameState } from '../state/types'
+import type { GameState, ItemId } from '../state/types'
 // 스타일은 `css/dialog.css` 가 단일 원천이다 — UI 킷(/uikit.html)이 같은 파일을 읽는다.
 // `?inline` 은 파일 내용을 문자열로 준다: 주입 방식(<style> 삽입)은 예전과 같다.
 import CSS from './css/dialog.css?inline'
@@ -30,6 +30,16 @@ const GP_PORTRAIT = `${import.meta.env.BASE_URL}portraits/grandpa.png`
 const FM_PORTRAIT = `${import.meta.env.BASE_URL}portraits/fishcake-man.png`
 /** 개찰구 매복 역무원 초상화 */
 const AO_PORTRAIT = `${import.meta.env.BASE_URL}portraits/ambush-officer.png`
+
+/**
+ * 편의점 상점 카드 순서 — 선물 5지 + 마스크(디렉터 지시, 매대 상품 목록에 편입).
+ *
+ * 마스크는 `GIFT_ITEMS`에 안 넣는다 — 넣으면 6지 선택이 되어 정답 확률이 갈리고,
+ * `giftBranches`의 "note 전부 비운다"(정답 힌트 방지) 불변식도 마스크까지 덮어써야 한다.
+ * 대신 카드 렌더링에서만 두 목록을 이어 붙인다. 마스크는 인덱스 5(6번째 칸) 고정이다.
+ */
+const MASK_ITEM: ItemId = 'I-06'
+const SHOP_ITEMS: readonly ItemId[] = [...GIFT_ITEMS, MASK_ITEM]
 
 /** 대화 패널(`#gpstory`) 한 줄 — 화자와 대사. 대사는 상태에 따라 달라질 수 있어 함수도 받는다 */
 type ConvLine = Readonly<{ speaker: 'gp' | 'player'; text: string | ((s: GameState) => string) }>
@@ -283,21 +293,25 @@ export const createDialog = (mount: HTMLElement): Dialog => {
   let shopSel = 0
   let shopOpenFor: string | null = null
 
+  /** 마스크는 `GIFT_ITEMS` 밖이라 `SHOP_PRICE`(꾸밈값)에 없다 — 실가격을 따로 읽는다 */
+  const priceOf = (id: ItemId): number => id === MASK_ITEM ? MASK_PRICE : SHOP_PRICE[id] ?? 0
+
   const renderDetail = (): void => {
-    const id = GIFT_ITEMS[shopSel] ?? GIFT_ITEMS[0]
+    const id = SHOP_ITEMS[shopSel] ?? SHOP_ITEMS[0]
     if (!id) return
     const def = itemDef(id)
     shopPrevImg.src = `${ICON_BASE}${def.node}.png`
     shopName.textContent = def.name
-    // 다섯 개 전부 같은 문구다(`itemDef` 의 `noTargetReason`) — 힌트는 바닥 양갱이 진다,
-    // 여기서 설명이 갈리면 그 자체가 정답 힌트가 된다(`giftBranches` 와 같은 이유)
-    shopText.textContent = def.noTargetReason
-    shopPrice.textContent = `${(SHOP_PRICE[id] ?? 0).toLocaleString('ko-KR')}원`
+    // 선물 5개는 전부 같은 문구다(`itemDef` 의 `noTargetReason`) — 힌트는 바닥 양갱이 진다,
+    // 여기서 설명이 갈리면 그 자체가 정답 힌트가 된다(`giftBranches` 와 같은 이유).
+    // 마스크는 퍼즐과 무관하니 실제 효과 힌트(`cost`)를 보여준다 — 착용형 공용 문구다.
+    shopText.textContent = id === MASK_ITEM ? (def.cost ?? '') : def.noTargetReason
+    shopPrice.textContent = `${priceOf(id).toLocaleString('ko-KR')}원`
     shopCards.forEach((c, i) => c.classList.toggle('sel', i === shopSel))
   }
 
-  // 카드 5장은 세션 내내 그대로다(목록이 안 바뀐다) — 한 번만 짓는다
-  GIFT_ITEMS.forEach((id, i) => {
+  // 카드 6장은 세션 내내 그대로다(목록이 안 바뀐다) — 한 번만 짓는다
+  SHOP_ITEMS.forEach((id, i) => {
     const def = itemDef(id)
     const card = document.createElement('button')
     card.type = 'button'
@@ -305,7 +319,7 @@ export const createDialog = (mount: HTMLElement): Dialog => {
     card.innerHTML =
       `<div class="thumb"><img src="${ICON_BASE}${def.node}.png" alt=""></div>` +
       `<div class="info"><span class="name">${def.name}</span>` +
-      `<span class="price">${(SHOP_PRICE[id] ?? 0).toLocaleString('ko-KR')}원</span></div>`
+      `<span class="price">${priceOf(id).toLocaleString('ko-KR')}원</span></div>`
     card.addEventListener('click', () => {
       if (card.classList.contains('disabled')) return
       shopSel = i
@@ -514,12 +528,25 @@ export const createDialog = (mount: HTMLElement): Dialog => {
       if (shop.className !== (isShop ? 'on' : '')) shop.className = isShop ? 'on' : ''
       if (isShop) {
         shopBal.textContent = `${s.cardBalance.toLocaleString('ko-KR')}원`
-        // 1회 한정 — 이미 골랐으면 카드·BUY 를 전부 잠근다(`giftBranches` 의 `enabled` 와 같은 조건)
-        const bought = s.flags.includes('GIFT_BOUGHT')
-        shopCount.textContent = `${GIFT_ITEMS.length} / ${GIFT_ITEMS.length} Items`
-        shopCards.forEach((c) => c.classList.toggle('disabled', bought))
-        shopBuy.disabled = bought
-        shopBuy.textContent = bought ? '구매 완료' : '구매'
+        /**
+         * 잠금 조건이 칸마다 다르다 — 선물 5지는 **한 번 고르면 다섯 다 같이** 잠긴다
+         * (`GIFT_BOUGHT`, `giftBranches` 의 `enabled` 와 같은 조건). 마스크(6번 칸)는
+         * 그 플래그를 안 본다 — 자기가 팔렸는지(`hasItem`)만 본다. 하나로 묶으면
+         * 선물을 고른 순간 마스크까지 잠기거나, 마스크를 산 순간 선물 5지가 잠겨
+         * "별개 구매"가 깨진다.
+         */
+        const giftBought = s.flags.includes('GIFT_BOUGHT')
+        const maskOwned = hasItem(s, MASK_ITEM)
+        const lockedAt = (i: number): boolean => i < GIFT_ITEMS.length ? giftBought : maskOwned
+        shopCount.textContent = `${SHOP_ITEMS.length} / ${SHOP_ITEMS.length} Items`
+        shopCards.forEach((c, i) => c.classList.toggle('disabled', lockedAt(i)))
+
+        const selId = SHOP_ITEMS[shopSel] ?? SHOP_ITEMS[0]
+        const selLocked = lockedAt(shopSel)
+        // 선물은 항상 무료(시작 잔액 0원이라도 사야 하므로)다 — 잔액 부족은 마스크만 겪는다
+        const selAfford = selId === MASK_ITEM ? s.cardBalance >= MASK_PRICE : true
+        shopBuy.disabled = selLocked || !selAfford
+        shopBuy.textContent = selLocked ? '구매 완료' : !selAfford ? '잔액 부족' : '구매'
       }
 
       // ── QTE

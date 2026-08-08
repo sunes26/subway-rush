@@ -321,6 +321,16 @@ export const PLATFORM_WALK_YMAX = 12.3
 export const PSD_Y = 12.15
 export const PSD_HALF_THICK = 0.12
 
+/**
+ * 객실 내부 — 걸어 들어갈 수 있는 y 구간.
+ *
+ * 치수는 `tools/hq_train.py` 의 차체 실측에서 왔다: 근측 벽 안쪽 면 12.52 ·
+ * 원측 벽 안쪽 면 15.48. 바닥은 승강장 슬래브 끝(12.3)보다 **앞에서 시작**해
+ * 겹쳐야 한다 — 딱 맞대면 경계에서 발밑이 한 프레임 비어 떨어진다.
+ */
+export const CABIN_Y0 = 12.2
+export const CABIN_Y1 = 15.45
+
 /** 가동문 32개소의 중심 x. 부록 A 공식 그대로. */
 export const DOOR_XS: readonly number[] = Array.from({ length: 8 }, (_, k) =>
   [2, 6, 10, 14].map((o) => 78 + 16 * k + o),
@@ -424,6 +434,17 @@ export const SLABS: readonly Slab[] = [
 
   // ── Z5 (B2)
   { id: 'Z5', rect: [PLATFORM.xMin, PLATFORM.yMin, PLATFORM.xMax, PLATFORM_WALK_YMAX], z: FLOOR.B2, kind: 'platform' },
+  /**
+   * 객실 바닥 — **열차 안까지 걸어 들어가려면 발밑이 있어야 한다.**
+   *
+   * 열차는 지금까지 순수 시각물이었다(GLB만 있고 충돌체가 없다). 그래서 문이 열려도
+   * 문틀을 넘는 순간 슬래브가 끊겨 밟을 데가 없었고, 탑승은 문 앞에서 **판정으로만**
+   * 일어났다. 실제로 들어가게 하려면 승강장 슬래브(…12.3)와 맞물리는 칸 바닥이 필요하다.
+   *
+   * 열차가 없을 때 허공을 밟는 문제는 안 생긴다 — 이 구역으로 가는 유일한 길이
+   * 가동문이고, 문이 안 열렸으면 `systems/train.ts psdDoors` 가 동적 벽으로 막는다.
+   */
+  { id: 'Z5-CABIN', rect: [PLATFORM.xMin, CABIN_Y0, PLATFORM.xMax, CABIN_Y1], z: FLOOR.B2, kind: 'platform' },
 
   /**
    * ⚠ 반대 방면(디렉터 지시) — 여기부터가 실제 사고였다. `SOLIDS`(벽)만 미러
@@ -443,6 +464,12 @@ export const SLABS: readonly Slab[] = [
   {
     id: 'Z5-OPP',
     rect: [PLATFORM_OPP.xMin, PLATFORM_OPP.yMin, PLATFORM_OPP.xMax, PLATFORM_WALK_YMAX_OPP],
+    z: FLOOR.B2,
+    kind: 'platform',
+  },
+  {
+    id: 'Z5-CABIN-OPP',
+    rect: [PLATFORM.xMin, CABIN_Y0 + Y_OFFSET_OPP, PLATFORM.xMax, CABIN_Y1 + Y_OFFSET_OPP],
     z: FLOOR.B2,
     kind: 'platform',
   },
@@ -664,6 +691,16 @@ export const SOLIDS: readonly Solid[] = [
     DOOR_XS.map((x) => [x - 0.8, x + 0.8] as const),
     FLOOR.B2, 2.0, 'psd',
   ),
+  /**
+   * 객실 벽 — 바닥(`Z5-CABIN`)을 깔았으니 **테두리도 같이 깔아야 한다.**
+   * 안 그러면 문으로 들어간 플레이어가 반대쪽 차체를 통과해 선로 위 허공으로 걸어 나간다
+   * (바닥만 미러하고 벽을 빼먹은 반대 방면 통로 사고의 정확한 반대 경우다).
+   * 근측 기둥벽은 안 세운다 — 탑승 판정이 들어서는 즉시 걸리므로 의미가 없고,
+   * 세우면 문 32개소마다 개구를 뚫어야 해서 충돌체만 40개 늘어난다.
+   */
+  parapet('Z5-CABIN-N', [PLATFORM.xMin, CABIN_Y1, PLATFORM.xMax, CABIN_Y1 + 0.12], FLOOR.B2, 2.4),
+  parapet('Z5-CABIN-W', [PLATFORM.xMin - 0.12, CABIN_Y0, PLATFORM.xMin, CABIN_Y1], FLOOR.B2, 2.4),
+  parapet('Z5-CABIN-E', [PLATFORM.xMax, CABIN_Y0, PLATFORM.xMax + 0.12, CABIN_Y1], FLOOR.B2, 2.4),
 
   // ═══════════ 반대 방면(디렉터 지시) — 전부 원본 + Y_OFFSET_OPP ═══════════
   // ───────────── Z4-OPP (B1 → B2) ─────────────
@@ -690,6 +727,15 @@ export const SOLIDS: readonly Solid[] = [
     DOOR_XS_OPP.map((x) => [x - 0.8, x + 0.8] as const),
     FLOOR.B2, 2.0, 'psd',
   ),
+  parapet('Z5-CABIN-N-OPP',
+    [PLATFORM.xMin, CABIN_Y1 + Y_OFFSET_OPP, PLATFORM.xMax, CABIN_Y1 + 0.12 + Y_OFFSET_OPP],
+    FLOOR.B2, 2.4),
+  parapet('Z5-CABIN-W-OPP',
+    [PLATFORM.xMin - 0.12, CABIN_Y0 + Y_OFFSET_OPP, PLATFORM.xMin, CABIN_Y1 + Y_OFFSET_OPP],
+    FLOOR.B2, 2.4),
+  parapet('Z5-CABIN-E-OPP',
+    [PLATFORM.xMax, CABIN_Y0 + Y_OFFSET_OPP, PLATFORM.xMax + 0.12, CABIN_Y1 + Y_OFFSET_OPP],
+    FLOOR.B2, 2.4),
 ]
 
 // ═══════════════════════ 존 판정 ═══════════════════════

@@ -11,7 +11,7 @@
 import type { InputFrame } from '../core/input'
 import { FISHCAKE_GREETING, FISHCAKE_ID, GIFT_STALL_ID, GRANDPA_ID, INTERACTABLES, byId,
   coinValue, isCoin, isVending, type InteractKind, type Interactable } from '../data/interactables'
-import { GIFT_CORRECT, GIFT_ITEMS, itemDef } from '../data/items'
+import { GIFT_CORRECT, GIFT_ITEMS, itemDef, MASK_PRICE } from '../data/items'
 import { CHASE, EMERGENCY, INTERACT, SLOTS, STAMINA } from '../data/tuning'
 import type { Action, Drop, GameState, ItemId } from '../state/types'
 
@@ -46,6 +46,25 @@ const durationOf = (kind: InteractKind): number => {
     case 'enter': return 1200
     case 'inspect': return 800
   }
+}
+
+/**
+ * **자동 착용** — 정의에 `autoWear` 가 있으면 손에 들어오는 즉시 켠다(이어폰·마스크).
+ *
+ * 착용형 전체에 주지 않는 이유: 캐리어는 **대가가 있는 착용**이라 켜는 순간이 곧
+ * 판단이다. 이어폰·마스크는 대가가 하나뿐이고 그건 손에 넣는 자리에서 이미
+ * 감수한 것이다(디렉터 지시 2026-08-06). `pickup`(공짜 습득)·`buy`(유상 구매)
+ * 둘 다 "손에 들어온다"는 사실은 같으므로 같은 헬퍼를 쓴다.
+ */
+const autoWearActions = (s: GameState, item: ItemId): readonly Action[] => {
+  const def = itemDef(item)
+  if (!def.autoWear || !def.flag || s.flags.includes(def.flag)) return []
+  return [
+    { t: 'FLAG', id: def.flag, on: true },
+    { t: 'ITEM_USED', item },
+    // 디렉터 지시 — "OO 착용" 대신 두루뭉실한 능력 힌트(`cost`)를 보여준다
+    { t: 'FX', kind: 'toast', text: def.cost ?? `${def.name} 착용`, lifeMs: 1400, value: 0 },
+  ]
 }
 
 /** 드랍을 상호작용 대상으로 승격 */
@@ -174,23 +193,9 @@ const complete = (s: GameState): Action[] => {
           { t: 'ACT_CONSUME', id },
         ]
       }
-      /**
-       * **자동 착용** — 정의에 `autoWear` 가 있으면 줍는 즉시 켠다(이어폰).
-       *
-       * 착용형 전체에 주지 않는 이유: 마스크·캐리어는 **대가가 있는 착용**이라
-       * 켜는 순간이 곧 판단이다. 이어폰만 대가가 "안내 LED 를 못 듣는다" 하나뿐이고
-       * 그건 줍는 자리에서 이미 감수한 것이다(디렉터 지시 2026-08-06).
-       */
-      const def = itemDef(it.gives)
-      const auto = def.autoWear && def.flag && !s.flags.includes(def.flag)
       return [
         { t: 'PICKUP', item: it.gives, slot: -1, dropId: isDrop ? id : null },
-        ...(auto && def.flag
-          ? [{ t: 'FLAG', id: def.flag, on: true } as Action,
-             { t: 'ITEM_USED', item: it.gives } as Action,
-             // 디렉터 지시 — "OO 착용" 대신 두루뭉실한 능력 힌트(`cost`)를 보여준다
-             { t: 'FX', kind: 'toast', text: def.cost ?? `${def.name} 착용`, lifeMs: 1400, value: 0 } as Action]
-          : []),
+        ...autoWearActions(s, it.gives),
         ...(it.once && !isDrop ? [{ t: 'ACT_CONSUME', id } as Action] : []),
       ]
     }
@@ -203,6 +208,7 @@ const complete = (s: GameState): Action[] => {
       return [
         { t: 'BALANCE', delta: -cost, label: it.label },
         { t: 'PICKUP', item: it.gives, slot: -1, dropId: null },
+        ...autoWearActions(s, it.gives),
       ]
     }
 
@@ -340,7 +346,7 @@ const begin = (s: GameState, it: Interactable): Action[] => {
 // ─────────────────────────── 대화 분기 ───────────────────────────
 
 export type Branch = Readonly<{
-  key: 1 | 2 | 3 | 4 | 5; label: string; enabled: boolean; note: string
+  key: 1 | 2 | 3 | 4 | 5 | 6; label: string; enabled: boolean; note: string
 }>
 
 /** 할아버지 3분기 — UI와 시스템이 **같은 함수**를 읽는다. 회색 처리와 실제 차단이 갈라지지 않게 */
@@ -387,10 +393,25 @@ export const fishcakeBranches = (_s: GameState): readonly Branch[] => [
   { key: 2, label: '경찰에 분실물 신고를 하자고 한다', enabled: true, note: '' },
 ]
 
+/**
+ * 편의점 상점 6번째 칸 — 마스크. 5지 선물 퍼즐과 **무관한 별개 구매**다
+ * (`GIFT_BOUGHT`를 안 읽고 안 쓴다). 유일하게 실제 잔액을 깎고, 유일하게
+ * "이미 샀다"로 잠긴다 — 나머지 5지는 항상 무료라 잔액 부족이 없다.
+ */
+const maskBranch = (s: GameState): Branch => {
+  const owned = hasItem(s, 'I-06')
+  return {
+    key: 6,
+    label: itemDef('I-06').name,
+    enabled: !owned && s.cardBalance >= MASK_PRICE,
+    note: owned ? '이미 샀다' : s.cardBalance < MASK_PRICE ? '돈이 부족하다' : '',
+  }
+}
+
 /** 대화 상대 → 분기표. UI 와 시스템이 **같은 함수**를 읽는다 */
 export const branchesFor = (s: GameState, dialogId: string): readonly Branch[] =>
   dialogId === GRANDPA_ID ? grandpaBranches(s)
-    : dialogId === GIFT_STALL_ID ? giftBranches(s)
+    : dialogId === GIFT_STALL_ID ? [...giftBranches(s), maskBranch(s)]
       : dialogId === FISHCAKE_ID ? fishcakeBranches(s)
         : []
 
@@ -403,6 +424,17 @@ const buyGift = (_s: GameState, key: Branch['key']): Action[] => {
     { t: 'PICKUP', item, slot: -1, dropId: null },
     { t: 'FLAG', id: 'GIFT_BOUGHT', on: true },
     { t: 'FX', kind: 'toast', text: `${itemDef(item).name}을(를) 샀다`, lifeMs: 1800, value: 0 },
+  ]
+}
+
+/** 마스크 구매(상점 6번 칸) — 편의점 상점의 유일한 구매처다 */
+const buyMaskFromShop = (s: GameState): Action[] => {
+  return [
+    { t: 'DIALOG', id: null },
+    { t: 'BALANCE', delta: -MASK_PRICE, label: '마스크' },
+    { t: 'PICKUP', item: 'I-06', slot: -1, dropId: null },
+    ...autoWearActions(s, 'I-06'),
+    { t: 'FX', kind: 'toast', text: '마스크를 샀다', lifeMs: 1800, value: 0 },
   ]
 }
 
@@ -456,7 +488,7 @@ const dialogPick = (s: GameState, key: Branch['key']): Action[] => {
   const b = branchesFor(s, id).find((x) => x.key === key)
   if (!b) return []
   if (!b.enabled) return [{ t: 'ACT_DENY', text: b.note }]
-  if (id === GIFT_STALL_ID) return buyGift(s, key)
+  if (id === GIFT_STALL_ID) return key === 6 ? buyMaskFromShop(s) : buyGift(s, key)
   if (id === FISHCAKE_ID) return fishcakeChoice(s, key)
   if (key === 1) return steal()
   const kind: InteractKind = key === 2 ? 'give' : 'story'
@@ -689,7 +721,7 @@ export const interactSystem = (s: GameState, ctx: ActCtx): Action[] => {
     if (f.pressCancel || (!isFishcake && moveAxis(f) > INTERACT.cancelAxis)) {
       return [...out, { t: 'DIALOG', id: null }]
     }
-    if (f.pressSlot >= 1 && f.pressSlot <= 5) return [...out, ...dialogPick(s, f.pressSlot as Branch['key'])]
+    if (f.pressSlot >= 1 && f.pressSlot <= 6) return [...out, ...dialogPick(s, f.pressSlot as Branch['key'])]
     return out
   }
 

@@ -4,7 +4,8 @@
 
 import { describe, expect, it } from 'vitest'
 import { DECOR } from '../../src/data/decor'
-import { FISHCAKE_GREETING, FISHCAKE_ID, INTERACTABLES, coinValue, isCoin } from '../../src/data/interactables'
+import { FISHCAKE_GREETING, FISHCAKE_ID, GIFT_STALL_ID, INTERACTABLES, coinValue, isCoin }
+  from '../../src/data/interactables'
 import { GIFT_ITEMS, ITEMS, SLOT_ITEMS, WEARABLES, itemDef } from '../../src/data/items'
 import { COIN, SLOTS, SWAP_WINDOW_MS } from '../../src/data/tuning'
 import { FLOOR } from '../../src/data/world'
@@ -212,14 +213,27 @@ describe('S22-2 즉시 착용 (디렉터 지시)', () => {
     expect(off.flags, '따로 껐다 켰다 하는 대상이 아니다').toContain('EARBUDS_ON')
   })
 
-  it('마스크(I-06)도 줍는 즉시 켜져 있다 (디렉터 지시)', () => {
-    const s = grab('OBJ-19-MASK')
+  /**
+   * 마스크는 물리 진열대가 없다(디렉터 지시로 없앴다) — 편의점 상점(`GIFT_STALL_ID`)
+   * 대화의 6번 칸이 유일한 구매처다. `grab()`은 `pickup`/`buy` 전용이라 안 먹으니
+   * 대화를 열고 슬롯 키 `6`을 누른다.
+   */
+  const buyMaskViaShop = (): GameState => {
+    const stall = spotOf(GIFT_STALL_ID)
+    const s0 = put(start(7, { cardBalance: 1500 }), stall.x, stall.y - 1.1, stall.z)
+    const yaw = yawTo(s0, stall.x, stall.y)
+    const opened = tap(s0, { pressInteract: true }, yaw)
+    return tap(opened, { pressSlot: 6 }, yaw)
+  }
+
+  it('마스크(I-06)도 사는 즉시 켜져 있다 (디렉터 지시, 유상 구매)', () => {
+    const s = buyMaskViaShop()
     expect(s.inventory).toContain('I-06')
     expect(s.flags).toContain('MASK_ON')
   })
 
   it('마스크도 슬롯 키를 눌러도 꺼지지 않는다', () => {
-    const s = grab('OBJ-19-MASK')
+    const s = buyMaskViaShop()
     const slot = s.inventory.indexOf('I-06') + 1
     const off = tap(s, { pressSlot: slot })
     expect(off.flags).toContain('MASK_ON')
