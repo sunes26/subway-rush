@@ -13,7 +13,8 @@ import { byId, FISHCAKE_GREETING, FISHCAKE_ID, FISHCAKE_REACTION, GIFT_STALL_ID,
   from '../data/interactables'
 import { GIFT_CORRECT, GIFT_ITEMS, itemDef, SHOP_PRICE } from '../data/items'
 import { QTE } from '../data/tuning'
-import { AMBUSH_TOTAL_MS, ambushLineAt } from '../systems/ambush'
+import { AMBUSH_DIALOGUE_MS, ambushCollapseT, ambushLineAt } from '../systems/ambush'
+import { knockdownT } from '../systems/knockdown'
 import { branchesFor, hasItem } from '../systems/interact'
 import type { GameState } from '../state/types'
 // 스타일은 `css/dialog.css` 가 단일 원천이다 — UI 킷(/uikit.html)이 같은 파일을 읽는다.
@@ -170,6 +171,7 @@ export const createDialog = (mount: HTMLElement): Dialog => {
         <div class="bar"><i id="ambush-bar"></i></div>
       </div>
     </div>
+    <div id="blackout"></div>
     <div id="qte">
       <div class="cap">자판기 밑을 긁는다 — 가운데에서 <b>클릭</b></div>
       <div class="track"><div class="fill" id="qte-fill"></div>
@@ -227,6 +229,7 @@ export const createDialog = (mount: HTMLElement): Dialog => {
   const gpstoryLine = $('gpstory-line')
   const gpstoryBar = $('gpstory-bar')
   const gpstoryCap = $('gpstory-cap')
+  const blackout = $('blackout')
   const ambush = $('ambush')
   const ambushFrame = $('ambush-frame')
   const ambushWho = $('ambush-who')
@@ -454,10 +457,37 @@ export const createDialog = (mount: HTMLElement): Dialog => {
        * `AMBUSH_LINES` 는 `systems/ambush.ts` 와 공유하는 단일 원천이다 — 대사가
        * 바뀌어도 판정(테이저 발사 시점)과 화면이 갈릴 일이 없다.
        */
-      if (ambush.className !== (s.ambush.active ? 'on' : '')) {
-        ambush.className = s.ambush.active ? 'on' : ''
+      /**
+       * 쓰러지기 시작하면 대사창을 **치운다.** 화면 절반을 덮는 패널이 남아 있으면
+       * 카메라가 무너지는 것이 안 보인다 — 이 구간에서 보여줄 것은 대사가 아니라 시점이다.
+       */
+      /**
+       * ⚠ `phase === 'playing'` 을 **반드시** 본다. `ambush.active` 는 엔딩이 난 뒤에도
+       *   true 로 남으므로(매복을 끄는 액션이 없다) 이 조건이 없으면 암전 레이어가
+       *   `z-index:50` 으로 엔딩 카드(#screen, z-index 미지정)를 통째로 덮어 검은 화면만 남는다.
+       */
+      // 매복(테이저)이든 교통사고든 **쓰러지면 같은 암전**이다 — 진행도만 다른 데서 온다
+      const alive = s.phase === 'playing'
+      const collapseT = alive && s.ambush.active ? ambushCollapseT(s.ambush.phaseMs)
+        : alive && s.knockdown.active ? knockdownT(s.knockdown.phaseMs)
+          : 0
+      const collapsing = collapseT > 0
+      const showAmbush = s.ambush.active && !collapsing
+
+      /**
+       * 암전 — 쓰러짐의 **마지막 30%** 에서만 깔린다(`BLACKOUT_FROM`).
+       * 더 일찍 시작하면 무너지는 그림 자체가 안 보이고, 더 늦으면 엔딩 카드가 튀어나온다.
+       */
+      const BLACKOUT_FROM = 0.7
+      const fade = collapseT > BLACKOUT_FROM
+        ? Math.min(1, (collapseT - BLACKOUT_FROM) / (1 - BLACKOUT_FROM))
+        : 0
+      const fadeStr = fade.toFixed(3)
+      if (blackout.style.opacity !== fadeStr) blackout.style.opacity = fadeStr
+      if (ambush.className !== (showAmbush ? 'on' : '')) {
+        ambush.className = showAmbush ? 'on' : ''
       }
-      if (s.ambush.active) {
+      if (showAmbush) {
         const { line } = ambushLineAt(s.ambush.phaseMs)
         // 화자는 **이름표에만** 둔다 — `#dlg` 와 같은 구조(말풍선 머리는 DIALOGUE 배지 고정)
         ambushWho.textContent = line.speaker
@@ -469,8 +499,8 @@ export const createDialog = (mount: HTMLElement): Dialog => {
           ambushFrame.style.display = ''
           ambushPortrait.src = line.speaker === '역무원' ? AO_PORTRAIT : FM_PORTRAIT
         }
-        // 대사별이 아니라 **전체** 진행도 — 몇 마디 남았는지가 아니라 "곧 끝난다"가 중요하다
-        const overall = Math.min(1, s.ambush.phaseMs / AMBUSH_TOTAL_MS)
+        // 진행바는 **대사 구간**만 잰다 — 쓰러지는 동안엔 이 패널 자체가 없다
+        const overall = Math.min(1, s.ambush.phaseMs / AMBUSH_DIALOGUE_MS)
         ambushBar.style.transform = `scaleX(${overall.toFixed(3)})`
       }
 

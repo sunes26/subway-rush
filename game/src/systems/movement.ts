@@ -29,7 +29,9 @@ import { WET_ZONE } from './obstacles'
  * 클릭으로 인사말을 넘기는 동안 걸어서 자리를 벗어나면 대사와 위치가 어긋난다.
  */
 const isTalkLocked = (s: GameState): boolean =>
-  s.act.busyKind === 'story' || s.ambush.active || s.act.dialogId === FISHCAKE_ID
+  s.act.busyKind === 'story' || s.ambush.active || s.act.dialogId === FISHCAKE_ID ||
+  // 차에 치이면 조작이 통째로 끝난다 — 날아가는 동안 걸어 다니면 안 된다
+  s.knockdown.active
 
 export type MoveCtx = Readonly<{ dtMs: number; input: InputFrame; cameraYaw: number }>
 

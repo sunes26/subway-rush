@@ -14,7 +14,7 @@ import { GRANDPA_ID } from '../data/interactables'
 import { rollObstacles, rollQueues, type ObsId } from '../data/obstacles'
 import { GATES, SPAWN, TRAFFIC_LIGHT, zoneAt } from '../data/world'
 import type { Action, ActState, AmbushState, ChaseState, Drop, GameState, Fx, HandState, ItemId,
-  QteState, SurgeState, SwapState, TallyState } from './types'
+  KnockdownState, QteState, SurgeState, SwapState, TallyState } from './types'
 
 const MAX_FX = 12
 
@@ -61,6 +61,8 @@ const EMPTY_CHASE: ChaseState = {
 }
 
 const EMPTY_AMBUSH: AmbushState = { active: false, phaseMs: 0 }
+
+const EMPTY_KNOCKDOWN: KnockdownState = { active: false, phaseMs: 0 }
 
 const EMPTY_SURGE: SurgeState = { fell: false, stallMs: 0 }
 
@@ -169,6 +171,7 @@ export const initialState = (seed: number, freeplay = false, allObstacles = fals
     scores: { conscience: 0, style: 0, knowledge: 0 },
     chase: EMPTY_CHASE,
     ambush: EMPTY_AMBUSH,
+    knockdown: EMPTY_KNOCKDOWN,
     flags: [],
     act: EMPTY_ACT,
     drops: [],
@@ -807,6 +810,24 @@ export const reducer = (s: GameState, a: Action): GameState => {
 
     case 'AMBUSH_TICK':
       return { ...s, ambush: { ...s.ambush, phaseMs: s.ambush.phaseMs + a.dtMs } }
+
+    // ─────────────────── 차에 치임 (E-18) ───────────────────
+
+    /**
+     * 속도를 **같이 0으로 만든다.** 위치는 그대로 두고(몸이 날아가는 것은 카메라 연출이다)
+     * 관성만 지운다 — 안 지우면 쓰러진 뒤에도 시체가 도로 위를 미끄러진다.
+     */
+    case 'KNOCKDOWN_START':
+      return s.knockdown.active
+        ? s
+        : {
+            ...s,
+            knockdown: { active: true, phaseMs: 0 },
+            player: { ...s.player, vel: { x: 0, y: 0 }, moving: false, sprinting: false },
+          }
+
+    case 'KNOCKDOWN_TICK':
+      return { ...s, knockdown: { ...s.knockdown, phaseMs: s.knockdown.phaseMs + a.dtMs } }
   }
 }
 
