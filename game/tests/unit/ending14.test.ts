@@ -28,13 +28,117 @@ const trueRun = (over: Partial<GameState> = {}): Partial<GameState> => ({
   ...over,
 })
 
+/**
+ * S18-0 — **조건에 쓰는 플래그는 켜는 코드가 있어야 한다.**
+ *
+ * ■ 왜 이 테스트가 생겼나
+ *
+ * E-12 「오늘도 평화로운 역」이 **실제 플레이로 도달할 수 없었다.** 조건이
+ * `SEAT_YIELDED` 를 요구하는데 그 플래그를 켜는 시스템이 리포에 없었다 —
+ * 타입 선언과 조건식, 두 곳에만 존재했다. 임산부 배려석 상호작용이 미구현이다.
+ *
+ * 그런데 **아래 S18-1 은 통과했다.** 플래그를 배열에 직접 넣어 판정기를 부르기
+ * 때문이다. 판정기는 맞았지만 그 상태에 이르는 길이 없었다 — 유닛 테스트가
+ * 구조적으로 못 잡는 종류다.
+ *
+ * ■ 그래서 소스를 읽는다
+ *
+ * 게임에서 플래그가 켜지는 길은 `{ t: 'FLAG', id: ..., on: true }` 하나뿐이다.
+ * `src/` 를 훑어 발행되는 플래그 집합을 만들고, 엔딩 조건이 쓰는 플래그가 전부
+ * 그 안에 있는지 본다. 삼항(`toilet ? 'TOILET_USED' : 'OPPOSITE_SIDE'`)도 잡히도록
+ * `id:` 뒤가 아니라 **`FLAG` 리터럴이 있는 줄의 모든 대문자 리터럴**을 센다.
+ *
+ * ⚠ 소스를 `node:fs` 로 읽지 않는다 — 이 프로젝트는 브라우저 타깃이라
+ *   `tsconfig` 의 `types` 가 `["vite/client"]` 뿐이고 `@types/node` 가 없다.
+ *   유닛은 통과해도 `tsc --noEmit` 이 깨진다. Vite 의 `import.meta.glob` 은
+ *   그 타입에 들어 있고 번들러가 정적으로 처리하므로 둘 다 지나간다.
+ */
+describe('S18-0 조건이 쓰는 플래그에 발행처가 있다', () => {
+  /** `src/` 전 소스. `?raw` 라 문자열 그대로 온다 */
+  const SOURCES = import.meta.glob('../../src/**/*.ts', {
+    query: '?raw', import: 'default', eager: true,
+  }) as Readonly<Record<string, string>>
+
+  /** `{ t: 'FLAG', ... }` 가 있는 줄에서 대문자 문자열 리터럴을 거둔다 */
+  const emitted = (): ReadonlySet<string> => {
+    const out = new Set<string>()
+    for (const [path, text] of Object.entries(SOURCES)) {
+      // 선언(types)과 조건(endings)은 발행이 아니다 — 그 둘만 보면 이 검사가 무의미해진다
+      if (path.endsWith('data/endings.ts') || path.endsWith('state/types.ts')) continue
+      for (const line of text.split('\n')) {
+        if (!line.includes(`'FLAG'`)) continue
+        for (const m of line.matchAll(/'([A-Z][A-Z0-9_]+)'/g)) {
+          if (m[1] !== 'FLAG') out.add(m[1]!)
+        }
+      }
+    }
+    return out
+  }
+
+  /**
+   * 엔딩 조건식이 `flags.includes('X')` 로 요구하는 것들.
+   *
+   * ⚠ **따옴표를 가리지 않는다.** 여기는 소스가 아니라 `Function.prototype.toString()`
+   *   이고, 그 문자열은 **esbuild 가 변환한 뒤의 코드**다. esbuild 는 문자열 리터럴을
+   *   큰따옴표로 정규화한다 — 실제로 `includes("WALLET_RETURNED")` 로 나온다.
+   *   작은따옴표만 보던 판이 있었고, 그때 이 집합이 **항상 비어서** 아래 검사가
+   *   무엇을 넣든 통과했다. 통과한 게 아니라 아무것도 안 보고 있었다.
+   */
+  const required = (): ReadonlySet<string> => {
+    const out = new Set<string>()
+    for (const e of ENDINGS) {
+      for (const m of e.when.toString().matchAll(/includes\(\s*['"]([A-Z0-9_]+)['"]\s*\)/g)) {
+        out.add(m[1]!)
+      }
+    }
+    return out
+  }
+
+  /**
+   * ★ **양쪽 스캐너가 살아 있는지 먼저 본다.**
+   *
+   * 아래 본 검사는 `required − emitted` 가 비었는지를 본다. 그러므로 **둘 중 어느
+   * 쪽이 비어도 통과한다.** 실제로 `required` 가 따옴표 때문에 비었던 적이 있고,
+   * 그때 `emitted` 쪽에만 생존 검사를 달아 둬서 못 잡았다. 한쪽만 막는 것은
+   * 안 막는 것과 같다.
+   */
+  it('스캐너 둘 다 살아 있다 — 알려진 플래그를 실제로 찾는다', () => {
+    const on = emitted()
+    expect(on.size, 'emitted 가 비었다 — 발행처 스캐너가 죽었다').toBeGreaterThan(3)
+    expect(on.has('WALLET_RETURNED')).toBe(true)
+    expect(on.has('GRANDPA_HELPED')).toBe(true)
+    expect(on.has('BUSTED')).toBe(true)
+    // 삼항(`toilet ? 'TOILET_USED' : 'OPPOSITE_SIDE'`) 안에 있는 것도 잡히는가
+    expect(on.has('TOILET_USED')).toBe(true)
+    expect(on.has('OPPOSITE_SIDE')).toBe(true)
+    // 미구현 예약 플래그는 당연히 없다
+    expect(on.has('SEAT_YIELDED')).toBe(false)
+
+    const need = required()
+    expect(need.size, 'required 가 비었다 — 조건식 스캐너가 죽었다').toBeGreaterThan(3)
+    // E-12·E-13·E-08·E-09 의 조건에서 실제로 읽혀야 하는 것들
+    for (const f of ['WALLET_RETURNED', 'GRANDPA_HELPED', 'TOILET_USED', 'OPPOSITE_SIDE', 'BUSTED']) {
+      expect(need.has(f), `required 가 ${f} 를 못 읽었다`).toBe(true)
+    }
+  })
+
+  it('발행처 없는 플래그를 요구하는 엔딩이 없다', () => {
+    const on = emitted()
+    const orphans = [...required()].filter((f) => !on.has(f)).sort()
+    expect(
+      orphans,
+      `조건은 요구하는데 켜는 코드가 없다 — 해당 엔딩은 도달 불가다: ${orphans.join(', ')}`,
+    ).toEqual([])
+  })
+})
+
 describe('S18-1 신규 8종이 각각 도달 가능하다', () => {
   it('E-05 지하철 마스터 (TRUE)', () => {
     expect(at(trueRun())).toBe('E-05')
   })
 
-  it('E-12 오늘도 평화로운 역 — 미탑승 + 선행 3종', () => {
-    const flags: FlagId[] = ['WALLET_RETURNED', 'GRANDPA_HELPED', 'SEAT_YIELDED']
+  it('E-12 오늘도 평화로운 역 — 미탑승 + 선행 2종', () => {
+    const flags: FlagId[] = ['WALLET_RETURNED', 'GRANDPA_HELPED']
     expect(at({ boarded: false, flags })).toBe('E-12')
   })
 
@@ -103,18 +207,17 @@ describe('S18-1 신규 8종이 각각 도달 가능하다', () => {
       at({}),
     ])
     /**
-     * ★ **13 이다. 14 가 아니다** — `E-12 오늘도 평화로운 역` 은 지금 **도달할 수 없다.**
+     * ★ 이 테스트가 **플래그를 배열에 직접 넣는다**는 점을 기억해 둘 것.
      *
-     *   조건이 `WALLET_RETURNED && GRANDPA_HELPED && SEAT_YIELDED` 인데,
-     *   `SEAT_YIELDED` 를 **내는 시스템이 없다.** 이 리포 전체에서 그 문자열은
-     *   `state/types.ts` 의 선언과 `data/endings.ts` 의 조건, 두 곳에만 있다.
-     *   임산부 배려석 상호작용 자체가 구현돼 있지 않다.
+     * 그래서 여기를 통과해도 "실제 플레이로 도달한다"는 뜻은 아니다. 실제로 한 번
+     * 그랬다 — E-12 는 조건에 `SEAT_YIELDED` 가 있었고 그 플래그를 켜는 시스템이
+     * 리포에 없었는데, 이 테스트는 통과했다. 판정기는 맞았지만 그 상태에 이르는
+     * 길이 없었다. 그 항은 지웠다(`data/endings.ts` 참고).
      *
-     *   이 브랜치에서 한때 그 항을 빼서 도달 가능하게 고쳤었는데, 엔딩 판정은
-     *   upstream 것을 쓰기로 정해져서 되돌렸다. **버그를 조용히 덮지 않으려고**
-     *   여기 남긴다 — 배려석을 구현하거나 조건에서 그 항을 빼면 14 가 된다.
+     * 그러므로 **엔딩을 더할 때는 조건에 쓰는 플래그의 발행처를 먼저 확인한다.**
+     * 아래 위 `S18-0` 이 그것을 자동으로 막는다.
      */
-    expect(seen.size, [...seen].sort().join(',')).toBe(13)
+    expect(seen.size, [...seen].sort().join(',')).toBe(14)
   })
 })
 
@@ -143,7 +246,7 @@ describe('S18-2 우선순위', () => {
   })
 
   it('E-12 도 탑승하면 안 나온다', () => {
-    const flags: FlagId[] = ['WALLET_RETURNED', 'GRANDPA_HELPED', 'SEAT_YIELDED']
+    const flags: FlagId[] = ['WALLET_RETURNED', 'GRANDPA_HELPED']
     expect(at({ boarded: true, timeLeftMs: 40_000, flags })).not.toBe('E-12')
   })
 })
