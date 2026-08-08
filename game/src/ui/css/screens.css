@@ -1,32 +1,156 @@
 /*
- * 화면 스타일 — 타이틀 · 로딩 · 엔딩.
+ * 화면 스타일 — 로딩 · 타이틀 · 엔딩.
  *
  * ★ 단일 원천. 게임(`ui/screens.ts`)과 UI 킷(`/uikit.html`)이 같은 파일을 읽는다.
+ *
+ * ── 물성 규칙 (두 화면 공통) ──
+ *   타이틀도 엔딩도 **실물 여객 안내 설비 한 장**이다. 그래서 지켜야 할 것:
+ *     · 매트 블랙 금속 프레임 + 천장 브래킷
+ *     · 보이는 LED 픽셀 격자 (`--px` 반복 배경)
+ *     · 앰버가 기본 발광색, 초록/적색은 **상태**에만
+ *   그래서 금지한 것 — 떠 있는 카드 · 배경 블러 · 그라디언트 · 방사형 글로우 ·
+ *   장식 네온 테두리 · 큼직한 게임 버튼. 전부 "설비"가 아니라 "메뉴"의 어휘다.
+ *
+ *   예전 판은 이 금지 목록을 전부 갖고 있었고, 그게 화면이 이 게임의 것으로
+ *   안 보이던 이유였다.
  */
-#screen{position:absolute;inset:0;display:none;place-items:center;text-align:center;
-  background:radial-gradient(ellipse at 50% 40%,rgba(12,12,16,.86),rgba(4,4,6,.97));
-  backdrop-filter:blur(3px);pointer-events:auto;animation:fade .6s ease both}
+
+/* LED 발광색 — 앰버가 기본, 흰색이 강조, 초록·적색은 상태 전용 */
+#screen{--led-amber:#FF8A1E;--led-white:#F2F0EA;--led-green:#42E36B;--led-red:#FF4A3D;
+  --led-dim:#7A746A;--panel:#0C0C0E;--frame:#1A1A1D;--edge:#2A2A2E;
+  /*
+   * 픽셀 격자 — 실제 도트매트릭스는 발광부 사이에 검은 골이 있다.
+   *
+   * ⚠ `repeating-linear-gradient` 로 판 전체를 덮었더니 **프레임이 죽었다.**
+   *   소프트웨어 래스터라이저(E2E 의 SwiftShader)에서 그 넓이를 매 프레임 다시
+   *   칠하느라, 타이틀에서 Enter 가 400ms 안에 처리되지 못했다(실측: p0 A-1·A-6 실패).
+   *   3×3 타일 두 장으로 바꾸면 컴포지터가 작은 이미지 하나를 반복해 붙인다.
+   */
+  --px:linear-gradient(rgba(0,0,0,.42) 1px,transparent 1px),
+       linear-gradient(90deg,rgba(0,0,0,.42) 1px,transparent 1px)}
+
+/* 배경은 3D 씬이다. 예전엔 반투명 검정으로 거의 눌러 극적으로 만들었는데,
+   그러면 애써 살린 배경이 안 보인다. 아래로 갈수록만 조금 눌러 글자를 지킨다. */
+#screen{position:absolute;inset:0;display:none;justify-items:center;
+  align-content:start;padding:7vh 4vw 0;pointer-events:auto;
+  background:linear-gradient(180deg,rgba(6,6,8,.34),rgba(6,6,8,.62));
+  animation:fade .45s ease both}
 #screen.on{display:grid}
 @keyframes fade{from{opacity:0}to{opacity:1}}
-#screen .card{max-width:640px;padding:0 32px}
-#screen .kicker{font-family:var(--mono);font-size:10px;letter-spacing:.42em;
-  text-transform:uppercase;color:#FFB020;margin-bottom:18px}
-#screen h1{font-size:clamp(34px,7vw,64px);line-height:1;margin:0 0 6px;
-  font-weight:800;letter-spacing:-.045em}
-#screen .sub{font-size:14px;opacity:.6;margin-bottom:30px;letter-spacing:.01em}
-#screen .line{font-size:22px;font-weight:600;margin:22px 0 10px;letter-spacing:-.01em}
-#screen .hint{font-size:13px;opacity:.66;line-height:1.7;border-top:1px solid rgba(255,255,255,.13);
-  padding-top:16px;margin-top:22px}
-#screen .stats{display:flex;gap:26px;justify-content:center;margin:22px 0 4px;
-  font-family:var(--mono);font-size:12px;opacity:.62;letter-spacing:.06em}
-#screen .keys{margin-top:30px;display:flex;gap:9px;justify-content:center;flex-wrap:wrap}
-#screen kbd{font-family:var(--mono);font-size:11px;padding:5px 9px;border-radius:5px;
-  border:1px solid rgba(255,255,255,.24);background:rgba(255,255,255,.06);letter-spacing:.06em}
-#screen .cta{margin-top:26px;font-family:var(--mono);font-size:13px;letter-spacing:.2em;
-  color:#FFC83D;animation:blink 1.3s steps(2,start) infinite}
-@keyframes blink{50%{opacity:.28}}
-#screen.win h1{color:#7FE0A0}
-#screen.lose h1{color:#F5F5F0}
+
+/* ─────────────── 안내판 본체 ─────────────── */
+#screen .board{position:relative;width:min(1080px,94vw);
+  background:var(--frame);border:1px solid var(--edge);border-radius:3px;
+  padding:7px;font-family:var(--mono)}
+/* 천장 브래킷 — 판이 매달려 있다는 것을 말하는 유일한 부품 */
+#screen .brackets{position:absolute;top:-18px;left:0;right:0;height:18px;
+  display:flex;justify-content:space-between;padding:0 12%}
+#screen .brackets i{width:7px;height:18px;background:var(--frame);
+  border-left:1px solid var(--edge);border-right:1px solid var(--edge)}
+#screen .face{position:relative;background:var(--panel);border-radius:2px;
+  padding:20px 22px 16px}
+/*
+ * 픽셀 격자는 발광면 **전체**를 덮는다 — 글자에만 걸면 판이 아니라 폰트가 된다.
+ *
+ * ⚠ **`transform:translateZ(0)` 가 여기서는 장식이 아니라 필수다.**
+ *   승격 없이 두면 타일 배경이 매 프레임 WebGL 캔버스 위에서 다시 합성되고,
+ *   타이틀 프레임이 8 → **2 fps** 로 주저앉는다(실측). 그 2 fps 때문에 Enter 가
+ *   한 프레임 안에 안 잡혀 p0 의 A-1·A-6 이 깨졌다.
+ *   면적 문제가 아니다 — 로고 한 덩어리로 좁혀도 똑같이 2 fps 였고, 승격 한 줄로
+ *   판 전체를 덮은 채 8 fps 가 됐다. 한 번 래스터해 재사용시키는 것이 답이다.
+ */
+#screen .face::after,#screen .ticker::after{content:'';position:absolute;inset:0;
+  background-image:var(--px);background-size:3px 3px;pointer-events:none;
+  will-change:transform;transform:translateZ(0)}
+
+/* ─────────────── 타이틀 ─────────────── */
+#screen .title .row{display:flex;align-items:center;gap:28px}
+#screen .logo{flex:1;min-width:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+/* 앰버 픽셀 열차 — 창 두 칸 + 차체. box-shadow 로 찍은 도트라 이미지가 없다 */
+#screen .train{width:26px;height:20px;flex:none;background:var(--led-amber);
+  border-radius:3px 3px 1px 1px;
+  box-shadow:inset 0 0 0 3px var(--panel),inset 0 -7px 0 3px var(--led-amber),
+    inset 7px 0 0 3px var(--panel),inset -7px 0 0 3px var(--panel)}
+#screen .logo .ko{font-family:var(--sans);font-size:clamp(30px,4.4vw,52px);
+  font-weight:800;letter-spacing:-.02em;line-height:1;display:inline-flex;gap:.22em}
+#screen .logo em{font-style:normal;color:var(--led-white)}
+#screen .logo u{text-decoration:none;color:var(--led-amber)}
+/* 속도선 — 제목 뒤에 짧게 셋. 길면 장식이 되고 짧으면 잔상이 된다 */
+#screen .speed{display:inline-flex;flex-direction:column;gap:4px;flex:none}
+#screen .speed i{display:block;height:3px;background:var(--led-amber);opacity:.85}
+#screen .speed i:nth-child(1){width:22px}
+#screen .speed i:nth-child(2){width:32px;opacity:.55}
+#screen .speed i:nth-child(3){width:14px;opacity:.35}
+#screen .logo small{width:100%;font-size:10px;letter-spacing:.34em;color:var(--led-dim)}
+
+/* 우측 — 진짜 도착 안내판처럼 동작한다 */
+#screen .arrive{flex:none;min-width:224px;border-left:1px solid #24242a;padding-left:22px}
+#screen .dir{display:flex;align-items:center;gap:8px;font-size:14px;
+  color:var(--led-amber);letter-spacing:.08em;margin-bottom:10px}
+#screen .line2{display:grid;place-items:center;width:22px;height:22px;flex:none;
+  border-radius:50%;background:var(--line2);color:#04160A;
+  font-family:var(--sans);font-size:14px;font-weight:800;line-height:1}
+#screen .arrive dl{display:flex;justify-content:space-between;gap:14px;margin:0 0 5px;
+  font-size:13px;letter-spacing:.04em}
+#screen .arrive dt{color:var(--led-dim)}
+#screen .arrive dd{margin:0;color:var(--led-amber)}
+#screen .arrive dd.soon{color:var(--led-white)}
+
+/* 주 동작은 하나뿐이다. 버튼이 아니라 **판에 뜬 문구**라 테두리도 배경도 없다 */
+#screen .cta{margin-top:18px;text-align:center;font-size:15px;letter-spacing:.24em;
+  color:var(--led-amber)}
+
+/* ─────────────── 하단 안내 문구 줄 ─────────────── */
+/* 실물 전광판이 맨 아래에 문구를 흘리는 자리. 카드를 안 만들면서 나머지 정보를
+   다 담는 곳이 여기뿐이다 — 조작법 · 플레이 횟수 · 시드 · 엔딩 대사가 전부 여기로 온다. */
+#screen .ticker{position:relative;margin-top:7px;background:var(--panel);border-radius:2px;
+  padding:8px 14px;overflow:hidden;white-space:nowrap;
+  display:flex;align-items:center;gap:12px}
+#screen .ticker>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  font-size:12px;letter-spacing:.08em;color:var(--led-amber)}
+#screen .ticker>span::before{content:'▶ ';color:var(--led-dim)}
+
+/* ─────────────── 엔딩 ─────────────── */
+#screen .head{display:flex;justify-content:space-between;align-items:center;
+  font-size:12px;letter-spacing:.16em;color:var(--led-dim);
+  border-bottom:1px solid #24242a;padding-bottom:9px;margin-bottom:14px}
+/* 원과 방면은 **한 줄**이다. inline 으로 두었더니 원이 제 줄을 차지해 접혔다 */
+#screen .head>span{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+#screen .body{display:flex;align-items:center;gap:20px}
+#screen .name{flex:1;min-width:0;font-family:var(--sans);font-weight:800;
+  font-size:clamp(22px,3.2vw,34px);letter-spacing:-.02em;color:var(--led-white)}
+#screen .verdict{flex:none;text-align:center;padding:0 20px;
+  border-left:1px solid #24242a;border-right:1px solid #24242a}
+#screen .verdict b{display:block;font-family:var(--sans);font-size:clamp(26px,3.6vw,40px);
+  font-weight:800;letter-spacing:.06em}
+#screen .verdict small{display:block;margin-top:2px;font-size:10px;letter-spacing:.2em;
+  color:var(--led-dim)}
+#screen .metrics{flex:1.6;display:flex;gap:24px}
+#screen .metrics>div{flex:1;min-width:0}
+#screen .metrics h4{margin:0 0 6px;font-size:10px;font-weight:400;letter-spacing:.2em;
+  color:var(--led-dim)}
+#screen .metrics dl{display:flex;justify-content:space-between;gap:12px;margin:0 0 3px;
+  font-size:12px;letter-spacing:.04em}
+#screen .metrics dt{color:var(--led-dim)}
+#screen .metrics dd{margin:0;color:var(--led-amber)}
+
+/* 판정 램프 — 톤이 바꾸는 것은 이 색 하나뿐이다 */
+#screen.success .verdict b{color:var(--led-green)}
+#screen.fail .verdict b{color:var(--led-red)}
+#screen.hidden .verdict b{color:var(--warn)}
+#screen.hidden .name{color:var(--warn)}
+#screen.fail .ticker>span{color:var(--led-red)}
+
+/* NEW — 흰 판 위 유일한 반전 요소. **깜빡인다.**
+   타이틀에서 걷어낸 깜빡임과 다른 점: 실물 전광판이 원래 이렇게 알린다. */
+#screen .new{flex:none;background:var(--warn);color:#141414;font-size:10px;
+  padding:2px 7px;letter-spacing:.16em;animation:blink 1.1s steps(2,start) infinite}
+@keyframes blink{50%{opacity:.25}}
+
+/* 판 **밖**이라 뒤가 3D 씬이다. 판 안과 같은 밝기로 두면 그대로 묻힌다 */
+#screen .keys{margin-top:13px;font-family:var(--mono);font-size:12px;letter-spacing:.2em;
+  color:var(--led-amber);background:rgba(8,8,10,.72);padding:5px 12px;border-radius:2px}
+
 #load{position:absolute;inset:0;display:grid;place-items:center;background:#07070A;
   font-family:var(--mono);font-size:11px;letter-spacing:.3em;color:#77766F}
 

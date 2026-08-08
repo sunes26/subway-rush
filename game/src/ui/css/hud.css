@@ -18,6 +18,10 @@
 
 /* ─────────────── 공통 레이어 ─────────────── */
 #hud{position:absolute;inset:0;font-family:var(--sans);user-select:none}
+/* 타이틀·엔딩에서는 통째로 사라진다 (`ui/hud.ts sync()` 가 붙인다).
+   `visibility` 가 아니라 `display` 인 이유: 숨은 위젯이 레이아웃·히트영역을
+   남기면 그 위에 뜬 화면의 클릭이 먹힌다. */
+#hud.off{display:none}
 
 /* Figma 패널 — 반투명 검정 · 실낱 테두리 · 깊은 그림자. 모든 위젯이 이 한 규칙을 쓴다 */
 .hud-panel{background:var(--panel);border:1px solid var(--panel-line);

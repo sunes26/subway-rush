@@ -64,7 +64,7 @@ const cardHtml = (save: SaveData): string => {
       return `<li class="cell got ${e.tone}">
         <b>${TONE_MARK[e.tone]} ${e.title}</b>
         <i>${e.id}</i>
-        <em>“${e.line}”</em>
+        <em>“${e.lines[0]}”</em>
         <u>${rec.seen}회 · ${best}</u>
       </li>`
     })

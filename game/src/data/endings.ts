@@ -13,8 +13,19 @@ export type EndingDef = Readonly<{
   id: EndingId
   priority: number
   title: string
-  /** GDD 부록 B — 엔딩별 마지막 대사 */
-  line: string
+  /**
+   * 엔딩별 마지막 대사 **풀**. 시드로 하나를 고른다(`pickLine`).
+   *
+   * 예전엔 한 줄 고정이었다. 그런데 fallback 인 E-06 은 한 사람이 열 번도 보는
+   * 엔딩이라, 열 번 다 같은 문장이 뜨면 "또 이거"가 되어 여운이 안 남는다.
+   *
+   * ★ **첫 항목은 GDD 부록 B 의 정본이다.** 도감(`ui/collection.ts`)은 이 칸만
+   *   쓴다 — 대표 문구가 판마다 바뀌면 도감이 목록 구실을 못 한다.
+   *
+   * 톤은 **짧고 건조한 관찰**로 통일한다. 감상을 말하지 않고 본 것만 적으면
+   * 오글거리지 않고, GDD §11 의 "조롱 금지"도 저절로 지켜진다.
+   */
+  lines: readonly string[]
   /** 실패 계열은 힌트를 1줄 준다. 조롱 금지 (GDD §11) */
   hint?: string
   tone: 'success' | 'fail' | 'hidden'
@@ -72,7 +83,11 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-05',
     priority: 100,
     title: '지하철 마스터',
-    line: '이 역은, 내가 제일 잘 안다.',
+    lines: [
+      '이 역은, 내가 제일 잘 안다.',
+      '눈 감고도 갈 수 있다.',
+      '환승 통로 길이까지 안다.',
+    ],
     tone: 'hidden',
     when: (s) =>
       s.boarded &&
@@ -88,7 +103,11 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-14',
     priority: 90,
     title: '동전 부자',
-    line: '오늘은 커피도 한 잔 사자.',
+    lines: [
+      '오늘은 커피도 한 잔 사자.',
+      '주머니가 무겁다.',
+      '자판기 세 대를 다 기억한다.',
+    ],
     tone: 'hidden',
     // GDD §9.4 발췌의 `coinsEarned>=3000` 그대로. 자판기 3대를 다 긁어야 도달한다
     when: (s) => s.boarded && s.tally.coinsEarned >= 3000,
@@ -101,7 +120,11 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-12',
     priority: 85,
     title: '오늘도 평화로운 역',
-    line: '가끔은, 늦어도 괜찮다.',
+    lines: [
+      '가끔은, 늦어도 괜찮다.',
+      '역무원이 급행을 알려 줬다.',
+      '아무도 손해 보지 않았다.',
+    ],
     tone: 'hidden',
     when: (s) =>
       !s.boarded &&
@@ -113,7 +136,10 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-11',
     priority: 84,
     title: '에스컬레이터 참사',
-    line: '…뒤를 돌아보지 말자.',
+    lines: [
+      '…뒤를 돌아보지 말자.',
+      '아래쪽이 조용해졌다.',
+    ],
     hint: '우산은 길을 여는 물건이지 미는 물건이 아니다.',
     tone: 'fail',
     // GDD §9.4 "우산으로 인파 밀기 3회 이상". 즉사 2종 중 하나 — 명백한 고의 행동이다
@@ -128,7 +154,10 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-09',
     priority: 83,
     title: '부정승차 적발',
-    line: '…과태료가 서른 배랍니다.',
+    lines: [
+      '…과태료가 서른 배랍니다.',
+      '역무실 의자가 딱딱하다.',
+    ],
     hint: '비상문은 열려 있어도 요금은 따로다. 잔액이 있으면 자동으로 낸다.',
     tone: 'fail',
     when: (s) => s.flags.includes('BUSTED'),
@@ -137,7 +166,11 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-10',
     priority: 80,
     title: '양심 파산',
-    line: '다들 왜 이렇게 쳐다보지.',
+    lines: [
+      '다들 왜 이렇게 쳐다보지.',
+      '아무도 옆에 안 선다.',
+      '손잡이가 유난히 멀다.',
+    ],
     hint: '훔치면 빠르다. 빠른 만큼 뒤에서 따라온다.',
     tone: 'fail',
     // 효자손 절도(−3) 단독으로도 도달한다 (GDD §6.2).
@@ -148,7 +181,10 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-13',
     priority: 70,
     title: '해방',
-    line: '이건 이거대로 승리다.',
+    lines: [
+      '이건 이거대로 승리다.',
+      '열차는 갔고, 나는 개운하다.',
+    ],
     tone: 'hidden',
     // 열차는 갔지만 인간은 자유로워졌다 — 탑승했으면 이 엔딩이 아니다
     when: (s) => !s.boarded && s.flags.includes('TOILET_USED'),
@@ -157,7 +193,11 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-08',
     priority: 60,
     title: '반대편 탑승',
-    line: '…어? 여기 어디지?',
+    lines: [
+      '…어? 여기 어디지?',
+      '창밖 역명이 낯설다.',
+      '세 정거장을 더 갔다.',
+    ],
     hint: '환승 통로는 건너가면 반대 방향이다. 3정거장 뒤에 깨닫는다.',
     tone: 'fail',
     when: (s) => s.boarded && s.flags.includes('OPPOSITE_SIDE'),
@@ -166,7 +206,11 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-03',
     priority: 50,
     title: '앉아서 간다',
-    line: '오늘 하루는 잘 풀릴 것 같다.',
+    lines: [
+      '오늘 하루는 잘 풀릴 것 같다.',
+      '창밖이 잘 보인다.',
+      '두 정거장은 눈 감아도 된다.',
+    ],
     tone: 'success',
     // "승차줄 1번" — 가장 앞 대기줄(3-1)에서 탔는가. 문 위치로 판정한다
     when: (s) => s.boarded && s.timeLeftMs >= 45_000 && boardedAtFirstQueue(s),
@@ -176,7 +220,11 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-04',
     priority: 40,
     title: '문틈 낑김',
-    line: '가방이… 가방이 안 빠진다.',
+    lines: [
+      '가방이… 가방이 안 빠진다.',
+      '문이 두 번 열렸다 닫혔다.',
+      '옆 사람이 못 본 척해 줬다.',
+    ],
     tone: 'success',
     when: (s) => s.boarded && s.timeLeftMs <= 1000,
   },
@@ -184,7 +232,12 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-02',
     priority: 30,
     title: '여유로운 출근',
-    line: '오늘은 좀 이르다.',
+    lines: [
+      '오늘은 좀 이르다.',
+      '숨 고를 시간이 있었다.',
+      '자리는 없지만 붐비지도 않는다.',
+      '평소보다 한 대 빠르다.',
+    ],
     tone: 'success',
     when: (s) => s.boarded && s.timeLeftMs >= 30_000,
   },
@@ -192,7 +245,12 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-01',
     priority: 10,
     title: '아슬아슬 탑승',
-    line: '…겨우 탔다.',
+    lines: [
+      '…겨우 탔다.',
+      '숨이 안 쉬어진다.',
+      '문이 등을 밀고 닫혔다.',
+      '아직 심장이 뛴다.',
+    ],
     tone: 'success',
     when: (s) => s.boarded,
   },
@@ -200,7 +258,12 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-07',
     priority: 5,
     title: '지각 확정',
-    line: '오늘은 아무래도 글렀다.',
+    lines: [
+      '오늘은 아무래도 글렀다.',
+      '전화를 먼저 걸어야 한다.',
+      '변명은 가는 길에 생각하자.',
+      '시계를 안 봐도 안다.',
+    ],
     hint: '급할수록 정직한 쪽이 빠르다. 실측으로 19초 차이가 난다.',
     tone: 'fail',
     // E-06(온화한 실패)과 갈리는 지점은 **양심 하나**다. GDD §9.4
@@ -219,7 +282,11 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-15',
     priority: 4,
     title: '이걸 누가 먹어',
-    line: '"이놈아, 내가 이런 걸 먹게 생겼냐?"',
+    lines: [
+      '"이놈아, 내가 이런 걸 먹게 생겼냐?"',
+      '봉지째 돌려받았다.',
+      '"내가 이 나이에 이런 걸 먹나."',
+    ],
     hint: '벤치 근처 바닥을 살펴보면 뭘 드셨는지 알 수 있다.',
     tone: 'fail',
     when: () => false,
@@ -228,7 +295,11 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-16',
     priority: 3,
     title: '딱!',
-    line: '눈앞이 하얘졌다.',
+    lines: [
+      '눈앞이 하얘졌다.',
+      '두 번째는 소리가 달랐다.',
+      '효자손이 손에서 떨어졌다.',
+    ],
     // "두 대까지"는 "두 대를 맞아도 괜찮다"로 잘못 읽힌다 — 실제로는 두 번째가 즉사다.
     // 살아남는 수는 "안 맞는다"뿐이라는 걸 분명히 한다.
     hint: '단소는 두 번째로 맞으면 그걸로 끝이다. 개찰구를 넘으면 멈추신다.',
@@ -239,7 +310,12 @@ export const ENDINGS: readonly EndingDef[] = [
     id: 'E-06',
     priority: 0,
     title: '다음 열차',
-    line: '5분 늦는다고 세상 안 무너져.',
+    lines: [
+      '5분 늦는다고 세상 안 무너져.',
+      '다음 열차 3분 후.',
+      '오늘은 여기까지.',
+      '승강장 의자가 비어 있다.',
+    ],
     tone: 'fail',
     when: () => true,          // fallback — 항상 매치
   },
@@ -263,3 +339,15 @@ export const resolveEnding = (s: GameState): EndingDef => {
 
 export const pickHint = (seed: number): string =>
   FAIL_HINTS[Math.abs(seed) % FAIL_HINTS.length] as string
+
+/**
+ * 이번 판의 대사. **시드로 고른다** — `pickHint` 와 같은 규칙이다.
+ *
+ * 시드 기반이라 같은 판을 다시 돌리면 같은 대사가 나온다(리플레이·e2e 가 안 깨진다).
+ * 재시작은 시드를 굴리므로(`main.ts restart()`) 다음 판에는 다른 줄이 뜬다.
+ *
+ * 힌트와 **다른 상수로 흩는다**(`^ 0x2f1d`). 같은 시드를 그대로 쓰면 대사와 힌트가
+ * 항상 같은 색인으로 묶여, 풀을 아무리 늘려도 조합이 늘지 않는다.
+ */
+export const pickLine = (e: EndingDef, seed: number): string =>
+  e.lines[Math.abs((seed ^ 0x2f1d) >>> 0) % e.lines.length] as string

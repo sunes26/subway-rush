@@ -9,12 +9,13 @@ import { describe, expect, it } from 'vitest'
 import { ENDINGS, resolveEnding } from '../../src/data/endings'
 import { QUEUE_MARKERS } from '../../src/data/world'
 import type { EndingId, FlagId, GameState, ItemId, TallyState } from '../../src/state/types'
+import { EMPTY_TALLY } from '../../src/state/reducer'
 import { start } from './_pilot'
 
 const at = (patch: Partial<GameState>): EndingId => resolveEnding(start(7, patch)).id
 
 const tally = (over: Partial<TallyState> = {}): TallyState =>
-  ({ coinsEarned: 0, itemsUsed: [], secrets: [], pushes: 0, ...over })
+  ({ ...EMPTY_TALLY, ...over })
 
 const FOUR_ITEMS: readonly ItemId[] = ['I-01', 'I-06', 'I-09', 'I-13']
 

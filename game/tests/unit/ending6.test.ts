@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { ENDINGS, FAIL_HINTS, resolveEnding } from '../../src/data/endings'
 import { CHASE, TOTAL_TIME_MS } from '../../src/data/tuning'
 import { FLOOR } from '../../src/data/world'
+import { EMPTY_TALLY } from '../../src/state/reducer'
 import type { EndingId, GameState } from '../../src/state/types'
 import { holdFor, put, start, tap, wait, yawTo } from './_pilot'
 
@@ -45,7 +46,7 @@ describe('S12-1 엔딩 6종이 각각 재현된다', () => {
     const s = start(7, {
       boarded: true,
       timeLeftMs: 20_000,
-      tally: { coinsEarned: 3000, itemsUsed: [], secrets: [], pushes: 0 },
+      tally: { ...EMPTY_TALLY, coinsEarned: 3000 },
     })
     expect(resolveEnding(s).id).toBe('E-14')
   })
@@ -72,7 +73,7 @@ describe('S12-2~S12-3 우선순위', () => {
       boarded: true,
       timeLeftMs: 20_000,
       scores: { conscience: -5, style: 0, knowledge: 0 },
-      tally: { coinsEarned: 4500, itemsUsed: [], secrets: [], pushes: 0 },
+      tally: { ...EMPTY_TALLY, coinsEarned: 4500 },
     })
     expect(resolveEnding(s).id, 'E-14 priority 90 > E-10 80').toBe('E-14')
   })
@@ -163,9 +164,21 @@ describe('S12-4~S12-6 채점 축', () => {
 describe('S12-8 실패 엔딩의 톤 가드레일', () => {
   const MOCKING = /실패|바보|멍청|한심|무능|또|역시/
 
-  it('실패 계열 대사에 조롱 어휘가 없다', () => {
+  it('실패 계열 대사에 조롱 어휘가 없다 — 풀 전체', () => {
+    // 대사가 풀이 된 뒤로 **모든 줄**을 본다. 한 줄만 검사하면 나머지가 무방비다
     for (const e of ENDINGS.filter((x) => x.tone === 'fail')) {
-      expect(e.line, `${e.id}: ${e.line}`).not.toMatch(MOCKING)
+      for (const line of e.lines) {
+        expect(line, `${e.id}: ${line}`).not.toMatch(MOCKING)
+      }
+    }
+  })
+
+  it('대사 풀은 비어 있지 않고 첫 칸이 정본이다', () => {
+    // 빈 풀이면 `pickLine` 이 undefined 를 낸다. 도감은 첫 칸만 읽으므로
+    // 그 자리가 GDD 부록 B 의 문구여야 목록이 판마다 흔들리지 않는다.
+    for (const e of ENDINGS) {
+      expect(e.lines.length, `${e.id} 대사 풀이 비었다`).toBeGreaterThan(0)
+      expect(e.lines[0], `${e.id} 정본이 빈 문자열`).toBeTruthy()
     }
   })
 
@@ -217,7 +230,7 @@ describe('S12 엔딩 판정이 시뮬 종료와 연결된다', () => {
       { timeLeftMs: -99_999 },
       { timeLeftMs: TOTAL_TIME_MS },
       { scores: { conscience: 5, style: 9, knowledge: 12 } },
-      { tally: { coinsEarned: 99_999, itemsUsed: [], secrets: [], pushes: 0 } },
+      { tally: { ...EMPTY_TALLY, coinsEarned: 99_999 } },
     ]
     for (const p of wild) expect(() => resolveEnding(start(7, p))).not.toThrow()
   })

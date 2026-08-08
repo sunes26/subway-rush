@@ -247,6 +247,21 @@ export type TallyState = Readonly<{
   secrets: readonly string[]
   /** 우산으로 인파를 밀어낸 횟수 (E-11 조건). GDD §9.4 "3회 이상" */
   pushes: number
+  /**
+   * 인파에 실제로 영향받은 누적 시간(ms) — 엔딩 "이번 판 · 혼잡도".
+   *
+   * ★ **채점축이 아니다.** 붐비는 데를 뚫고 온 게 잘한 건지 게임이 정한 적이 없다.
+   *   엔딩 화면에서 `이번 판` 블록에 놓여 판의 성격만 말한다(성적은 `내 성적` 블록).
+   *   시드마다 역류 시각(`surgeAtMs`)이 달라 판마다 값이 갈린다.
+   */
+  crowdMs: number
+  /**
+   * 판 전체 스태미너 최저 도달치(0~100) — 엔딩 "이번 판 · 체력".
+   *
+   * 엔딩 시점 값이 아니라 **최저치**인 이유: 끝나는 순간의 스태미너는 "마지막 10초에
+   * 뛰었는가"만 말한다. 잘 달린 사람이 오히려 높게 나오고, 그건 결과가 아니다.
+   */
+  staminaMin: number
 }>
 
 export type GameState = Readonly<{
@@ -367,6 +382,8 @@ export type Action =
 
   // ── P1 인파 (O-04) ──
   | { t: 'SURGE_FALL' }
+  /** 이번 스텝 동안 인파에 영향받았다 — `tally.crowdMs` 누적 (`systems/crowd.ts`) */
+  | { t: 'CROWD_NEAR'; dtMs: number }
 
   // ── P2 방해요소 ──
   /** 이동 봉쇄. 더 긴 쪽이 이긴다 (누적이 아니라 최대) */

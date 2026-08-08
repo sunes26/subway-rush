@@ -9,7 +9,7 @@ import { createSfx } from './audio/sfx'
 import { createInput, EMPTY_INPUT, type InputFrame } from './core/input'
 import { resolveSeed } from './core/rng'
 import { CAMERA, FPV, MAX_FRAME_MS, MAX_STEPS_PER_FRAME, MOVE, STEP_MS } from './data/tuning'
-import { FLOOR, GATES, GATE_BODY, GATE_LAMP_Z, ZONE_NAMES } from './data/world'
+import { FLOOR, GATES, GATE_BODY, GATE_LAMP_Z, TRAFFIC_LIGHT, ZONE_NAMES } from './data/world'
 import { byId, type InteractKind } from './data/interactables'
 import { CHAR_SCALE, loadActors, type Actors } from './render/actors'
 import { createCameraRig } from './render/camera-rig'
@@ -37,7 +37,7 @@ import {
   ambienceHzOf, announceOn, heartIntensity, heartbeatIntervalMs, heartbeatOn,
   stepCutoffOf, stepIntervalMs, stepKindOf,
 } from './audio/cues'
-import { recordEnding } from './core/save'
+import { loadSave, recordEnding } from './core/save'
 
 const BASE = import.meta.env.BASE_URL
 
@@ -260,6 +260,11 @@ const recordIfEnded = (s: GameState): void => {
   if (s.phase !== 'ended' || !s.endingId) { return }
   if (recordedEnding === s.endingId) return
   recordedEnding = s.endingId
+  /**
+   * "처음 본 엔딩인가" 는 **기록하기 전에** 읽어야 한다.
+   * `recordEnding` 뒤에 읽으면 방금 쓴 칸이 보여 항상 "이미 본 것"이 된다.
+   */
+  screens.setEndingMeta({ isNew: !loadSave().endings[s.endingId] })
   recordEnding(s.endingId, s.boarded ? Math.max(0, s.timeLeftMs) : 0)
 }
 
@@ -419,8 +424,22 @@ const frame = (now: number): void => {
 
   const dtSec = Math.min(dt, 100) / 1000
   cameraRig.update(state, sample, dtSec, renderPos)
-  stage.setMood(state.zone, dtSec)
-  station?.sync(state, dtSec, lightIsGreen(state), lightRemainSec(state))
+  /**
+   * 타이틀에서 배경을 살려 두는 시계.
+   *
+   * `ADVANCE` 가 `playing`/`boarding` 이 아니면 일찍 빠져나가므로(`reducer.ts`)
+   * 타이틀에서는 `lightMs` 가 얼어 있고, 그래서 신호등이 안 바뀌고 차들도 멈춘
+   * 신호를 보고 선다 — 정지 사진처럼 보이던 원인이다.
+   *
+   * ★ 고치는 자리는 그 게이트가 아니라 **여기**다. 게이트를 열면 타이틀에서
+   *   제한시간이 흐른다. 렌더에만 쓰는 값을 따로 만들어 넘기면 시뮬은 순수하게
+   *   남고 헤드리스 스윕·유닛 테스트도 그대로다.
+   */
+  const view = state.phase === 'title'
+    ? { ...state, lightMs: now % TRAFFIC_LIGHT.cycleMs }
+    : state
+  stage.setMood(view.zone, dtSec)
+  station?.sync(view, dtSec, lightIsGreen(view), lightRemainSec(view))
   // 흐름은 **경과 시간** 기준이다. dt 누적으로 굴리면 프레임 흔들림이 그대로 위상 지터가 된다
   guideArrows.update(now / 1000, renderPos)
   // 보행 신호가 녹색이면 횡단보도를 지나는 이면도로 차가 선다(`cars.ts` 교차로 규약)
@@ -428,7 +447,7 @@ const frame = (now: number): void => {
     // 지하에서는 통째로 끈다. 안 그러면 승강장에서도 차 8콜 · 38 k 삼각형이 얹힌다
     // (실측: 차를 넣자 Z2~Z5 가 전부 같이 늘었다 — 존 밖인데 계속 그리고 있었다).
     traffic.group.visible = renderPos.z > -3
-    traffic.update(dtSec, lightIsGreen(state), lightRemainSec(state))
+    traffic.update(dtSec, lightIsGreen(view), lightRemainSec(view))
     /**
      * 차에 치이면 스폰으로. 적신호 차단벽을 걷어낸 대신 들어온 규칙이다.
      *
