@@ -33,6 +33,7 @@ import { createCollection } from './ui/collection'
 import { createIntro } from './ui/intro'
 import { actorAt, busDx, DOORS_MS, INTRO_MS, poseAt } from './render/intro'
 import { buildBusInterior, type BusInterior } from './render/bus-interior'
+import { makeSitRig, type SitAxis, type SitRig } from './render/sit-pose'
 import { createSettings } from './ui/settings'
 import { RES_SCALES, type Settings } from './core/settings'
 import { createAmbience } from './audio/ambience'
@@ -289,6 +290,8 @@ let introAt: number | null = null
 let introHold: number | null = null
 /** 지금 인트로의 **버스 안** 구간인가 — 차량 렌더를 끊는 데 쓴다 */
 let introInBus = false
+/** 단계별 눈 검사(QA)용 자유 카메라. `null` 이면 평소대로 릭이 카메라를 몬다 */
+let freeCamAt: { pos: [number, number, number]; look: [number, number, number] } | null = null
 
 /**
  * 버스 실내 — 인트로에만 존재한다.
@@ -301,6 +304,13 @@ let introInBus = false
  * 저절로 투명해지므로, 우리가 만들 것은 **안에서 보이는 것들**뿐이다.
  */
 let busIn: BusInterior | null = null
+/**
+ * 착석 포즈. 리그가 로드된 뒤 한 번 만든다 — 본을 이름으로 찾는 작업이라
+ * 매 프레임 할 일이 아니다.
+ */
+let sitRig: SitRig | null = null
+/** 접히는 축 — 리그마다 다르다. `?sitaxis=z` 로 바꿔 가며 실측한다 */
+let sitAxis: SitAxis = /[?&]sitaxis=z/.test(location.search) ? 'z' : 'x'
 
 const startIntro = (): void => {
   introAt = performance.now()
@@ -509,7 +519,14 @@ const frame = (now: number): void => {
    * 좌표 변환은 `camera-rig.ts` 의 1인칭 분기와 **글자 그대로 같은 식**이다 —
    * 여기서 한 글자라도 달라지면 마지막 프레임이 어긋난다.
    */
-  if (introAt !== null) {
+  if (freeCamAt) {
+    const { pos, look } = freeCamAt
+    stage.camera.position.set(pos[0], pos[2], -pos[1])
+    stage.camera.lookAt(look[0], look[2], -look[1])
+    stage.camera.fov = FPV.fovDeg
+    stage.camera.near = 0.08
+    stage.camera.updateProjectionMatrix()
+  } else if (introAt !== null) {
     const t = introHold ?? now - introAt
     if (t >= INTRO_MS) { endIntro() } else {
       /**
@@ -534,6 +551,12 @@ const frame = (now: number): void => {
             moving: a.clip !== 'Idle', sprinting: a.clip === 'Run', grounded: true,
           },
         }, dtSec, at)
+        /**
+         * ★ `sync()` **뒤에** 접는다. `sync` 안의 `mixer.update()` 가 본 회전을
+         *   덮어쓰므로, 앞에서 부르면 아무 일도 안 한 것처럼 보인다.
+         */
+        if (player && !sitRig) sitRig = makeSitRig(player.root, sitAxis)
+        sitRig?.apply(a.sit)
       }
       if (busIn) {
         busIn.root.position.x = busDx(t)
@@ -770,6 +793,8 @@ declare global {
        * 샷의 프레임이 잡힐지 알 수 없다. **보고 싶은 시각을 직접 지정한다.**
        */
       seekIntro(tMs: number): void
+      /** 자유 카메라 — 단계별 눈 검사(QA)용. 월드 좌표로 세우고 한 점을 본다 */
+      freeCam(pos: [number, number, number], look: [number, number, number]): void
       /** 인트로 한 프레임의 실측값 — 카메라·주인공이 실제로 어디 있는가 (E2E) */
       introProbe(): {
         cam: [number, number, number]; actor: [number, number, number]
@@ -872,6 +897,9 @@ window.__game = {
       dist: Math.hypot(a.x - c.x, -a.y - c.z),
       visible: player?.root.visible ?? false,
     }
+  },
+  freeCam: (pos, look) => {
+    freeCamAt = { pos, look }
   },
   seekIntro: (tMs) => {
     if (introAt === null) startIntro()

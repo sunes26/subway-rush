@@ -42,7 +42,8 @@
 import { clamp01, easeInOut, easeOutCubic, lerp } from '../core/math'
 import { FPV } from '../data/tuning'
 import { SPAWN } from '../data/world'
-import { BUS } from './bus-interior'
+import { BUS, DOOR_X } from './bus-interior'
+import { SIT_DROP } from './sit-pose'
 
 /** 샷 경계(ms). 합이 6.6초 — 브리프의 6~8초 안이다 */
 export const SHOT = {
@@ -73,6 +74,9 @@ export const BUS_STOP_MS = 2900
 /** 문이 열리기 시작하는 시각 */
 export const DOORS_MS = BUS_STOP_MS + 300
 
+/** 자리에서 일어서는 시각 — 문이 열리고 나서다 */
+export const STAND_MS = DOORS_MS + 320
+
 /**
  * ■ 서쪽 끝이 이 연출의 진짜 제약이다
  *
@@ -80,19 +84,28 @@ export const DOORS_MS = BUS_STOP_MS + 300
  * 처음엔 버스를 −86 에서 출발시켰는데 **지도 밖 허공**이었다 — 실측 스크린샷에서
  * 지면이 뚝 끊기고 그 아래로 하늘이 보였다. 세계가 공중에 뜬 섬처럼 보인다.
  *
- * 그래서 접근 거리는 3.5m 뿐이다. 이동만으로는 속도가 안 나온다. 대신 정류장에
+ * 그래서 접근 거리는 1.5m 뿐이다. 이동만으로는 속도가 안 나온다. 대신 정류장에
  * **붙는 마지막 몇 미터**를 그리는 쪽으로 방향을 바꿨다 — 이야기도 "버스가
  * 지하철역에 거의 도착했을 때"이므로 이게 맞는 그림이다. 모자란 속도감은
  * `busShake`(노면 진동)와 `brakeDip`(제동 쏠림), 그리고 창틀 세로살이 만든다.
  */
-const APPROACH_M = 2.4
+const APPROACH_M = 1.5
 
-/** 서 있는 자리 — 수직봉 옆, 뒷문에서 한 걸음 */
-const STAND = { x: -59.6, y: 20.5 } as const
+/**
+ * 앉은 자리 — **북측(연석 쪽) 1인석**. 좌석 배열에서 나온 자리다.
+ *
+ * 열은 `IN.xW + 0.75` 에서 0.80m 간격이므로 −62.08 이 실제 좌석 중심이고,
+ * 북측 1인석의 중심 y 는 21.22 다. 카메라에서 고른 자리가 아니라 **좌석이 있는
+ * 자리**다 — 브리프의 순서(좌석 → 착석 → 휴대폰 → 카메라)를 그대로 따랐다.
+ * 창(북)이 등 뒤에 오고, 문(−60.3)이 1.8m 동쪽이라 일어나 두 걸음이면 닿는다.
+ */
+const SEAT = { x: -61.28, y: 21.22 } as const
+/** 좌면 높이 — `seatUnit` 의 좌판 윗면과 같은 값이어야 엉덩이가 얹힌다 */
+const SEAT_TOP = BUS.floor + 0.42
 /** 뒷문 안쪽 */
-const DOORWAY = { x: -61.0, y: 21.3 } as const
-/** 연석을 밟고 내려선 자리 */
-const CURB = { x: -60.9, y: 22.7 } as const
+const DOORWAY = { x: DOOR_X, y: 21.15 } as const
+/** 연석을 밟고 내려선 자리 — 문 바로 앞 인도 */
+const CURB = { x: DOOR_X + 0.1, y: 22.6 } as const
 
 /**
  * 문을 향해 도는 각(76°). **정북(π/2)까지 안 돈다** — 화면 왼쪽 절반이 서쪽,
@@ -129,7 +142,7 @@ export const busDx = (t: number): number =>
 /**
  * 노면 진동 — **이동거리로 못 낸 속도를 여기서 낸다.**
  *
- * 3.5m 를 2.9초에 지나는 것만으로는 "달리는 버스"가 안 된다. 그런데 실제로 버스
+ * 1.5m 를 2.9초에 지나는 것만으로는 "달리는 버스"가 안 된다. 그런데 실제로 버스
  * 안에서 속도를 느끼는 경로는 시야의 이동보다 **몸의 흔들림**이다. 두 개의 서로
  * 안 맞는 주파수를 겹쳐 규칙적인 진동이 되지 않게 하고, 제동과 **같은 곡선으로**
  * 잦아들게 한다 — 버스가 서면 흔들림도 같이 그친다. 그 동시성이 "이제 섰다"를
@@ -162,6 +175,8 @@ export type ActorState = Readonly<{
   /** 몸이 향하는 요 */
   facing: number
   clip: ClipHint
+  /** 착석 정도 — 1 앉음 · 0 서 있음. `sit-pose.ts` 가 받는다 */
+  sit: number
   /** 3인칭 구간에서만 보인다. 카메라가 머리에 닿으면 사라진다 */
   visible: boolean
 }>
@@ -179,23 +194,34 @@ export const actorAt = (tMs: number): ActorState => {
   const t = Math.max(0, Math.min(INTRO_MS, tMs))
   const dx = busDx(t)
 
-  // 문 쪽으로 걸어간다 → 내려선다
-  const toDoor = easeInOut(seg(t, 3500, 4280))
+  /**
+   * 일어선다 → 문으로 걷는다 → 내려선다.
+   *
+   * `sit` 이 1 에서 0 으로 가는 동안 엉덩이가 좌면에서 바닥으로 내려온다.
+   * 세 구간이 겹치지 않아야 "앉은 채로 걸어 나가는" 그림이 안 나온다.
+   */
+  const sit = 1 - seg(t, STAND_MS, STAND_MS + 380)
+  const toDoor = easeInOut(seg(t, STAND_MS + 320, 4280))
   const down = seg(t, 4280, SWAP_MS)
 
-  const inBusX = lerp(STAND.x, DOORWAY.x, toDoor) + dx
-  const inBusY = lerp(STAND.y, DOORWAY.y, toDoor)
+  const inBusX = lerp(SEAT.x, DOORWAY.x, toDoor) + dx
+  const inBusY = lerp(SEAT.y, DOORWAY.y, toDoor)
 
   return {
     x: lerp(inBusX, CURB.x, easeInOut(down)),
     y: lerp(inBusY, CURB.y, easeInOut(down)),
-    z: lerp(BUS.floor, 0, easeIn(down)),
     /**
-     * 창밖(북동)을 보다가 → 문(북)을 향한다. 몸의 방향이 시선을 따라가야
-     * "무엇을 보고 있는지"가 읽힌다.
+     * 앉아 있는 동안 리그 원점이 `SIT_DROP` 만큼 **내려간다.** 다리를 접는 것만으로는
+     * 골반이 안 내려와 좌석 위에 서 있게 된다(`sit-pose.ts` 참고).
      */
-    facing: lerp(lerp(1.95, DOOR_YAW, seg(t, 3300, 4000)), DOOR_YAW, down),
+    z: lerp(BUS.floor, 0, easeIn(down)) - sit * SIT_DROP,
+    /**
+     * 앉아서는 진행 방향(동, yaw 0)을 본다 — 좌석이 그쪽을 보고 있으니 당연하다.
+     * 일어나면 문(북)을 향해 돈다.
+     */
+    facing: lerp(lerp(0, DOOR_YAW, seg(t, STAND_MS, STAND_MS + 520)), DOOR_YAW, down),
     clip: down >= 1 ? 'Run' : toDoor > 0 ? 'Walk' : 'Idle',
+    sit,
     visible: t < SWAP_MS,
   }
 }
@@ -239,6 +265,8 @@ const SHOULDER = { e: -0.85, n: -0.56, up: -0.10 } as const
  *   눈에 띄었던 이유다. 주석의 숫자보다 잰 숫자가 먼저다.
  */
 const AIM_H = 1.15
+/** 앉아 있을 때의 겨냥점 — 좌면 위 몸통 */
+const AIM_H_SIT = 0.72
 
 export const poseAt = (tMs: number): IntroPose => {
   const t = Math.max(0, Math.min(INTRO_MS, tMs))
@@ -247,7 +275,7 @@ export const poseAt = (tMs: number): IntroPose => {
   if (t >= SWAP_MS) {
     const u = seg(t, SWAP_MS, INTRO_MS)
     /**
-     * 거리는 3.5m 뿐이다. **속도감은 거리가 아니라 화각과 각속도로 만든다** —
+     * 거리는 2.9m 뿐이다. **속도감은 거리가 아니라 화각과 각속도로 만든다** —
      * 실제로 이 게임의 1인칭도 스프린트에서 화각만 8° 넓혀 속도를 낸다(`FPV.sprintFov`).
      * 여기서는 그보다 크게 열었다가 마지막에 정확히 기본값으로 닫는다. 닫히지 않으면
      * 조작권이 넘어온 순간 화각이 한 번 튄다.
@@ -281,7 +309,7 @@ export const poseAt = (tMs: number): IntroPose => {
   const shake = busShake(t)
   const camX = a.x + SHOULDER.e * k
   const camY = a.y + SHOULDER.n * k
-  const aimZ = a.z + AIM_H
+  const aimZ = a.z + lerp(AIM_H, SEAT_TOP - BUS.floor + AIM_H_SIT, a.sit)
   const camZ = lerp(a.z + FPV.eyeHeight, aimZ + SHOULDER.up, k)
 
   /**

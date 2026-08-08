@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest'
 import { FPV } from '../../src/data/tuning'
 import { SLABS, SPAWN } from '../../src/data/world'
 import { BUS } from '../../src/render/bus-interior'
+import { SIT_DROP } from '../../src/render/sit-pose'
 import {
   actorAt, busDx, BUS_STOP_MS, FINAL_POSE, INTRO_MS, poseAt, SHOT, SWAP_MS,
 } from '../../src/render/intro'
@@ -167,8 +168,13 @@ describe('인트로 — 연출 규칙', () => {
     expect(poseAt(800).fov).toBeCloseTo(FPV.fovDeg, 6)
   })
 
-  it('주인공은 버스 바닥에 섰다가 인도로 내려선다', () => {
-    expect(actorAt(0).z).toBeCloseTo(BUS.floor, 6)
+  it('앉아 있다가 인도로 내려선다', () => {
+    /**
+     * 앉은 동안 리그 원점은 바닥보다 `SIT_DROP` 만큼 **아래**다. 다리를 접어도
+     * 골반은 안 내려오므로 리그를 통째로 내려야 엉덩이가 좌면에 얹힌다.
+     */
+    expect(actorAt(0).sit).toBe(1)
+    expect(actorAt(0).z).toBeCloseTo(BUS.floor - SIT_DROP, 6)
     expect(actorAt(SWAP_MS).z).toBeCloseTo(0, 6)
     // 내려서는 동안 위로 올라가면 안 된다
     let prev = Infinity
