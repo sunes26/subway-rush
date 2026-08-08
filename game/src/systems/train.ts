@@ -8,7 +8,7 @@
 import { clamp01, easeInOut, easeOutCubic, lerp, rectContains } from '../core/math'
 import { TRAIN } from '../data/tuning'
 import {
-  DOOR_XS, DOOR_XS_OPP, FLOOR, PLATFORM, PSD_Y, PSD_Y_OPP,
+  CABIN_Y1, DOOR_XS, DOOR_XS_OPP, FLOOR, PLATFORM, PSD_Y, PSD_Y_OPP,
   TRAIN_TRIGGER_ZONE, TRAIN_TRIGGER_ZONE_OPP, Y_OFFSET_OPP, type Solid,
 } from '../data/world'
 import type { Action, GameState, TrainStatus } from '../state/types'
@@ -29,16 +29,49 @@ const STOP_X = PLATFORM.xMin
  * 닫히기 시작하는 순간"은 애초에 같은 지점을 가리키도록 설계돼 있었다. 트리거는 그
  * 지점 앞의 대기만 없애는 것이지, 그 지점 자체를 옮기지 않는다.
  *
- * `Math.min(arriving, stopMs)` 로 트리거 시계가 stopMs 를 넘어가지 못하게 막고,
- * 바깥 `Math.max(elapsedMs, …)` 가 그 값과 실제 경과 중 **더 진행된 쪽**을 택한다 —
- * 그래서 문이 열린 뒤(실제 elapsedMs가 stopMs를 넘어서는 순간부터)는 자동으로
- * elapsedMs 가 이어받는다.
+ * 상한은 `Math.min(arriving, …)` 이 막고, 바깥 `Math.max(elapsedMs, …)` 가 그 값과 실제
+ * 경과 중 **더 진행된 쪽**을 택한다 — 그래서 문이 다 열린 뒤로는 자동으로 elapsedMs 가
+ * 이어받고, 닫힘·출발은 원래 시각 그대로다.
+ *
+ * ⚠ 상한이 `stopMs` 였다 — **그러면 문이 영영 안 열린다.** `stopMs` 는 `trainAt` 에서
+ * 문이 열리기 **시작**하는 지점이라 `doorProgress` 가 정확히 0 이다. 트리거를 밟으면
+ * 시계가 거기 그대로 고정돼, 열차는 승강장에 서 있고 상태도 'open' 인데 문만 0 에 박혀
+ * 실제 `elapsedMs` 가 172 초를 넘길 때까지(트리거 시점에 따라 100 초 넘게) 안 열렸다.
+ * 상한은 문이 **다 열리는** 시각(`stopMs + doorAnimMs`)이어야 한다. 그래야 트리거 이후
+ * 개문 애니메이션이 끝까지 돌고, 그 뒤에 원래 3분 예산이 이어받는다.
  */
+/**
+ * 탑승 뒤의 시계 — **탔으면 곧 떠난다.**
+ *
+ * 트리거로 열차가 앞당겨 오면 탑승도 앞당겨진다(70초쯤). 출발 시각(`departMs`)은
+ * 원래 3분 예산 그대로라, 그냥 두면 객실 안에서 110초를 기다리다 엔딩이 뜬다.
+ * 그래서 **탄 순간부터** 닫힘 구간(`closeStartMs`)을 향해 시계를 민다 —
+ * 문이 잠깐 더 열려 있다가(`boardDwellMs`) 닫히고, 출발하면 `tick` 이 엔딩을 낸다.
+ *
+ * `Math.max(natural, …)` 로 감싸는 게 핵심이다. 3분을 다 쓰고 아슬아슬하게 탄
+ * 경우(E-01)에는 자연 시계가 이미 더 앞서 있으므로 **아무것도 안 바뀐다** —
+ * 시계가 뒤로 가면 닫히던 문이 도로 열리는 그림이 나온다.
+ *
+ * @param natural 탑승을 고려하지 않은 시계
+ * @param mine 이 편성에 탔는가 (본편/반대 방면을 가른다)
+ */
+const withBoarding = (s: GameState, natural: number, mine: boolean): number => {
+  if (!mine || s.boardedAtMs === null) return natural
+  const sinceBoard = s.elapsedMs - s.boardedAtMs
+  return Math.max(natural, TRAIN.closeStartMs - TRAIN.boardDwellMs + sinceBoard)
+}
+
 export const trainClock = (s: GameState): number => {
-  if (s.trainTriggerMs === null) return s.elapsedMs
-  const sinceTrigger = s.elapsedMs - s.trainTriggerMs
-  const arriving = TRAIN.approachStartMs - TRAIN.triggerLeadMs + sinceTrigger
-  return Math.max(s.elapsedMs, Math.min(arriving, TRAIN.stopMs))
+  const base = s.trainTriggerMs === null
+    ? s.elapsedMs
+    : Math.max(
+        s.elapsedMs,
+        Math.min(
+          TRAIN.approachStartMs - TRAIN.triggerLeadMs + (s.elapsedMs - s.trainTriggerMs),
+          TRAIN.stopMs + TRAIN.doorAnimMs,
+        ),
+      )
+  return withBoarding(s, base, s.boarded && !s.boardedTrain2)
 }
 
 /**
@@ -71,10 +104,16 @@ export const trainTriggerSystem = (s: GameState): Action[] => {
 // STOP_X·DOOR_XS·nearestDoorX는 두 플랫폼이 x는 같고 y만 갈리므로 그대로 재사용한다.
 
 export const trainClock2 = (s: GameState): number => {
-  if (s.trainTriggerMs2 === null) return s.elapsedMs
-  const sinceTrigger = s.elapsedMs - s.trainTriggerMs2
-  const arriving = TRAIN.approachStartMs - TRAIN.triggerLeadMs + sinceTrigger
-  return Math.max(s.elapsedMs, Math.min(arriving, TRAIN.stopMs))
+  const base = s.trainTriggerMs2 === null
+    ? s.elapsedMs
+    : Math.max(
+        s.elapsedMs,
+        Math.min(
+          TRAIN.approachStartMs - TRAIN.triggerLeadMs + (s.elapsedMs - s.trainTriggerMs2),
+          TRAIN.stopMs + TRAIN.doorAnimMs,
+        ),
+      )
+  return withBoarding(s, base, s.boarded && s.boardedTrain2)
 }
 
 export const doorOpenElapsedMs2 = (s: GameState): number =>
@@ -145,27 +184,29 @@ export const nearestDoorX = (px: number): number => {
   return best
 }
 
-/** 탑승 의사 판정 최소 속도 (m/s). 문 앞에 그냥 서 있다가 빨려 들어가지 않게 한다. */
-const BOARD_INTENT_VY = 0.4
-
+/**
+ * 탑승 — **객실 안에 들어섰는가.**
+ *
+ * 예전 판정은 조건 세 개였다: 문 앞 y 범위(11.5~13.2) · 문 중심에서 ±0.8 · +y 속도 0.4 이상.
+ * 셋 다 "문틀 앞에서 탈 의사를 읽는" 장치였고, 그래서 플레이어는 문틀을 넘어 본 적이 없다 —
+ * 판정이 먼저 걸려 그 자리에서 얼었다. 이제 바닥·벽이 있으므로 **실제로 걸어 들어가게** 두고,
+ * 객실 안에 서 있는 것 자체를 탑승으로 본다.
+ *
+ * 보조 조건이 전부 필요 없어진다 —
+ *  · 문 정렬: 객실로 들어가는 길이 가동문뿐이다(그 외는 `PSD` 벽이 막는다)
+ *  · 속도: 문 앞에 서 있기만 해선 `cabinBoardY`(13.0)에 못 닿는다
+ *
+ * `boardedDoorX` 는 어느 문으로 탔는지의 기록일 뿐이라 가장 가까운 문으로 남긴다.
+ */
 export const trainSystem = (s: GameState): Action[] => {
   if (s.phase !== 'playing' || s.boarded) return []
-  const t = s.train
-  if (!doorsPassable(t)) return []
+  if (!doorsPassable(s.train)) return []
 
   const p = s.player.pos
   if (p.z > FLOOR.B2 + 1) return []
-  if (p.y < TRAIN.boardYMin || p.y > TRAIN.boardYMax) return []
+  if (p.y < TRAIN.cabinBoardY || p.y > CABIN_Y1) return []
 
-  const doorX = nearestDoorX(p.x)
-  if (Math.abs(p.x - doorX) > TRAIN.doorHalfWidth) return []
-
-  // 조건 ③ — 열차 쪽(+y)으로 실제 이동 중일 것.
-  // 입력 축(input.moveY)이 아니라 **월드 속도**를 본다 — 존마다 카메라 요가 달라서
-  // "W를 누른다"와 "열차 쪽으로 간다"가 같은 뜻이 아니기 때문이다.
-  if (s.player.vel.y < BOARD_INTENT_VY) return []
-
-  return [{ t: 'BOARD', doorX }]
+  return [{ t: 'BOARD', doorX: nearestDoorX(p.x) }]
 }
 
 /** 반대 방면 안전문 — PSD_Y_OPP 만 다르다 */
@@ -192,14 +233,10 @@ export const trainSystem2 = (s: GameState): Action[] => {
 
   const p = s.player.pos
   if (p.z > FLOOR.B2 + 1) return []
-  if (p.y < TRAIN.boardYMin + Y_OFFSET_OPP || p.y > TRAIN.boardYMax + Y_OFFSET_OPP) return []
-
-  const doorX = nearestDoorX(p.x)
-  if (Math.abs(p.x - doorX) > TRAIN.doorHalfWidth) return []
-  if (s.player.vel.y < BOARD_INTENT_VY) return []
+  if (p.y < TRAIN.cabinBoardY + Y_OFFSET_OPP || p.y > CABIN_Y1 + Y_OFFSET_OPP) return []
 
   return [
-    { t: 'BOARD', doorX, opp: true },
+    { t: 'BOARD', doorX: nearestDoorX(p.x), opp: true },
     { t: 'FLAG', id: 'OPPOSITE_SIDE', on: true },
   ]
 }

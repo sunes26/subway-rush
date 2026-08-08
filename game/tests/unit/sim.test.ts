@@ -5,8 +5,9 @@ import { FARE, GATE, SPEED, STAMINA, TOTAL_TIME_MS, TRAIN } from '../../src/data
 import { DOOR_XS, FLOOR, GATES, PAID_AREA_X } from '../../src/data/world'
 import { initialState, rollSeed } from '../../src/state/reducer'
 import type { GameState } from '../../src/state/types'
+import { isWalkable } from '../../src/systems/collision'
 import { hold, tick } from '../../src/systems/tick'
-import { doorsPassable, trainAt } from '../../src/systems/train'
+import { doorsPassable, trainAt, trainClock } from '../../src/systems/train'
 
 const STEP = 1000 / 60
 
@@ -284,6 +285,85 @@ describe('S5-4 열차 스케줄', () => {
       expect(trainAt(t)).toEqual(trainAt(t))
     }
   })
+
+  /**
+   * 위치 트리거로 열차를 앞당겼을 때 **문이 실제로 열리는가.**
+   *
+   * 회귀: `trainClock` 의 상한이 `stopMs` 였다. 그 지점은 `trainAt` 에서 문이 열리기
+   * **시작**하는 시각이라 `doorProgress === 0` 이다. 시계가 거기 고정돼 열차는 승강장에
+   * 서 있고 상태도 'open' 인데 문만 0 에 박혔고, 실제 `elapsedMs` 가 172 초를 넘길
+   * 때까지(1분에 트리거하면 107초 동안) 안 열렸다. 승강장에서는 "도착했는데 문이
+   * 안 열린다" 로 보인다 — 트리거 경로를 재는 테스트가 하나도 없어서 안 잡혔다.
+   */
+  describe('위치 트리거 — 앞당겨 도착해도 문은 열린다', () => {
+    const at = (elapsedMs: number, triggerMs = 60_000): GameState =>
+      ({ ...start(), elapsedMs, trainTriggerMs: triggerMs })
+
+    it('트리거 + 6초에 도착하고, + 7.2초에 완전 개방된다', () => {
+      const arrive = trainAt(trainClock(at(66_000)))
+      expect(arrive.state).toBe('open')
+      expect(arrive.x).toBe(78)
+      const opened = trainAt(trainClock(at(67_200)))
+      expect(opened.doorProgress).toBe(1)
+    })
+
+    it('개방 뒤 실제 시간이 따라잡을 때까지 열린 채로 유지된다', () => {
+      for (const e of [68_000, 90_000, 150_000, 171_999]) {
+        const t = trainAt(trainClock(at(e)))
+        expect(t.state, `elapsed=${e}`).toBe('open')
+        expect(t.doorProgress, `elapsed=${e}`).toBe(1)
+        expect(doorsPassable(t), `elapsed=${e}`).toBe(true)
+      }
+    })
+
+    it('닫힘·출발은 앞당기지 않는다 — 원래 3분 예산 그대로다', () => {
+      expect(trainAt(trainClock(at(TRAIN.closeStartMs - 100))).state).toBe('open')
+      expect(trainAt(trainClock(at(TRAIN.closeStartMs + 600))).state).toBe('closing')
+      expect(trainAt(trainClock(at(TRAIN.departMs + 100))).state).toBe('departed')
+    })
+
+    it('트리거 전에는 원래 스케줄 그대로다', () => {
+      expect(trainAt(trainClock({ ...start(), elapsedMs: 100_000 })).state).toBe('incoming')
+    })
+  })
+
+  /**
+   * 앞당겨 탄 뒤 출발까지 — 객실에서 110초 기다리지 않는다.
+   * 늦게 탄 경우(3분을 다 쓴 E-01)에는 시계가 뒤로 가면 안 된다.
+   */
+  describe('탑승 후 출발', () => {
+    const boarded = (elapsedMs: number, atMs: number): GameState => ({
+      ...start(), elapsedMs, trainTriggerMs: 60_000,
+      boarded: true, boardedAtMs: atMs, boardedTrain2: false, phase: 'boarding',
+    })
+
+    it('탄 뒤 1초까지는 문이 열려 있고, 1초를 넘기면 닫히기 시작한다', () => {
+      const at = 70_000
+      expect(trainAt(trainClock(boarded(at + 900, at))).state).toBe('open')
+      expect(trainAt(trainClock(boarded(at + 1_100, at))).state).toBe('closing')
+    })
+
+    it('70초에 타면 3.2초 뒤 출발한다', () => {
+      const at = 70_000
+      expect(trainAt(trainClock(boarded(at, at))).doorProgress).toBe(1)
+      expect(trainAt(trainClock(boarded(at + 1_300, at))).state).toBe('closing')
+      expect(trainAt(trainClock(boarded(at + 2_500, at))).state).toBe('closed')
+      expect(trainAt(trainClock(boarded(at + 3_300, at))).state).toBe('departed')
+    })
+
+    it('늦게 타면 시계가 뒤로 가지 않는다 — 원래 스케줄이 이긴다', () => {
+      const at = 179_500
+      expect(trainClock(boarded(at, at))).toBe(at)
+      expect(trainAt(trainClock(boarded(at, at))).state).toBe('open')
+      expect(trainAt(trainClock(boarded(181_500, at))).state).toBe('closed')
+    })
+
+    it('반대 방면에 탔으면 본편 열차 시계는 안 민다', () => {
+      const s = { ...boarded(70_000, 70_000), boardedTrain2: true }
+      expect(trainAt(trainClock(s)).state).toBe('open')
+      expect(trainAt(trainClock(s)).doorProgress).toBe(1)
+    })
+  })
 })
 
 describe('S5-5~8 탑승 판정', () => {
@@ -316,6 +396,34 @@ describe('S5-5~8 탑승 판정', () => {
   it('S5-8 +y 입력 없이 문 앞에 서 있어도 탑승하지 않는다', () => {
     const s = run(atDoor(DOOR_XS[4] as number, 11.9), hold({}, 120), NORTH)
     expect(s.boarded).toBe(false)
+  })
+
+  /**
+   * 디렉터 지시 — "열차 내부 안까지 들어갈 수 있도록".
+   *
+   * 예전 판정은 문 앞(y 11.5~)에서 +y 속도만 보면 성립했다. 그래서 플레이어가 문틀을
+   * 넘어 본 적이 없다 — 판정이 먼저 걸려 그 자리에서 얼었다. 이제 객실에 바닥
+   * (`SLABS Z5-CABIN`)과 테두리(`Z5-CABIN-N/W/E`)가 있고, 탑승은 **안에 들어서야** 성립한다.
+   */
+  describe('S5-9~11 객실 진입', () => {
+    it('문 앞에 멈춰 서 있으면 안 탄다 — 안까지 들어가야 한다', () => {
+      const s = run(atDoor(DOOR_XS[3] as number, 12.2), hold({}, 120), NORTH)
+      expect(s.boarded).toBe(false)
+    })
+
+    it('문을 지나 객실 안까지 실제로 걸어 들어간다', () => {
+      const s = run(atDoor(DOOR_XS[3] as number, 11.0), hold({ moveY: 1 }, 60), NORTH)
+      expect(s.player.pos.y, '객실 안').toBeGreaterThanOrEqual(TRAIN.cabinBoardY)
+      expect(s.boarded).toBe(true)
+    })
+
+    it('객실 바닥은 이어져 있고, 반대쪽 차체 밖은 밟을 데가 없다', () => {
+      const x = DOOR_XS[3] as number
+      expect(isWalkable(x, 12.2, FLOOR.B2), '문틀').toBe(true)
+      expect(isWalkable(x, 13.5, FLOOR.B2), '객실 한가운데').toBe(true)
+      expect(isWalkable(x, 15.3, FLOOR.B2), '반대쪽 벽 앞').toBe(true)
+      expect(isWalkable(x, 16.4, FLOOR.B2), '차체 밖 선로').toBe(false)
+    })
   })
 
   it('S5-1 에스컬레이터는 입력 없이도 B2로 내려간다', () => {

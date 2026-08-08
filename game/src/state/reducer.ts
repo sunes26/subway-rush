@@ -163,6 +163,7 @@ export const initialState = (seed: number, freeplay = false, allObstacles = fals
     lightMs: 0,
     boarded: false,
     boardedDoorX: null,
+    boardedAtMs: null,
     boardedTrain2: false,
     endingId: null,
     fx: [],
@@ -392,7 +393,11 @@ export const reducer = (s: GameState, a: Action): GameState => {
     case 'BOARD':
       return s.boarded
         ? s
-        : { ...s, boarded: true, boardedDoorX: a.doorX, boardedTrain2: !!a.opp, phase: 'boarding' }
+        : {
+            ...s,
+            boarded: true, boardedDoorX: a.doorX, boardedAtMs: s.elapsedMs,
+            boardedTrain2: !!a.opp, phase: 'boarding',
+          }
 
     case 'TRAIN_TRIGGER':
       return s.trainTriggerMs !== null ? s : { ...s, trainTriggerMs: s.elapsedMs }
