@@ -207,9 +207,19 @@ export const buildBusInterior = (): BusInterior => {
   // 통로 미끄럼 방지대 — 바닥이 한 장 판때기로 보이지 않게 결을 준다
   root.add(box(len, 0.012, 0.72, C.aisle, midX, f + 0.006, tz(20.49)))
   root.add(box(len, 0.05, wid, C.ceiling, midX, BUS.ceil + 0.025, tz(midY)))
-  // 천장 패널 이음선 두 줄
+  /**
+   * 천장 — 패널 이음선 두 줄 + **조명등**.
+   *
+   * 천장이 아무것도 없는 흰 판이면 실내가 통째로 비어 보인다. 실물 버스의
+   * 천장에는 반드시 형광등 띠가 있고, 그 하나만으로 "정돈된 공간"이 된다.
+   */
   for (const y of [20.15, 20.85]) {
     root.add(box(len, 0.02, 0.05, C.trim, midX, BUS.ceil - 0.01, tz(y)))
+  }
+  for (let lx = IN.xW + 1.1; lx < IN.xE - 0.8; lx += 2.6) {
+    const lamp = box(1.7, 0.05, 0.20, 0xfdfbf4, lx, BUS.ceil - 0.045, tz(20.50))
+    root.add(lamp)
+    root.add(box(1.85, 0.06, 0.28, C.ceiling, lx, BUS.ceil - 0.02, tz(20.50)))
   }
 
   /**

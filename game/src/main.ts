@@ -4,7 +4,7 @@
  * 시뮬은 고정 60Hz, 렌더는 가변. 프레임이 튀어도 물리와 밸런스가 튀지 않는다.
  */
 
-import { Frustum, Matrix4, type Object3D, Raycaster, Vector2, Vector3 } from 'three'
+import { Frustum, Matrix4, type Object3D, Quaternion, Raycaster, Vector2, Vector3 } from 'three'
 import { createSfx } from './audio/sfx'
 import { createInput, EMPTY_INPUT, type InputFrame } from './core/input'
 import { resolveSeed } from './core/rng'
@@ -34,7 +34,7 @@ import { createIntro } from './ui/intro'
 import { actorAt, busDx, DOORS_MS, INTRO_MS, poseAt, SHOT } from './render/intro'
 import { buildBusInterior, type BusInterior } from './render/bus-interior'
 import { buildWestRoad } from './render/west-road'
-import { makePoseRig, type PoseRig, type SitAxis } from './render/pose'
+import { makePoseRig, type PoseRig } from './render/pose'
 import { buildPhone, type Phone } from './render/phone'
 import { createSettings } from './ui/settings'
 import { RES_SCALES, type Settings } from './core/settings'
@@ -323,8 +323,6 @@ const busExterior = (): Object3D[] =>
 let poseRig: PoseRig | null = null
 /** 손에 쥔 휴대폰. 팔뚝 본에 매단다 */
 let phone: Phone | null = null
-/** 접히는 축 — 리그마다 다르다. `?sitaxis=z` 로 바꿔 가며 실측한다 */
-let sitAxis: SitAxis = /[?&]sitaxis=z/.test(location.search) ? 'z' : 'x'
 
 const startIntro = (): void => {
   introAt = performance.now()
@@ -575,7 +573,7 @@ const frame = (now: number): void => {
          * ★ `sync()` **뒤에** 접는다. `sync` 안의 `mixer.update()` 가 본 회전을
          *   덮어쓰므로, 앞에서 부르면 아무 일도 안 한 것처럼 보인다.
          */
-        if (player && !poseRig) poseRig = makePoseRig(player.root, sitAxis)
+        if (player && !poseRig) poseRig = makePoseRig(player.root)
         poseRig?.apply({ sit: a.sit, phone: a.phone })
         /**
          * 휴대폰은 **팔뚝 본의 자식**이다 — 포즈가 팔을 들면 같이 따라 올라간다.
@@ -939,11 +937,23 @@ window.__game = {
       arm: (() => {
         const out: Record<string, [number, number, number]> = {}
         const v = new Vector3()
-        for (const n of ['ShoulderR', 'UpperArmR', 'LowerArmR']) {
+        for (const n of ['ShoulderR', 'UpperArmR', 'LowerArmR', 'UpperArmL', 'LowerArmL',
+          'Chest', 'Spine', 'Hips']) {
           const o = player?.root.getObjectByName(n)
           if (o) { o.getWorldPosition(v); out[n] = [+v.x.toFixed(3), +v.y.toFixed(3), +v.z.toFixed(3)] }
         }
         if (phone) { phone.root.getWorldPosition(v); out.phone = [+v.x.toFixed(3), +v.y.toFixed(3), +v.z.toFixed(3)] }
+        // 위팔 본의 로컬 축이 월드에서 어디를 가리키는가 — 회전축을 고르는 근거
+        for (const bn of ['UpperArmR', 'UpperArmL', 'LowerArmR']) {
+          const b = player?.root.getObjectByName(bn)
+          if (!b) continue
+          const q = b.getWorldQuaternion(new Quaternion())
+          for (const [k, ax] of [['x', new Vector3(1, 0, 0)], ['y', new Vector3(0, 1, 0)],
+            ['z', new Vector3(0, 0, 1)]] as const) {
+            const d = ax.clone().applyQuaternion(q)
+            out[`${bn}.${k}`] = [+d.x.toFixed(3), +d.y.toFixed(3), +d.z.toFixed(3)]
+          }
+        }
         return out
       })(),
     }

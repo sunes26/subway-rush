@@ -7,28 +7,33 @@
  * JumpAir·JumpLand·Run·Slide·Sprint·Stumble·Walk 열한 종뿐). 처음엔 그것만 보고
  * "Blender 를 거쳐야 한다"고 판단했는데, **본을 열어 보니 그럴 필요가 없었다.**
  *
- *   Hips · Spine · Head · UpperArm.L/R · LowerArm.L/R · UpperLeg.L/R · LowerLeg.L/R
+ *   Root · Hips · Spine · Chest · Head · Shoulder{L,R} · UpperArm{L,R} ·
+ *   LowerArm{L,R} · UpperLeg{L,R} · LowerLeg{L,R} · Foot{L,R}
  *
- * 17개뿐이고 이름이 붙어 있다. 앉는다는 것은 결국 **넓적다리를 앞으로 90°,
- * 종아리를 아래로 90°** 접는 것이라 본 네 개면 끝난다. 클립이 없다는 사실과
- * 포즈를 만들 수 없다는 것은 다른 이야기였다.
+ * 17개뿐이고 이름이 붙어 있다. 앉는다는 것은 넓적다리를 앞으로, 종아리를 아래로
+ * 접는 것이고, 휴대폰을 보는 것은 위팔을 앞으로 들고 아래팔을 굽히는 것이다.
+ *
+ * ■ ★ 회전축을 **추측하면 안 된다**
+ *
+ * 한동안 팔을 로컬 X 축으로 돌렸다. 그런데 그 축은 팔을 **몸 뒤로** 보내는
+ * 방향이었다 — 실측 스크린샷에서 팔꿈치가 등 뒤로 빠져 어깨가 꺾인 것처럼 보였다.
+ *
+ * 각도를 이리저리 바꿔 보는 대신 축을 **쟀다.** 본이 월드에서 어느 쪽으로 뻗어
+ * 있는지(로컬 Y 의 월드 방향)를 읽고, 그것을 정면(동쪽)으로 밀어내는 회전축을
+ * 외적으로 구했다.
+ *
+ *   축 = (본이 뻗은 방향) × (정면)
+ *
+ * 그 값을 다시 본의 로컬 좌표로 옮긴 것이 아래 `axis` 다. 이 축으로 **양수**만큼
+ * 돌리면 팔은 반드시 앞으로 간다 — 부호를 헷갈릴 여지가 없다.
  *
  * ■ 적용 순서가 중요하다
  *
- * `AnimationMixer` 는 매 프레임 본의 회전을 **덮어쓴다.** 그러므로 이 함수는
- * 반드시 `mixer.update()`(= `player.sync()`) **뒤에** 불러야 한다. 앞에서 부르면
- * 아무 일도 안 일어난 것처럼 보인다.
- *
- * ■ 섞는다
- *
- * `k` 로 서 있는 자세와 앉은 자세를 섞는다. 일어서는 동작이 이 값으로 만들어지고,
- * 그래서 별도의 "일어나기" 클립도 필요 없다.
+ * `AnimationMixer` 는 매 프레임 본의 회전을 덮어쓴다. 그러므로 이 함수는 반드시
+ * `mixer.update()`(= `player.sync()`) **뒤에** 불러야 한다.
  */
 
-import { Euler, Quaternion, type Object3D } from 'three'
-
-/** 어느 축으로 접히는지는 리그마다 다르다 — 실측으로 정한다 */
-export type SitAxis = 'x' | 'z'
+import { Quaternion, Vector3, type Object3D } from 'three'
 
 export type PoseInput = Readonly<{
   /** 0 서 있음 · 1 앉음 */
@@ -45,79 +50,67 @@ export type PoseRig = Readonly<{
 }>
 
 /**
- * 앉을 때 리그 원점이 **내려가는** 양(m).
- *
- * 다리를 접는 것만으로는 앉은 자세가 안 된다 — 회전은 자식(다리)을 움직일 뿐
- * 부모(골반)를 못 내린다. 그래서 리그를 통째로 내려 골반을 좌면 높이에 얹는다.
- *
- * 값의 근거: 이 리그는 골반이 발에서 0.68m 위에 있다(실측). 앉으면 넓적다리가
- * 수평, 종아리가 수직이 되므로 골반은 발에서 종아리 길이(≈0.42m)만큼만 위에 온다.
- * 차이 0.26m 가 그대로 내려갈 거리다. 이 값이 없으면 좌석 위에 **서 있게** 된다.
- */
-export const SIT_DROP = 0.26
-
-/**
- * ⚠ **glTF 의 점은 씬에서 사라진다.**
- *
- * three 의 `GLTFLoader` 가 노드 이름을 `PropertyBinding.sanitizeNodeName` 으로 씻는데,
- * 점은 애니메이션 바인딩 경로의 구분자라 **지워진다**(언더스코어로 바뀌는 게 아니다).
- * 파일에는 `UpperLeg.L` 로 들어 있지만 씬에서는 `UpperLegL` 이다.
- *
- * 실측한 전체 골격(17):
- *   Root · Hips · Spine · Chest · Head · Shoulder{L,R} · UpperArm{L,R} ·
- *   LowerArm{L,R} · UpperLeg{L,R} · LowerLeg{L,R} · Foot{L,R}
- *
- * 처음엔 파일 이름 그대로 찾다가 점 없는 `Spine` 하나만 잡혔다. 그런데도 조용히
- * 넘어가서 "다리가 안 접힌다"는 증상만 남았다 — 아래 `ok` 를 반드시 확인해야 한다.
+ * ⚠ **glTF 의 점은 씬에서 사라진다.** `GLTFLoader` 가 노드 이름을
+ * `PropertyBinding.sanitizeNodeName` 으로 씻으면서 점을 지운다 — 파일에는
+ * `UpperLeg.L` 이지만 씬에서는 `UpperLegL` 이다.
  */
 const NAMES = [
   'UpperLegL', 'UpperLegR', 'LowerLegL', 'LowerLegR', 'Spine',
-  'UpperArmR', 'LowerArmR', 'Head',
+  'UpperArmL', 'UpperArmR', 'LowerArmL', 'LowerArmR', 'Head',
 ] as const
 type BoneName = (typeof NAMES)[number]
 
+type Turn = Readonly<{ axis: readonly [number, number, number]; angle: number }>
+
 /**
- * 앉은 자세의 목표 각(rad).
- *
- * 넓적다리는 몸통 기준 앞으로, 종아리는 넓적다리 기준 아래로. 사람이 의자에
- * 앉으면 둘 다 대략 직각이 되는데, 그대로 90° 를 주면 무릎이 딱 붙어 굳어 보인다.
- * 실제로는 넓적다리가 조금 덜 접히고 종아리가 살짝 뒤로 빠진다.
+ * **실측한 축.** `introProbe` 로 본의 월드 축을 읽어 계산했다(위 헤더 참고).
+ * 팔은 양수 = 앞으로. 다리는 원래 쓰던 로컬 X 그대로다(무릎이 앞으로 나온다).
  */
-const SIT: Readonly<Partial<Record<BoneName, number>>> = {
-  UpperLegL: -1.42,
-  UpperLegR: -1.42,
+const ARM_FWD_R = [-0.880, 0, 0.469] as const
+const ARM_FWD_L = [-0.880, 0, -0.469] as const
+const FOREARM_FWD_R = [-0.992, 0, 0.102] as const
+const FOREARM_FWD_L = [-0.992, 0, -0.102] as const
+const LEG_FWD = [-1, 0, 0] as const
+
+/** 앉은 자세 — 다리를 접고, 팔은 허벅지 위에 편하게 내린다 */
+const SIT: Readonly<Partial<Record<BoneName, Turn>>> = {
+  UpperLegL: { axis: LEG_FWD, angle: 1.42 },
+  UpperLegR: { axis: LEG_FWD, angle: 1.42 },
+  /** 종아리 — 1.30 에서는 발이 바닥에서 15cm 떠 있었다 */
+  LowerLegL: { axis: LEG_FWD, angle: -1.62 },
+  LowerLegR: { axis: LEG_FWD, angle: -1.62 },
+  // 앉으면 골반이 뒤로 눕고 등이 그만큼 선다 — 아주 살짝만
+  Spine: { axis: [1, 0, 0], angle: 0.07 },
   /**
-   * 종아리 — 1.30 에서는 **발이 바닥에서 15cm 떠 있었다.** 무릎에서 아래가 덜 내려온
-   * 것이라 각을 더 준다. 앉은 사람은 발이 바닥에 닿아야 앉은 것으로 보인다.
+   * 팔은 **가만히 두지 않는다.** `Idle` 은 서 있는 자세라 팔이 몸 옆으로 곧게
+   * 떨어지는데, 앉은 사람의 팔은 허벅지 위로 조금 앞에 온다. 이것만 없어도
+   * 마네킹처럼 보인다.
    */
-  LowerLegL: 1.62,
-  LowerLegR: 1.62,
-  // 등을 아주 살짝 세운다 — 앉으면 골반이 뒤로 눕고 등이 그만큼 선다
-  Spine: 0.07,
+  UpperArmL: { axis: ARM_FWD_L, angle: 0.16 },
+  UpperArmR: { axis: ARM_FWD_R, angle: 0.16 },
+  LowerArmL: { axis: FOREARM_FWD_L, angle: 0.52 },
+  LowerArmR: { axis: FOREARM_FWD_R, angle: 0.52 },
 }
 
-/** 팔이 접히는 방향 — 리그마다 다르다. `?armsign=-1` 로 뒤집어 실측한다 */
-const ARM_SIGN = typeof location !== 'undefined' && /[?&]armsign=-1/.test(location.search) ? -1 : 1
-
 /**
- * 휴대폰을 들어 보는 자세 — 오른팔을 접고 고개를 살짝 숙인다.
+ * 휴대폰을 들어 보는 자세 — **오른팔만** 앞으로 든다.
  *
- * 손 본이 없어서(골격이 `...LowerArmR` 에서 끝난다) 팔뚝 끝이 곧 손이다.
- * 휴대폰은 그 자리에 붙는다(`render/phone.ts`).
+ * 위팔을 조금(0.42) 들고 아래팔을 크게(1.42) 굽힌다. 앉은 자세가 이미
+ * 아래팔을 0.52 굽혀 놓았으므로 합이 약 1.94rad(111°) — 아래팔이 수평을
+ * 조금 넘겨 위를 향하고, 그래야 휴대폰이 허벅지가 아니라 가슴 앞에 온다. 사람이 휴대폰을 볼 때
+ * 팔꿈치는 옆구리 근처에 남고 아래팔만 올라온다 — 위팔을 크게 돌리면 팔꿈치가
+ * 앞으로 튀어나와 어색해진다.
+ *
+ * 손 본이 없어서 아래팔 끝이 곧 손이다. 휴대폰은 그 자리에 붙는다(`phone.ts`).
  */
-const PHONE: Readonly<Partial<Record<BoneName, number>>> = {
-  /**
-   * 위팔은 조금만 든다. 0.72 를 줬더니 **팔꿈치가 몸 뒤로 빠져** 팔이 꺾인 것처럼
-   * 보였다(실측: 팔꿈치가 어깨보다 서쪽 — 동쪽을 보고 앉았으니 등 뒤다).
-   * 사람은 휴대폰을 볼 때 팔꿈치를 옆구리에 붙이고 아래팔만 든다.
-   */
-  UpperArmR: ARM_SIGN * 0.22,
-  LowerArmR: ARM_SIGN * 1.34,
+const PHONE: Readonly<Partial<Record<BoneName, Turn>>> = {
+  UpperArmR: { axis: ARM_FWD_R, angle: 0.42 },
+  LowerArmR: { axis: FOREARM_FWD_R, angle: 1.42 },
   // 화면을 내려다본다. 크게 숙이면 얼굴이 안 보인다
-  Head: 0.28,
+  Head: { axis: [1, 0, 0], angle: 0.26 },
 }
 
-export const makePoseRig = (root: Object3D, axis: SitAxis = 'x'): PoseRig => {
+export const makePoseRig = (root: Object3D): PoseRig => {
   const bones = new Map<BoneName, Object3D>()
   const rest = new Map<BoneName, Quaternion>()
   /** 표기 흔들림(점·언더스코어·대소문자)을 지우고 맞춘다 */
@@ -131,32 +124,48 @@ export const makePoseRig = (root: Object3D, axis: SitAxis = 'x'): PoseRig => {
     }
   })
 
-  const e = new Euler()
   const q = new Quaternion()
+  const acc = new Quaternion()
+  const v = new Vector3()
+
+  const turn = (t: Turn | undefined, w: number): void => {
+    if (!t || w <= 0) return
+    v.set(t.axis[0], t.axis[1], t.axis[2]).normalize()
+    acc.multiply(q.setFromAxisAngle(v, t.angle * w))
+  }
 
   return {
     ok: bones.size === NAMES.length,
     apply({ sit, phone }) {
-      if (sit <= 0 && phone <= 0) return
       const s01 = Math.max(0, Math.min(1, sit))
       const p01 = Math.max(0, Math.min(1, phone))
+      if (s01 <= 0 && p01 <= 0) return
       for (const [name, bone] of bones) {
-        const a = (SIT[name] ?? 0) * s01 + (PHONE[name] ?? 0) * p01
-        e.set(axis === 'x' ? a : 0, 0, axis === 'z' ? a : 0)
-        q.setFromEuler(e)
+        acc.identity()
+        turn(SIT[name], s01)
+        turn(PHONE[name], p01)
         /**
          * ★ **항상 안정 자세(rest)에서 다시 만든다.** 클립이 낸 회전에 곱하지 않는다.
          *
-         * 처음엔 `bone.quaternion.multiply(q)` 로 덧붙였다. 그런데 `Idle` 클립에는
-         * 다리 본 트랙이 **없어서** 믹서가 그 본을 매 프레임 되돌려 주지 않는다.
+         * 처음엔 `bone.quaternion.multiply(...)` 로 덧붙였다. 그런데 `Idle` 클립에는
+         * 다리·팔 트랙이 없어서 믹서가 그 본을 매 프레임 되돌려 주지 않는다.
          * 그러니 곱셈이 프레임마다 쌓여 1초 만에 수십 라디안까지 돌아갔고,
          * 메시가 뭉개져 **캐릭터가 통째로 안 보였다** — 접지 그림자만 남았다.
-         *
-         * 매 프레임 같은 입력에 같은 출력이 나와야 한다. 그게 이 리포가 카메라를
-         * 순수 함수로 짠 이유와 같다.
          */
-        bone.quaternion.copy(rest.get(name)!).multiply(q)
+        bone.quaternion.copy(rest.get(name)!).multiply(acc)
       }
     },
   }
 }
+
+/**
+ * 앉을 때 리그 원점이 **내려가는** 양(m).
+ *
+ * 다리를 접는 것만으로는 앉은 자세가 안 된다 — 회전은 자식(다리)을 움직일 뿐
+ * 부모(골반)를 못 내린다. 그래서 리그를 통째로 내려 골반을 좌면 높이에 얹는다.
+ *
+ * 값의 근거: 이 리그는 골반이 발에서 0.68m 위에 있다(실측). 앉으면 넓적다리가
+ * 수평, 종아리가 수직이 되므로 골반은 발에서 종아리 길이(≈0.42m)만큼만 위에 온다.
+ * 차이 0.26m 가 그대로 내려갈 거리다. 이 값이 없으면 좌석 위에 **서 있게** 된다.
+ */
+export const SIT_DROP = 0.26

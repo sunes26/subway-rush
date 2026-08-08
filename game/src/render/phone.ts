@@ -142,14 +142,15 @@ export const buildPhone = (): Phone => {
     // 화면은 스스로 빛난다 — 툰 램프를 태우면 회색이 된다
     new MeshBasicMaterial({ map: tex, toneMapped: false }),
   )
-  screen.position.z = SIZE.d / 2 + 0.001
   /**
-   * ⚠ 화면이 **거꾸로** 붙는다. 팔뚝 본의 로컬 축 방향 때문에 휴대폰이 뒤집힌
-   * 자세로 매달리는데, 몸체는 대칭이라 티가 안 나고 화면 글자만 180° 돈다
-   * (실측 스크린샷에서 초록 원이 오른쪽, 역 이름이 아래에 있었다).
-   * 몸체를 돌리면 손에 쥔 각도가 틀어지므로 **화면만** 제자리로 돌린다.
+   * 화면은 **−Z 쪽**에 붙인다.
+   *
+   * 실측: 휴대폰을 든 순간 팔뚝 본의 로컬 −Z 가 월드 (−0.75, 0.66, −0.05),
+   * 즉 **뒤·위** 를 가리킨다 — 앉은 사람의 얼굴이 있는 방향이다. 화면이 그쪽을
+   * 봐야 주인공이 화면을 보는 것이 되고, 어깨 너머(OTS) 카메라에도 읽힌다.
    */
-  screen.rotation.z = Math.PI
+  screen.position.z = -(SIZE.d / 2 + 0.001)
+  screen.rotation.y = Math.PI
   root.add(screen)
 
   /**
@@ -166,8 +167,16 @@ export const buildPhone = (): Phone => {
    * 숫자를 박지 않고 `CHAR_SCALE` 로 나눈다 — 배율이 바뀌면 따라간다.
    */
   root.scale.setScalar(1 / CHAR_SCALE)
-  root.position.set(0.006, -0.128, 0.040)
-  root.rotation.set(-0.95, 0, 0)
+  /**
+   * ★ 손은 본의 **+Y 쪽**이다. 로컬 Y 가 곧 본이 뻗은 방향이므로 팔뚝 끝 = 손은
+   *   +Y 다. 한동안 −Y 로 매달아서 휴대폰이 **팔꿈치 뒤쪽**에 붙어 있었다 —
+   *   팔을 앞으로 들어도 폰만 뒤로 남아 손과 따로 놀았다.
+   *   (실측: 팔꿈치 −61.276 · 폰 −61.363 — 폰이 팔꿈치보다 뒤였다)
+   *
+   * 길이는 팔뚝(≈0.21m)만큼. `CHAR_SCALE` 이 곱해지므로 그것으로 나눈다.
+   */
+  root.position.set(0, 0.21 / CHAR_SCALE, 0.022)
+  root.rotation.set(0.34, 0, -0.16)
   root.visible = false
 
   return {

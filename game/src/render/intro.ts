@@ -340,12 +340,16 @@ export const poseAt = (tMs: number): IntroPose => {
    * 주인공이 동쪽을 보고 앉아 있으므로 **뒤 = 서쪽 · 오른쪽 = 남쪽**이다.
    * 클로즈업으로 화면만 꽉 채우지 않는다 — 인물이 남아 있어야 같은 버스 안이라는
    * 것이 유지된다(브리프 §17).
+   *
+   * ⚠ 어깨 **높이**에 두면 화면 뒷면만 보인다. 휴대폰 화면은 주인공의 얼굴을
+   *   향하므로(실측 법선: 월드 −0.75, +0.66, −0.05 = 뒤·위), 카메라도 그 법선을
+   *   따라 **머리 위쪽**에 서야 화면이 읽힌다. 어깨 너머로 같이 내려다보는 각이다.
    */
   if (t < SHOT.phone) {
     const p = framed(
-      [SEAT.x - 0.58, SEAT.y - 0.50, 1.62],
-      [SEAT.x - 0.46, SEAT.y - 0.42, 1.56],
-      [SEAT.x + 0.34, SEAT.y - 0.24, 1.14],
+      [SEAT.x - 0.42, SEAT.y - 0.38, 1.76],
+      [SEAT.x - 0.35, SEAT.y - 0.34, 1.70],
+      [SEAT.x + 0.16, SEAT.y - 0.19, 1.26],
       seg(t, SHOT.interior, SHOT.phone), dx,
     )
     return { ...p, eye: p.eye + shake * 0.015, pitch: p.pitch + shake * 0.004 - brakeDip(t) }
