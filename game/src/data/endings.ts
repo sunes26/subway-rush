@@ -338,7 +338,7 @@ export const ENDINGS: readonly EndingDef[] = [
   {
     id: 'E-16',
     priority: 3,
-    title: '단소에 졌다',
+    title: '이놈이!',
     lines: [
       '원래는 부는 거다.',
       '소리가 좀 컸다.',
