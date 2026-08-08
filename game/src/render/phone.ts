@@ -30,13 +30,24 @@ import {
 import { CHAR_SCALE } from './actors'
 import { toonMat } from './toon'
 
-/** 화면 픽셀 — 세로가 긴 비율. 너무 키우면 텍스처만 무거워진다 */
-const W = 320
-const H = 660
+/**
+ * 화면 픽셀. 비스듬히 보므로 실제 화면 폭보다 넉넉히 잡는다 — 이 정도면
+ * 확대돼도 글자 가장자리가 안 뭉갠다.
+ */
+const W = 440
+const H = 900
 
 /**
- * 앱 화면. **"3분 후"가 가장 먼저 읽혀야 한다** — 크기·색·자리 셋을 다 준다.
- * 나머지는 그 숫자를 뒷받침하는 보조 정보다.
+ * 앱 화면.
+ *
+ * ★ **면적을 「3분 후」에 몰아준다.**
+ *
+ * 폰이 실물 크기(0.082 × 0.168)라 화면에서는 세로 20% 남짓이다. 그 안에서
+ * 0.5초 만에 읽히려면 글자가 커야 하는데, 폰을 키우면 태블릿이 된다.
+ * 그래서 **폰이 아니라 레이아웃**을 바꿨다 — 숫자 한 줄이 화면의 3분의 1 을
+ * 차지하고, 나머지는 그것을 뒷받침하는 크기로 내려앉는다.
+ *
+ * 이 화면에서 크게 읽혀야 하는 것은 하나뿐이다. 둘이면 둘 다 안 읽힌다.
  */
 const drawScreen = (): HTMLCanvasElement => {
   const c = document.createElement('canvas')
@@ -45,65 +56,75 @@ const drawScreen = (): HTMLCanvasElement => {
   const g = c.getContext('2d')!
   const sans = '"Noto Sans KR", "Apple SD Gothic Neo", system-ui, sans-serif'
 
-  g.fillStyle = '#0d0e11'
+  g.fillStyle = '#0b0c0f'
   g.fillRect(0, 0, W, H)
 
-  // 상태 표시줄
-  g.fillStyle = '#7d818b'
-  g.font = `500 22px ${sans}`
-  g.fillText('08:47', 22, 42)
+  // 상태 표시줄 — 있다는 것만 알면 된다
+  g.fillStyle = '#6c707a'
+  g.font = `500 26px ${sans}`
+  g.fillText('08:47', 26, 46)
   g.textAlign = 'right'
-  g.fillText('LTE', W - 22, 42)
+  g.fillText('LTE', W - 26, 46)
   g.textAlign = 'left'
 
   // 노선 · 역
   g.fillStyle = '#00A84D'
-  g.beginPath(); g.arc(36, 104, 15, 0, Math.PI * 2); g.fill()
+  g.beginPath(); g.arc(44, 112, 19, 0, Math.PI * 2); g.fill()
   g.fillStyle = '#fff'
-  g.font = `700 19px ${sans}`
+  g.font = `700 24px ${sans}`
   g.textAlign = 'center'
-  g.fillText('2', 36, 111)
+  g.fillText('2', 44, 121)
   g.textAlign = 'left'
   g.fillStyle = '#e9e7e1'
-  g.font = `600 26px ${sans}`
-  g.fillText('신도림역', 62, 113)
+  g.font = `600 33px ${sans}`
+  g.fillText('신도림역', 74, 123)
 
-  const rule = (y: number): void => {
-    g.strokeStyle = '#23252b'
+  const rule = (y: number, a = '#23252b'): void => {
+    g.strokeStyle = a
     g.lineWidth = 2
-    g.beginPath(); g.moveTo(22, y); g.lineTo(W - 22, y); g.stroke()
+    g.beginPath(); g.moveTo(26, y); g.lineTo(W - 26, y); g.stroke()
   }
 
-  // 이번 열차 — 이 화면의 전부
-  rule(154)
+  // ── 이번 열차. 이 화면의 전부다
+  rule(168)
   g.fillStyle = '#8a8e98'
-  g.font = `500 22px ${sans}`
-  g.fillText('이번 열차', 22, 196)
+  g.font = `600 30px ${sans}`
+  g.fillText('이번 열차', 26, 216)
+
+  /**
+   * 숫자와 단위를 갈라 **「3」과 「분」의 크기를 다르게** 준다. 같은 크기로 쓰면
+   * 세 글자가 뭉쳐 한 덩어리로 보이고, 작아지면 그 덩어리가 먼저 뭉갠다.
+   */
   g.fillStyle = '#FF8A1E'
-  g.font = `800 78px ${sans}`
-  g.fillText('3분 후', 22, 280)
+  g.font = `800 168px ${sans}`
+  g.fillText('3', 22, 372)
+  const w3 = g.measureText('3').width
+  g.font = `800 96px ${sans}`
+  g.fillText('분', 22 + w3 + 6, 372)
+  const wm = g.measureText('분').width
+  g.font = `700 74px ${sans}`
+  g.fillText('후', 22 + w3 + wm + 20, 372)
 
-  // 다음 열차
-  rule(318)
+  // ── 다음 열차 — 보조. 여기가 크면 위가 안 읽힌다
+  rule(424)
   g.fillStyle = '#8a8e98'
-  g.font = `500 22px ${sans}`
-  g.fillText('다음 열차', 22, 360)
-  g.fillStyle = '#cfcdc7'
-  g.font = `600 34px ${sans}`
-  g.fillText('7분 30초 후', 22, 404)
+  g.font = `500 28px ${sans}`
+  g.fillText('다음 열차', 26, 472)
+  g.fillStyle = '#b8b6b0'
+  g.font = `600 40px ${sans}`
+  g.fillText('7분 30초 후', 26, 524)
 
-  // 보조 — 출근 시각. 08:47 과 나란히 놓이면 "놓치면 지각"이 저절로 만들어진다
-  rule(448)
+  /**
+   * 출근 시각 — 08:47 과 나란히 놓이면 "놓치면 지각"이 저절로 만들어진다.
+   * 문장으로 쓰지 않는 이유가 이것이다(자막 금지).
+   */
+  rule(572)
   g.fillStyle = '#8a8e98'
-  g.font = `500 21px ${sans}`
-  g.fillText('출근', 22, 486)
+  g.font = `500 27px ${sans}`
+  g.fillText('출근', 26, 618)
   g.fillStyle = '#E5484D'
-  g.font = `600 21px ${sans}`
-  g.fillText('09:00', 88, 486)
-  g.fillStyle = '#8a8e98'
-  g.textAlign = 'right'
-  g.font = `500 21px ${sans}`
-  g.fillText('도보 4분', W - 22, 486)
+  g.font = `700 30px ${sans}`
+  g.fillText('09:00', 106, 618)
 
   return c
 }
@@ -140,16 +161,29 @@ export const buildPhone = (): Phone => {
   const root = new Group()
   root.name = 'intro-phone'
 
+  /**
+   * ★ 그룹의 **원점을 폰의 아래 모서리**에 둔다.
+   *
+   * 원점이 폰 한가운데면 그 점을 손에 맞췄을 때 폰의 절반이 손 **아래로**
+   * 늘어진다 — 쥔 게 아니라 손에 걸쳐 놓은 모양이 된다.
+   * 사람이 쥐는 자리는 아래쪽이므로, 몸체와 화면을 위로 올려 **원점 = 쥐는 점**
+   * 으로 만든다. 그러면 자세를 어떻게 돌리든 손과 폰이 안 떨어진다.
+   */
+  const GRIP_UP = SIZE.h / 2 - 0.022
+
   const body = new Mesh(
     new BoxGeometry(SIZE.w, SIZE.h, SIZE.d),
     toonMat(0x23252b),
   )
+  body.position.y = GRIP_UP
   root.add(body)
 
   const tex: Texture = new CanvasTexture(drawScreen())
   tex.colorSpace = SRGBColorSpace
   tex.minFilter = LinearFilter
   tex.magFilter = LinearFilter
+  // 비스듬히 볼 때 글자가 뭉개지지 않게 — 화면은 늘 각도가 붙는다
+  tex.anisotropy = 8
   const screen = new Mesh(
     new PlaneGeometry(SIZE.w - 0.012, SIZE.h - 0.016),
     // 화면은 스스로 빛난다 — 툰 램프를 태우면 회색이 된다
@@ -162,7 +196,7 @@ export const buildPhone = (): Phone => {
    * 즉 **뒤·위** 를 가리킨다 — 앉은 사람의 얼굴이 있는 방향이다. 화면이 그쪽을
    * 봐야 주인공이 화면을 보는 것이 되고, 어깨 너머(OTS) 카메라에도 읽힌다.
    */
-  screen.position.z = -(SIZE.d / 2 + 0.001)
+  screen.position.set(0, GRIP_UP, -(SIZE.d / 2 + 0.001))
   screen.rotation.y = Math.PI
   root.add(screen)
 
@@ -199,10 +233,10 @@ export const buildPhone = (): Phone => {
    * 로컬 값은 월드의 1/`CHAR_SCALE` 이다 — 본에 매달리면 그 배율이 곱해진다.
    */
   /**
-   * 손이 폰의 아래쪽을 쥔다 — 팔뚝 끝(0.21m)에서 폰 높이의 3분의 1 만큼만 더.
-   * 더 내보내면 손과 폰 사이가 뜬다.
+   * 원점이 곧 쥐는 점이므로 **팔뚝 끝(= 손)에 그대로** 놓는다.
+   * 팔뚝은 0.21m 이고, 본에 매달리면 `CHAR_SCALE` 이 곱해지므로 나눠 준다.
    */
-  root.position.set(0.008, 0.255 / CHAR_SCALE, 0.022)
+  root.position.set(0.008, 0.205 / CHAR_SCALE, 0.020)
   root.visible = false
 
   const want = new Quaternion()
