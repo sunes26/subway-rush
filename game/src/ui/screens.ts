@@ -117,30 +117,52 @@ const atFirstQueue = (s: GameState): boolean =>
  *
  *   남는 것은 **플레이하며 이미 겪어 안 것**뿐이다 — 남은 시간, 다음 열차,
  *   획득 동전, 내가 선 승차위치. 히든 계열은 값 없이 제목과 한마디로 끝낸다.
+ *
+ * ── 탑승 계열에 **잔액**이 붙는다 (디렉터 지시) ──
+ *
+ *   열차를 탄 판에는 남은 시간과 함께 카드 잔액을 적는다. 위 규칙을 깨는 게 아니다:
+ *   잔액은 **다음 판의 정답이 아니다.** 얼마를 남기면 뭐가 열린다는 규칙이 없고
+ *   (성공 등급은 잔액을 안 본다), 플레이 중 HUD 에 내내 떠 있던 값이라 새 정보도
+ *   아니다. 판이 끝난 자리에서 "오늘 하루가 이렇게 남았다"를 말하는 기록일 뿐이다.
+ *
+ *   ★ **탄 판에만** 붙인다. 못 탄 판·즉사 판에 잔액을 적으면 그건 위로가 되고,
+ *     이 화면은 플레이어를 위로하지 않는다(`tests/unit/ending-tone.test.ts`).
  */
 const factsFor = (e: EndingDef, s: GameState): readonly Fact[] => {
   const left: Fact = { label: '남은 시간', value: formatClock(Math.max(0, s.timeLeftMs)) }
   const next: Fact = { label: '다음 열차', value: NEXT_TRAIN }
+  const bal: Fact = { label: '잔액', value: won(s.cardBalance) }
 
   switch (e.id) {
-    // ── 시간이 곧 이 엔딩인 것들 ──
+    // ── 탄 판 — 시간과 잔액, 이 판이 남긴 두 가지 ──
     case 'E-01': case 'E-02': case 'E-04':
-      return [left]
+      return [left, bal]
     case 'E-03':
       // 승차위치는 조건이 아니라 **내가 선 자리**다 — 바닥에 적혀 있고 직접 밟았다
-      return atFirstQueue(s) ? [{ label: '승차위치', value: '3-1' }, left] : [left]
+      return atFirstQueue(s) ? [{ label: '승차위치', value: '3-1' }, left, bal] : [left, bal]
+
+    /**
+     * 반대편에 탄 판도 **같은 기록을 받는다.**
+     *
+     * 예전엔 아무것도 안 보여 줬다. 원인이 명백한 실패라 수치가 곧 정답이 된다는
+     * 이유였는데, 남은 시간과 잔액은 방향과 아무 상관이 없다 — 다음 판에 알려 주는
+     * 게 없다. 오히려 **여기에만 기록이 없으면** 탄 판 중 이것만 없던 일이 된다.
+     * 잘못 탄 것도 오늘 아침에 실제로 있었던 일이다.
+     */
+    case 'E-08':
+      return [left, bal]
 
     // ── 열차를 놓친 것들 — 다음 열차는 승강장에 서면 어차피 보인다 ──
     case 'E-06': case 'E-07':
       return [next]
 
-    // ── 동전은 주우면서 이미 셌다 ──
+    // ── 동전은 주우면서 이미 셌다. 여기선 번 돈이 곧 이 엔딩이라 잔액보다 앞에 온다 ──
     case 'E-14':
       return [{ label: '획득 동전', value: won(s.tally.coinsEarned) }, left]
 
     /**
      * 나머지는 **아무것도 안 보여 준다.**
-     * 부정승차·오답 선물·단소·반대편처럼 원인이 명백한 실패에 수치를 얹으면
+     * 부정승차·오답 선물·단소처럼 원인이 명백한 실패에 수치를 얹으면
      * 그 수치가 곧 다음 판의 정답이 된다. 히든 계열은 더더욱 — "내가 뭘 해서
      * 이게 나온 거지" 를 남겨 두는 것이 이 엔딩들의 값이다.
      */
@@ -297,7 +319,9 @@ export const createScreens = (mount: HTMLElement): Screens => {
     sync(s) {
       // 엔딩 화면이 읽는 값이 바뀌면 다시 그린다. 안 넣으면 첫 렌더 시점 값이 굳는다.
       const key = `${s.phase}:${s.endingId ?? ''}:${s.seed}:${s.boarded}:` +
-        `${s.timeLeftMs}:${s.scores.conscience},${s.tally.coinsEarned},${s.tally.pushes}`
+        `${s.timeLeftMs}:${s.scores.conscience},${s.tally.coinsEarned},${s.tally.pushes}` +
+        // 잔액도 결과판이 읽는 값이다 — 빠뜨리면 첫 렌더 시점 값이 굳는다
+        `,${s.cardBalance}`
       if (key === lastKey) return
       lastKey = key
       if (prevPhase === 'title' && s.phase === 'playing') flash()
