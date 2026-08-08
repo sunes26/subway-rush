@@ -28,6 +28,15 @@ export type Screens = Readonly<{
   sync(s: GameState): void
   hideLoading(): void
   setLoading(text: string): void
+  /**
+   * 엔딩 컷이 도는 동안 결과판을 **미뤄 둔다**(`render/outro.ts`).
+   *
+   * 시뮬은 이미 `ended` 다 — 컷은 그 위에 얹히는 5초짜리 연출이라 상태를 안 건드린다.
+   * 그래서 "아직 보여주지 마라"를 상태가 아니라 여기로 말한다. 새 `Phase` 를 만들면
+   * 리듀서·HUD·헤드리스 테스트가 전부 그 값을 알아야 하고, 그건 연출 하나 때문에
+   * 시뮬 전체를 건드리는 일이다.
+   */
+  setHold(on: boolean): void
 }>
 
 /**
@@ -48,6 +57,23 @@ const NEXT_TRAIN = '20분 26초'
  * 저대비 환경에서 세 상태가 같은 화면이 된다. 색은 거들 뿐이다.
  */
 const STATUS = { success: 'SUCCESS', fail: 'GAME OVER', hidden: 'SPECIAL' } as const
+
+/**
+ * 두 엔딩만 **자기 이름을 판정어 자리에 쓴다.**
+ *
+ * E-04 는 톤이 `success` 라 `SUCCESS` 가 뜬다. 맞는 말이지만, 닫히는 문에 몸을 밀어
+ * 넣은 판과 여유롭게 걸어 들어간 판이 **같은 단어로 끝난다.** 어떻게 탔는지가
+ * 이 게임에서 가장 자주 갈리는 결과인데 그 차이가 화면에 안 남는다.
+ * E-08 도 마찬가지다 — `GAME OVER` 는 왜 끝났는지를 안 말한다.
+ *
+ * 그래서 이 둘만 판정어를 바꾼다. **새 톤을 만들지 않는다** — 색(`#screen.success`
+ * `.fail`)은 톤이 그대로 정하므로 JUST IN TIME 은 초록, WRONG WAY 는 빨강이다.
+ * 바뀌는 것은 글자뿐이고, 그래서 색각 이상 환경에서도 셋이 안 뭉갠다.
+ */
+const STATUS_BY_ID: Readonly<Partial<Record<EndingId, string>>> = {
+  'E-04': 'JUST IN TIME',
+  'E-08': 'WRONG WAY',
+}
 
 /**
  * **무슨 일이 일어났는가** — 엔딩마다 한 줄. 농담보다 먼저 온다.
@@ -278,7 +304,7 @@ export const createScreens = (mount: HTMLElement): Screens => {
           </div>
           <div class="title-row s2">
             <div class="name">${e.tone === 'hidden' ? '★ ' : ''}${e.title}</div>
-            <div class="status">[ ${STATUS[e.tone]} ]</div>
+            <div class="status">[ ${STATUS_BY_ID[e.id] ?? STATUS[e.tone]} ]</div>
           </div>
           <div class="what s3">${WHAT_HAPPENED[e.id]}</div>
           ${facts.length === 0 ? '' : `<div class="facts s4">${facts.map((f) => `
@@ -312,10 +338,18 @@ export const createScreens = (mount: HTMLElement): Screens => {
   }
 
   let prevPhase: GameState['phase'] | '' = ''
+  /** 엔딩 컷이 도는 동안 참 — 결과판도 배경 blur 도 그동안은 안 나온다 */
+  let hold = false
 
   return {
     hideLoading() { loading.style.display = 'none' },
     setLoading(text: string) { loading.textContent = text },
+    setHold(on) {
+      if (hold === on) return
+      hold = on
+      // 키를 비워 다음 `sync` 가 반드시 다시 그리게 한다 — 상태는 그대로이므로 키만으론 안 바뀐다
+      lastKey = ''
+    },
     sync(s) {
       // 엔딩 화면이 읽는 값이 바뀌면 다시 그린다. 안 넣으면 첫 렌더 시점 값이 굳는다.
       const key = `${s.phase}:${s.endingId ?? ''}:${s.seed}:${s.boarded}:` +
@@ -344,12 +378,18 @@ export const createScreens = (mount: HTMLElement): Screens => {
        *   play   손대지 않는다
        *   ended  약한 blur + dim — 공간감은 남기고 정보 전달만 끊는다
        */
+      /**
+       * ★ 컷이 도는 동안(`hold`)에는 **끝난 티를 아예 내지 않는다.**
+       *   blur 를 걸면 창밖 일출이 뿌옇게 뭉개지고, 그 순간 컷은 배경이 된다.
+       *   컷이 끝나야 세계가 정보 전달을 그만두고 결과판으로 넘어간다.
+       */
+      const done = s.phase === 'ended' && !hold
       document.body.classList.toggle('at-title', s.phase === 'title')
-      document.body.classList.toggle('run-ended', s.phase === 'ended')
+      document.body.classList.toggle('run-ended', done)
       if (s.phase === 'title') {
         el.className = 'on'
         el.innerHTML = title()
-      } else if (s.phase === 'ended') {
+      } else if (done) {
         el.innerHTML = ending(s)
       } else {
         el.className = ''

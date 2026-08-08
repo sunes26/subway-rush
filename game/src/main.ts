@@ -35,6 +35,9 @@ import { createScreens } from './ui/screens'
 import { createCollection } from './ui/collection'
 import { createIntro } from './ui/intro'
 import { actorAt, busDx, DOORS_MS, INTRO_MS, poseAt, SHOT } from './render/intro'
+import { buildEndingStage, type EndingStage } from './render/ending-stage'
+import { OUTRO_MS, outroAt, outroKindOf, type OutroKind } from './render/outro'
+import { createOutro } from './ui/outro'
 import { buildBusInterior, type BusInterior } from './render/bus-interior'
 import { buildWestRoad } from './render/west-road'
 import { loadPassengers, type Passengers } from './render/passengers'
@@ -100,6 +103,7 @@ const dialog = createDialog(uiRoot)
 const screens = createScreens(uiRoot)
 const collection = createCollection(uiRoot)
 const intro = createIntro(uiRoot)
+const outro = createOutro(uiRoot)
 
 /**
  * UI-15 설정(ESC) — **일시정지 겸 설정**.
@@ -197,6 +201,9 @@ const toTitle = (): void => {
 
 const restart = (): void => {
   recordedEnding = null
+  lastEndedId = null
+  // 컷이 도는 중에 다시하기를 누를 수 있다 — 무대·오버레이·카메라를 반드시 되돌린다
+  if (outroAtMs !== null) endOutro()
   collection.close()
   const seed = (state.seed * 1664525 + 1013904223) >>> 0
   state = initialState(seed, FREEPLAY, ALL_OBS)   // 재시작해도 자유 탐색·디버그 스위치는 유지한다
@@ -304,6 +311,26 @@ let lumaValue = -1
 /** 단계별 눈 검사(QA)용 자유 카메라. `null` 이면 평소대로 릭이 카메라를 몬다 */
 let freeCamAt: { pos: [number, number, number]; look: [number, number, number] } | null = null
 
+// ─────────────────── 엔딩 컷 ───────────────────
+
+/**
+ * 엔딩 컷 — **인트로와 완전히 같은 구조다.** 시작 시각을 벽시계로 들고,
+ * 순수 함수(`render/outro.ts`)가 그 경과로 카메라·포즈·창밖을 낸다.
+ *
+ * ★ 시뮬은 이미 `ended` 이고 컷은 그 위에 얹힌다 — 상태를 한 글자도 안 건드린다.
+ *   그래서 헤드리스 테스트와 밸런싱 스윕은 이 코드를 아예 안 지난다.
+ *   `ADVANCE` 가 `ended` 에서 일찍 빠져나가므로 열차·인파·시계가 전부 멈춰 있고,
+ *   움직이는 것은 우리가 움직이는 것뿐이다. 그 정지가 오히려 도움이 된다:
+ *   객실은 실제로 정지한 좌표에 있고, 달리는 느낌은 **창밖이 흐르는 것**으로 낸다.
+ */
+let outroAtMs: number | null = null
+let outroKind: OutroKind | null = null
+/** 컷을 켠 엔딩 id — 같은 판에서 두 번 켜지지 않게 한다(`recordIfEnded` 와 같은 수법) */
+let lastEndedId: string | null = null
+/** E2E 전용 — 컷 시계를 못 박는다(`introHold` 와 같은 이유) */
+let outroHold: number | null = null
+let endStage: EndingStage | null = null
+
 /**
  * 버스 실내 — 인트로에만 존재한다.
  *
@@ -389,6 +416,44 @@ const endIntro = (): void => {
   state = { ...state, phase: 'playing' }
 }
 
+/**
+ * 엔딩 컷을 켠다 — **`ended` 로 넘어가는 그 프레임에 한 번**.
+ *
+ * 컷이 없는 엔딩(못 탄 판·즉사·탄 채로 무너진 판)은 `outroKindOf` 가 `null` 을 주고,
+ * 그러면 지금까지처럼 결과판이 곧바로 뜬다. 무너진 판에 연출을 얹으면 위로가 된다.
+ */
+const beginOutro = (kind: OutroKind): void => {
+  outroKind = kind
+  outroAtMs = performance.now()
+  if (!endStage) { endStage = buildEndingStage(); stage.scene.add(endStage.root) }
+  endStage.setVisible(true)
+  // 컷은 **몸을 보여줘야 한다** — 1인칭이면 자기 몸이 꺼져 있다(`applyView`)
+  player?.setVisible(true)
+  outro.show(kind)
+  screens.setHold(true)
+  // HUD 는 `ended` 에서 스스로 숨는다(`ui/hud.ts`) — 여기서 따로 끌 것이 없다
+}
+
+const startOutro = (s: GameState): void => {
+  const kind = outroKindOf(s.endingId, s.boarded)
+  if (kind !== null) beginOutro(kind)
+}
+
+/**
+ * 컷을 끝내고 결과판으로 넘긴다. 끝까지 본 경우와 건너뛴 경우가 **같은 코드**를
+ * 지난다 — 인트로(`endIntro`)와 같은 이유다.
+ */
+const endOutro = (): void => {
+  outroAtMs = null
+  outroKind = null
+  outroHold = null
+  endStage?.setVisible(false)
+  outro.hide()
+  // 시점 설정(1인칭이면 몸을 다시 끈다)과 화각을 원래대로 되돌린다
+  applyView()
+  screens.setHold(false)
+}
+
 const escIsFree = (s: GameState): boolean =>
   !collection.isOpen() && s.act.dialogId === null && !s.qte.active &&
   !s.swap.active && s.act.busyId === null
@@ -445,6 +510,18 @@ const handleMeta = (f: InputFrame): void => {
    */
   if (state.phase === 'intro') {
     if (f.pressCancel || f.pressStart) endIntro()
+    return
+  }
+  /**
+   * 엔딩 컷도 **언제나 건너뛸 수 있다** — 인트로와 같은 이유이고, 같은 자리다
+   * (설정보다 먼저 판정해야 ESC 가 설정을 열어 버리지 않는다).
+   *
+   * ★ 다만 `R`(다시하기)은 **먹지 않고 흘려보낸다.** 컷을 보다 말고 R 을 누른
+   *   사람은 결과판을 보고 싶은 게 아니라 **다시 하고 싶은 것**이다. 여기서
+   *   가로채 컷만 끊으면 R 을 두 번 눌러야 한다. `restart()` 가 컷을 정리한다.
+   */
+  if (outroAtMs !== null && !f.pressRestart) {
+    if (f.pressCancel || f.pressStart) endOutro()
     return
   }
   if (f.pressCancel && escIsFree(state)) { settings.open(); return }
@@ -538,6 +615,17 @@ const frame = (now: number): void => {
   if (steps > 0) pending = EMPTY_PENDING
 
   /**
+   * 엔딩 컷 시작 — **`ended` 로 넘어간 그 프레임에.**
+   *
+   * `recordIfEnded` 와 같은 수법으로 한 번만 켠다(`endingId` 가 곧 그 신호다).
+   * 매 프레임 판정하면 컷이 끝난 뒤 곧바로 다시 시작해 영원히 안 끝난다.
+   */
+  if (state.phase === 'ended' && state.endingId !== lastEndedId) {
+    lastEndedId = state.endingId
+    startOutro(state)
+  }
+
+  /**
    * 렌더 보간 — 시뮬은 고정 60Hz, 렌더는 가변이다.
    * 보간 없이 시뮬 위치를 그대로 그리면 프레임마다 위치가 계단처럼 튄다.
    * 한 프레임에 스텝이 0회 또는 2회 도는 경우가 섞이면 그게 그대로 화면 덜컹거림이 된다.
@@ -570,6 +658,52 @@ const frame = (now: number): void => {
     stage.camera.fov = FPV.fovDeg
     stage.camera.near = 0.08
     stage.camera.updateProjectionMatrix()
+  } else if (outroAtMs !== null && outroKind !== null) {
+    /**
+     * 엔딩 컷 — 인트로와 **같은 자리에서 같은 방식으로** 카메라를 가로챈다.
+     * 릭을 아예 안 돌리는 이유도 같다(위 주석): 릭의 앵커·오클루전 감쇠 상태가
+     * 컷 5초를 엉뚱한 값으로 채우면 다시하기 직후 카메라가 그 값에서 기어 나온다.
+     */
+    const t = outroHold ?? now - outroAtMs
+    if (t >= OUTRO_MS) { endOutro() } else {
+      const f = outroAt(outroKind, t, state.player.pos.x)
+
+      /**
+       * 주인공 — 시뮬은 멈춰 있으므로(`ended`) 리그에 넘길 상태를 만들어 준다.
+       * 인트로가 `actorAt` 으로 하는 것과 글자 그대로 같은 수법이다.
+       */
+      if (player) {
+        // 서는 자리는 컷이 정한다(`outro.ts STAND_Y`) — 문 바로 안쪽이면 카메라를 못 뺀다
+        const at = { ...state.player.pos, y: f.actor.y }
+        player.setVisible(true)
+        if (f.actor.clip) player.play(f.actor.clip)
+        player.sync({
+          ...state,
+          // `boarding` 이면 리그가 `Board` 를 강제한다 — 컷의 클립 선택을 덮어쓴다
+          phase: 'playing',
+          player: { ...state.player, pos: at, facing: f.actor.facing, moving: false, sprinting: false },
+        }, dtSec, at)
+        // ★ `sync()` 뒤에 얹는다 — 안의 `mixer.update()` 가 본 회전을 덮어쓴다
+        if (!poseRig) poseRig = makePoseRig(player.root)
+        poseRig.apply({ sit: 0, phone: 0, brace: f.actor.brace, slump: f.actor.slump })
+      }
+
+      endStage?.sync({
+        x: state.player.pos.x,
+        tunnel: f.stage.tunnel,
+        scroll: f.stage.scroll,
+        led: f.stage.led,
+        wrong: outroKind === 'wrongway',
+      })
+      outro.sync(t, f.stage.red)
+
+      stage.camera.position.set(f.cam.x, f.cam.eye, -f.cam.y)
+      stage.camera.rotation.set(0, 0, 0)
+      stage.camera.lookAt(f.cam.lx, f.cam.lz, -f.cam.ly)
+      stage.camera.near = 0.08
+      stage.camera.fov = f.cam.fov
+      stage.camera.updateProjectionMatrix()
+    }
   } else if (introAt !== null) {
     const t = introHold ?? now - introAt
     if (t >= INTRO_MS) { endIntro() } else {
@@ -733,7 +867,12 @@ const frame = (now: number): void => {
    *   주인공이 스폰(−58, 24)으로 돌아간다 — 카메라는 버스 안을 보고 있으므로
    *   화면에서는 **그냥 사라진 것처럼** 보인다. 실제로 그랬다.
    */
-  if (introAt === null) player?.sync(state, dtSec, renderPos)
+  /**
+   * 인트로·엔딩 컷은 **자기 프레임 안에서 이미 `sync` 했다**(포즈까지 얹어서).
+   * 여기서 한 번 더 부르면 믹서가 본 회전을 다시 덮어써 무릎 짚기도 안도도 사라진다 —
+   * 실제로 `pose.ts` 헤더가 경고하는 그 순서 문제다.
+   */
+  if (introAt === null && outroAtMs === null) player?.sync(state, dtSec, renderPos)
   // 손에 든 물건은 **1인칭에서만** 뜬다 — 3인칭에서는 카메라에 붙은 물건이 허공에 떠 보인다
   held?.sync(state, dtSec, cameraRig.mode() === 'fp')
   // P1 렌더는 상태를 **읽기만** 한다 — 판정은 전부 systems/ 에 있다
@@ -972,6 +1111,8 @@ declare global {
        * 샷의 프레임이 잡힐지 알 수 없다. **보고 싶은 시각을 직접 지정한다.**
        */
       seekIntro(tMs: number): void
+      /** 엔딩 컷을 강제로 켜고 그 시각에 못 박는다 (E2E·눈 검사). `seekIntro` 와 같은 이유 */
+      seekOutro(kind: OutroKind, tMs: number): void
       /** 다음 프레임의 화면 중앙 평균 밝기를 요청한다 (E2E) */
       wantLuma(): void
       /** 마지막으로 잰 값. 아직이면 −1 */
@@ -1120,6 +1261,18 @@ window.__game = {
   seekIntro: (tMs) => {
     if (introAt === null) startIntro()
     introHold = tMs
+  },
+  /**
+   * 엔딩 컷을 강제로 켜고 그 시각에 **못 박는다** — `seekIntro` 와 같은 이유다
+   * (벽시계로 스크럽하면 스크린샷을 찍기까지 흐른 시간만큼 다른 샷이 잡힌다).
+   *
+   * 판 전체를 3분 돌리지 않고 세 컷을 확인하는 유일한 길이다. 기존 `__game` 훅에
+   * 한 줄 얹은 것이라 릴리즈 빌드에 새로 생기는 것이 없다.
+   */
+  seekOutro: (kind, tMs) => {
+    if (outroAtMs === null) beginOutro(kind)
+    else outroKind = kind
+    outroHold = tMs
   },
   mode: () => cameraRig.mode(),
   toggleView: () => { cameraRig.toggleMode(); applyView() },
