@@ -44,7 +44,7 @@ export type Interactable = Readonly<{
   needs?: ItemId
   /** 필요 잔액 (원) */
   cost?: number
-  /** needs 미충족 시 사유 1줄 — GDD §5.1의 `"효자손이 필요하다"` 형식 */
+  /** needs 미충족 시 사유 1줄 — 디렉터 지시로 정확한 아이템명 대신 두루뭉실한 힌트를 준다 */
   needReason?: string
   /** 1회성인가 — 성공하면 `act.consumed`에 들어간다 */
   once: boolean
@@ -63,6 +63,15 @@ export type Interactable = Readonly<{
    * 역 벽의 노선도판은 **같은 인쇄물의 확대판**이므로 메시를 키워 그린다.
    */
   propScale?: number
+  /**
+   * 프롭을 눕히거나 뒤집는 각(rad, 모델 로컬 X축). 없으면 0 — 세워 둔다.
+   *
+   * `faceYaw` 만으로는 **위아래를 못 고친다.** 아이템 메시의 원점과 방향은
+   * "손에 들었을 때" 기준으로 저작돼 있어서(`tools/items_build.py` ITM-09 주석:
+   * *원점을 손잡이 쥐는 자리에 둔다*), 바닥·꽂이에 놓는 순간 방향이 뒤집히는 것이 있다.
+   * 우산이 그랬다 — 손잡이가 통 속에 박히고 뾰족한 끝(페룰)이 하늘을 봤다.
+   */
+  propPitch?: number
   /**
    * 자체 발광으로 그리는가 — **벽에 걸린 게시물 전용.**
    *
@@ -84,6 +93,36 @@ export const GRANDPA_ID = 'ACT-02-GP'
 /** 편의점 선물 매대 — 5지 선택 대화(`giftBranches`)를 여는 `talk` 대상 */
 export const GIFT_STALL_ID = 'OBJ-19-GIFT'
 
+/**
+ * 붕어빵 아저씨 — 무선이어폰(I-05)의 **유일한** 획득처(디렉터 지시, 완전 대체).
+ * `OBJ-03-CART` 솔리드(카트) 바로 뒤에 세운다 — 좌표는 `render/actors.ts`가
+ * `byId`로 그대로 읽는다(면 방향 규약: 좌표를 여기서 새로 만들지 않는다).
+ */
+export const FISHCAKE_ID = 'OBJ-03-FISHMAN'
+
+/**
+ * 붕어빵 아저씨 인사말 — **클릭으로 한 줄씩** 넘어간다(디렉터 지시).
+ * 마지막 줄에서만 선택지가 뜬다 — `systems/interact.ts`·`ui/dialog.ts`가 이 배열
+ * 하나를 같이 읽는다(길이가 곧 "몇 번 클릭해야 선택지가 뜨는가"다).
+ */
+export const FISHCAKE_GREETING: readonly string[] = [
+  '"어이, 거기 학생. 길 잃었나?"',
+  '"…홍대입구역 말인가? 저짝으로 쭉 가면 나올 거네."',
+  '"그나저나… 아까 누가 놓고 갔는지, 여기 신형 무선이어폰이 하나 떨어져 있더라고. ' +
+    '이거 참, 어찌해야 되나 모르겠네."',
+]
+
+/**
+ * 선택 후 반응 — 골라도 대화창은 안 닫힌다. 이 대사를 한 번 더 보여준 뒤
+ * 클릭해야 닫힌다(`state.act.dialogChoice`) — 토스트로 따로 뜨면 방금 읽던
+ * 대화창과 끊겨 보인다(디렉터 지적).
+ */
+export const FISHCAKE_REACTION: Readonly<Record<1 | 2, string>> = {
+  1: '"…음, 그런가. 그럼 자네가 가지고 가게."',
+  2: '"허허, 역시 그렇지. 사실 이건 내 거라네. 자네 양심이 어떤가 한번 떠본 걸세. ' +
+    '자네는 내 시험을 통과했어. 이건 그 보상이네."',
+}
+
 /** 자판기 3대 — `OBJ-06/07/08-VEND*` 솔리드 중심과 **같은 좌표**다 */
 export const VENDING_IDS = ['OBJ-06', 'OBJ-07', 'OBJ-08'] as const
 export type VendingId = (typeof VENDING_IDS)[number]
@@ -94,12 +133,19 @@ export const CP_IDS = ['ACT-CP', 'ACT-CP2', 'ACT-CP3'] as const
 export const INTERACTABLES: readonly Interactable[] = [
   // ───────────── Z1 (L0) ─────────────
   /**
-   * 붕어빵 노점(`OBJ-03-CART`)은 **상호작용이 없다** — 배경 소품이다(v0.3).
-   *
-   * P1 에서는 여기서 `I-12`(붕어빵)를 500원에 팔았다. `I-12` 가 양갱이 되면서
-   * 두 가지가 깨졌다: 붕어빵 노점이 양갱을 팔고, Z1 에서 정답을 직접 사면
-   * 편의점 5지 선택이 통째로 무의미해진다. 판매대를 걷어내고 수레만 남긴다.
+   * 붕어빵 노점(`OBJ-03-CART`) 자체는 여전히 배경 소품이다(v0.3 그대로) — P1 때
+   * `I-12`를 팔던 매대 기능은 되살리지 않는다. 대신 카트 뒤에 아저씨를 세운다:
+   * 무선이어폰(I-05)의 유일한 획득처(`branchesFor`의 `fishcakeBranches` 참고).
+   * 카트 솔리드(`at(-50, 32, 2.4, 1.6)`) 뒤쪽(북쪽, 벽 방향)에 서서 남쪽(열린 인도)을 본다 —
+   * 편의점 점원(`CLERK_POS`)과 같은 "카운터 뒤에 서서 손님을 본다" 배치다.
    */
+  {
+    id: FISHCAKE_ID,
+    kind: 'talk',
+    x: -50, y: 33.0, z: FLOOR.L0,
+    label: '붕어빵 아저씨',
+    once: true,
+  },
 
   // ───────────── Z2 (B1) ─────────────
   {
@@ -137,7 +183,7 @@ export const INTERACTABLES: readonly Interactable[] = [
     x: 13.03, y: 4.15, z: FLOOR.B1,
     label: '자판기 A',
     needs: 'I-01',
-    needReason: '효자손이 필요하다',
+    needReason: '효자손을 쥐고 있어야 가능할 것 같다',
     once: true,
   },
   {
@@ -146,7 +192,7 @@ export const INTERACTABLES: readonly Interactable[] = [
     x: 21.63, y: 4.15, z: FLOOR.B1,
     label: '자판기 B',
     needs: 'I-01',
-    needReason: '효자손이 필요하다',
+    needReason: '효자손을 쥐고 있어야 가능할 것 같다',
     once: true,
   },
   {
@@ -155,7 +201,7 @@ export const INTERACTABLES: readonly Interactable[] = [
     x: 25.93, y: 4.15, z: FLOOR.B1,
     label: '자판기 C',
     needs: 'I-01',
-    needReason: '효자손이 필요하다',
+    needReason: '효자손을 쥐고 있어야 가능할 것 같다',
     once: true,
   },
   {
@@ -174,29 +220,23 @@ export const INTERACTABLES: readonly Interactable[] = [
     x: 38, y: 5.0, z: FLOOR.B1 + 0.55,
     label: '우산',
     gives: 'I-09',
-    once: true,
-  },
-  {
-    // 편의점 `OBJ-19-CVS` 파사드가 y=25.7. 그 앞 0.2m 띠(Z2-NE 슬랩 시작 25.4)에 둔다.
-    // 25.4보다 북쪽이어야 슬랩 위이고, 25.7보다 남쪽이어야 유리벽 속이 아니다.
-    id: 'OBJ-19-MASK',
-    kind: 'pickup',
-    x: 24.0, y: 25.55, z: FLOOR.B1,
-    label: '마스크',
-    gives: 'I-06',
+    // 뒤집어 꽂는다 — 페룰(뾰족한 끝)이 통 속으로, J갈고리가 위로. 실제 우산꽂이가 그렇다.
+    // 메시는 손에 든 상태 기준으로 저작돼 있어(갈고리 아래·끝 위) 그대로 세우면 거꾸로다.
+    propPitch: Math.PI,
     once: true,
   },
   {
     /**
-     * 편의점 선물 매대 — 마스크와 같은 파사드 규칙(y 는 슬랩 25.4 와 유리벽 25.7 사이).
-     * 마스크(x=24.0)에서 동쪽으로 2m 떨어뜨린다. 상호작용 반경(1.5m)끼리는 겹치지만
-     * 대상 판정이 근접이 아니라 조준(각도) 기준이라 헷갈리지 않는다 — 둘을 구분해
-     * 보고 고를 수 있을 만큼만 떨어뜨리면 된다.
+     * 편의점 선물 매대 — 파사드 y 는 슬랩 25.4 와 유리벽 25.7 사이.
+     *
+     * 마스크는 여기 없다(디렉터 지시) — 물리 진열대(`OBJ-19-MASK`)로 따로 살 수 있던
+     * 걸 없앴다. 편의점 상점 대화(`branchesFor` 의 6번 칸, `maskBranch`)가 유일한
+     * 구매처다 — 두 곳에서 같은 걸 팔면 헷갈린다는 지적으로 하나로 합쳤다.
      */
     id: GIFT_STALL_ID,
     kind: 'talk',
     x: 26.0, y: 25.55, z: FLOOR.B1,
-    label: '편의점 매대',
+    label: '편의점 상품 구매',
     once: false,
   },
 
@@ -219,18 +259,6 @@ export const INTERACTABLES: readonly Interactable[] = [
   // ═══════════════ P2 신규 ═══════════════
   // 좌표는 전부 `data/world.ts` 의 솔리드에서 나온다. 접근 면을 명시한다 —
   // "어느 면에서 보이는가"로 P0에서 열한 번 데었다(면 방향 규약).
-
-  // ───────────── Z1 (L0) ─────────────
-  {
-    // 버스정류장 쉘터 안쪽 벤치. 기둥 4본이 x −60~−56 · y 23.4~25.4 를 두른다.
-    // 스폰(−58, 24)에서 1.5m — **첫 아이템은 출발선에서 보여야 한다**(P3 튜토리얼의 전제)
-    id: 'Z1-ITM05',
-    kind: 'pickup',
-    x: -56.9, y: 24.4, z: FLOOR.L0 + 0.5,
-    label: '무선이어폰',
-    gives: 'I-05',
-    once: true,
-  },
 
   // ───────────── Z2 (B1) ─────────────
   {
@@ -284,10 +312,18 @@ export const INTERACTABLES: readonly Interactable[] = [
     once: true,
   },
   {
-    // 화장실 (OBJ-14) — 계단통(x 14.6)과 편의점(x 21.5) 사이 북쪽 벽면. E-13 트리거
+    /**
+     * 화장실 (OBJ-14) — E-13 트리거.
+     *
+     * 예전엔 계단통(x14.6)·편의점(x21.5) 사이 북쪽 벽면에 있었다. 화장실이
+     * `world.ts` "화장실 확장"으로 x36~51 구역으로 옮겨간 뒤로 이 좌표가 안 따라와서
+     * **실제 문 앞에 프롬프트가 없었다.** 첫 수정은 다목적실 문(x49.9) 앞으로
+     * 옮겼는데, 실측(디렉터 지시)으로는 실제 입구가 x41.0~47.4·y24.4~24.5·z−6.0 —
+     * 그 중심에 다시 놓는다.
+     */
     id: 'OBJ-14-WC',
     kind: 'enter',
-    x: 18.5, y: 25.55, z: FLOOR.B1 + 0.9,
+    x: 44.2, y: 24.45, z: FLOOR.B1,
     label: '화장실',
     once: true,
   },
@@ -347,10 +383,11 @@ export const INTERACTABLES: readonly Interactable[] = [
     once: true,
   },
 
-  // ───────────── 바닥 동전 6개 (I-02) ─────────────
+  // ───────────── 바닥 동전 3개 (I-02) ─────────────
   // 슬롯을 안 먹으므로 **줍는 데 판단이 없다.** 대신 경로에서 살짝 비껴 둔다 —
   // 기둥(x 12/24/36/48 × y 10/20)과 유도선(y 14 축)을 피한 자리들이다.
-  ...([[6, 12], [18, 12], [30, 20], [34, 8], [46, 12], [52, 20]] as const).map(
+  // 원래 6개였다가 디렉터 지시로 절반으로 줄었다 — 지도 전역에 퍼지도록 하나씩 걸렀다.
+  ...([[6, 12], [30, 20], [46, 12]] as const).map(
     ([x, y], i): Interactable => ({
       id: `ITM-02-${i + 1}`,
       kind: 'pickup',
@@ -374,7 +411,7 @@ const hash = (str: string): number => {
 
 /**
  * 동전 1개의 가치. 시드 × 대상 id 로 결정된다 —
- * **6개 합계는 보장하지 않는다.** 잔액 하한 보장은 자판기(`coinPlan`)의 몫이고,
+ * **3개 합계는 보장하지 않는다.** 잔액 하한 보장은 자판기(`coinPlan`)의 몫이고,
  * 동전까지 보장에 넣으면 "동전을 다 주우면 반드시 통과"가 되어 자판기가 무의미해진다.
  */
 export const coinValue = (seed: number, id: string): number => {

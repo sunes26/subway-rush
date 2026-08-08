@@ -29,7 +29,7 @@ const boot = async (page: Page, query = '?seed=7'): Promise<string[]> => {
 }
 
 test.describe('S18-4/5 엔딩 도감', () => {
-  test('C 를 누르면 16칸이 열리고 미해금은 ??? 다', async ({ page }) => {
+  test('C 를 누르면 17칸이 열리고 미해금은 ??? 다', async ({ page }) => {
     const errs = await boot(page)
     await page.evaluate((k) => localStorage.removeItem(k), SAVE_KEY)
 
@@ -37,9 +37,9 @@ test.describe('S18-4/5 엔딩 도감', () => {
     await page.waitForTimeout(250)
 
     const cells = page.locator('#collection .cell')
-    await expect(cells).toHaveCount(16)
-    await expect(page.locator('#collection .cell.locked')).toHaveCount(16)
-    await expect(page.locator('#collection .sub')).toContainText('0 / 16')
+    await expect(cells).toHaveCount(17)
+    await expect(page.locator('#collection .cell.locked')).toHaveCount(17)
+    await expect(page.locator('#collection .sub')).toContainText('0 / 17')
     // 조건식이 노출되면 안 된다 — 도감이 체크리스트가 되면 수집이 아니라 심부름이다
     const text = await page.locator('#collection').innerText()
     expect(text).not.toContain('>=')
@@ -75,7 +75,7 @@ test.describe('S18-4/5 엔딩 도감', () => {
     await page.keyboard.press('KeyC')
     await page.waitForTimeout(250)
     await expect(page.locator('#collection .cell.got')).toHaveCount(1)
-    await expect(page.locator('#collection .sub')).toContainText('1 / 16')
+    await expect(page.locator('#collection .sub')).toContainText('1 / 17')
   })
 
   test('같은 엔딩 화면이 떠 있어도 횟수가 한 번만 는다', async ({ page }) => {
@@ -304,6 +304,9 @@ test.describe('자판기 QTE — 타이밍 바 (P2 개편)', () => {
       g.look(Math.PI / 2)
     })
     await page.waitForTimeout(200)
+    // 1번 슬롯 — 첫 누름은 손에 쥔다, 두 번째 누름이 QTE 를 연다 (쥔 상태에서만 열린다)
+    await page.keyboard.press('Digit1')
+    await page.waitForTimeout(100)
     await page.keyboard.press('Digit1')
     await page.waitForFunction(() => window.__game!.state().qte.active, null, { timeout: 20_000 })
   }
@@ -312,6 +315,17 @@ test.describe('자판기 QTE — 타이밍 바 (P2 개편)', () => {
     await boot(page)
     await openQte(page)
     await expect(page.locator('#qte.on')).toHaveCount(1)
+    /**
+     * ⚠ **존재가 아니라 가시성**을 본다.
+     *
+     * `toHaveCount(1)` 만 있던 동안 `#qte` 가 `#dlg`(닫혀 있으면 `display:none`) 안에 들어가
+     * 있었고, 게이지는 **한 픽셀도 안 그려지는데 테스트는 초록**이었다. 리듬 게임에서 창이
+     * 안 보이면 판정이 운이 된다 — 눈에 보이는지를 잠근다.
+     */
+    await expect(page.locator('#qte')).toBeVisible()
+    const box = await page.locator('#qte').boundingBox()
+    expect(box?.width ?? 0, 'QTE 게이지가 화면에 실제 면적을 가져야 한다').toBeGreaterThan(200)
+    expect(box?.height ?? 0).toBeGreaterThan(40)
     // 성공 구간 폭이 튜닝값 그대로 그려진다
     const w = await page.locator('#qte-win').evaluate((el) => (el as HTMLElement).style.width)
     expect(w).toBe('14%')

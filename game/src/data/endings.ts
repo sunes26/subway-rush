@@ -97,6 +97,20 @@ export const ENDINGS: readonly EndingDef[] = [
     /**
      * 🕊️ 히든 굿엔딩 — **열차를 놓친 사람에게 주는 유일한 보상이다.**
      * `!boarded` 가 조건에 들어가는 것이 핵심이다. GDD §9.4: *"실패했지만 역무원이 급행 안내."*
+     *
+     * ■ ★ 세 번째 항 `SEAT_YIELDED` 를 뺐다 — **그 플래그를 켜는 코드가 없다.**
+     *
+     * 리포 전체에서 그 문자열은 `state/types.ts` 의 선언과 여기 조건, **두 곳뿐**이다.
+     * 임산부 배려석 상호작용 자체가 게임에 없다 — `InteractKind` 12종 어디에도 없고
+     * NPC·좌표·대화 어느 것도 붙어 있지 않다. 나머지 다섯 플래그는 전부 발행처가
+     * 있는데(`interact.ts`·`staff.ts`·`train.ts`) 이것 하나만 0곳이다.
+     *
+     * 그래서 이 엔딩은 **실제 플레이로 도달할 수 없었다.** 유닛 테스트가 통과한 건
+     * 플래그를 배열에 직접 넣기 때문이다 — 판정기는 맞았지만 그 상태에 이르는
+     * 길이 없었다. 없는 조건을 지운다. 배려석 상호작용은 NPC·좌표·대화가 붙는
+     * 별건이고, 그 전까지 엔딩 하나를 죽여 둘 이유가 없다.
+     *
+     * 배려석이 생기면 항을 여기 되돌리면 된다. 선언은 `types.ts` 에 남겨 뒀다.
      */
     id: 'E-12',
     priority: 85,
@@ -106,8 +120,7 @@ export const ENDINGS: readonly EndingDef[] = [
     when: (s) =>
       !s.boarded &&
       s.flags.includes('WALLET_RETURNED') &&
-      s.flags.includes('GRANDPA_HELPED') &&
-      s.flags.includes('SEAT_YIELDED'),
+      s.flags.includes('GRANDPA_HELPED'),
   },
   {
     id: 'E-11',
@@ -207,10 +220,10 @@ export const ENDINGS: readonly EndingDef[] = [
     when: (s) => !s.boarded && s.scores.conscience < 0,
   },
   /**
-   * 강제 엔딩 2종 — `when` 이 **항상 거짓**이다.
+   * 강제 엔딩 4종(E-15·E-16·E-17·E-18) — `when` 이 **항상 거짓**이다.
    *
    * `resolveEnding` 은 열차 출발 경로에서만 쓰인다(`systems/tick.ts:124-128`).
-   * 이 둘은 시스템이 `{ t: 'END', endingId }` 로 직접 발행하므로 조건식이 필요 없다.
+   * 넷 다 시스템이 `{ t: 'END', endingId }` 로 직접 발행하므로 조건식이 필요 없다.
    * 참이 될 수 있으면 열차 출발 시 오검출되므로 거짓으로 고정하고, `priority` 는
    * 선택에 관여하지 않으니 그 값의 유일한 역할은 정렬·유일성 불변식을 지키는 것이다 —
    * 그래서 실제 엔딩과 절대 경합하지 않는 자리, fallback(E-06) 바로 위 최하단에 둔다.
@@ -232,6 +245,35 @@ export const ENDINGS: readonly EndingDef[] = [
     // "두 대까지"는 "두 대를 맞아도 괜찮다"로 잘못 읽힌다 — 실제로는 두 번째가 즉사다.
     // 살아남는 수는 "안 맞는다"뿐이라는 걸 분명히 한다.
     hint: '단소는 두 번째로 맞으면 그걸로 끝이다. 개찰구를 넘으면 멈추신다.',
+    tone: 'fail',
+    when: () => false,
+  },
+  /**
+   * 강제 엔딩 3번째 — 개찰구 매복(`systems/ambush.ts`). 위 두 개(E-15·E-16)와 같은 이유로
+   * `when` 이 항상 거짓이다: `EARBUDS_STOLEN` 플래그 + x≥57 트리거는 `resolveEnding` 이 아니라
+   * `ambushSystem` 이 직접 `{ t: 'END', endingId: 'E-17' }` 로 낸다.
+   */
+  {
+    id: 'E-17',
+    priority: 2,
+    title: '지지직!',
+    line: '눈앞이 번쩍였다.',
+    hint: '주인 없는 물건은 원래 주인이 나타난다. 신고가 더 안전하다.',
+    tone: 'fail',
+    when: () => false,
+  },
+  /**
+   * 강제 엔딩 4번째 — 차에 치였다(`main.ts` 의 `roadHazard` 판정).
+   * 적신호 차단벽을 걷어낸 뒤로 차선이 진짜 위험이 됐다는 것을 결과로 보여준다
+   * (`data/world.ts` "막는 대신 결과로 막는다"). 위 셋과 같은 이유로 `when` 이 항상 거짓이다:
+   * `main.ts` 가 `carHits` 판정에서 직접 `{ t: 'END', endingId: 'E-18' }` 을 낸다.
+   */
+  {
+    id: 'E-18',
+    priority: 1,
+    title: '쾅!',
+    line: '몸이 붕 떴다가, 그대로 아스팔트에 멈췄다.',
+    hint: '차선 위에 서 있지 마라. 신호는 몸을 지켜주지 않는다.',
     tone: 'fail',
     when: () => false,
   },

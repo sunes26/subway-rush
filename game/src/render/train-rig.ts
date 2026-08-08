@@ -6,7 +6,7 @@
 import { BoxGeometry, Group, InstancedMesh, Matrix4, Mesh, Quaternion, Vector3 } from 'three'
 import { PALETTE, TRAIN } from '../data/tuning'
 import { DOOR_XS, FLOOR, PSD_Y } from '../data/world'
-import type { GameState } from '../state/types'
+import type { GameState, TrainStatus } from '../state/types'
 import { emissiveMat, toonMat } from './toon'
 
 const DOOR_W = 1.6
@@ -15,9 +15,19 @@ const PANEL_W = DOOR_W / 2
 
 export type TrainRig = Readonly<{ root: Group; sync(s: GameState): void }>
 
-export const createTrainRig = (): TrainRig => {
+/**
+ * @param getStatus 어느 열차 상태를 볼지 — 기본은 본편(`s.train`)
+ * @param yOffset 반대 방면(디렉터 지시)은 전부 `Y_OFFSET_OPP`만큼 밀렸다.
+ *   world Y 는 Three z 로 **부호가 뒤집혀** 들어가므로(`-(TRAIN.bodyYMin+…)` 패턴),
+ *   여기서도 z 좌표마다 `-yOffset`을 더한다.
+ */
+export const createTrainRig = (
+  getStatus: (s: GameState) => TrainStatus = (s) => s.train,
+  yOffset = 0,
+  name = 'train',
+): TrainRig => {
   const root = new Group()
-  root.name = 'train'
+  root.name = name
 
   // ── 차체 8량 (부록 A: 차체 y12.42~15.58, 바닥 z−20.0)
   const bodyDepth = TRAIN.bodyYMax - TRAIN.bodyYMin
@@ -64,10 +74,10 @@ export const createTrainRig = (): TrainRig => {
 
   // ── 선로 (시각용)
   const rail = new Mesh(new BoxGeometry(200, 0.16, 0.12), toonMat(0x6b6f74))
-  rail.position.set(142, FLOOR.B2 - 1.02, -13.34)
+  rail.position.set(142, FLOOR.B2 - 1.02, -13.34 - yOffset)
   root.add(rail)
   const rail2 = rail.clone()
-  rail2.position.z = -14.66
+  rail2.position.z = -14.66 - yOffset
   root.add(rail2)
 
   for (const m of [bodies, bands, carDoors, psdDoors, windows, holes]) m.frustumCulled = false
@@ -79,7 +89,7 @@ export const createTrainRig = (): TrainRig => {
   return {
     root,
     sync(s) {
-      const t = s.train
+      const t = getStatus(s)
       const visible = t.state !== 'incoming'
       bodies.visible = visible
       bands.visible = visible
@@ -90,7 +100,7 @@ export const createTrainRig = (): TrainRig => {
       if (visible) {
         for (let k = 0; k < TRAIN.carCount; k++) {
           const cx = t.x + k * TRAIN.carLength + TRAIN.carLength / 2
-          const cz = -(TRAIN.bodyYMin + bodyDepth / 2)
+          const cz = -(TRAIN.bodyYMin + bodyDepth / 2) - yOffset
           m4.compose(new Vector3(cx, FLOOR.B2 + 1.65, cz), q, one)
           bodies.setMatrixAt(k, m4)
           m4.compose(new Vector3(cx, FLOOR.B2 + 0.95, cz), q, one)
@@ -108,17 +118,20 @@ export const createTrainRig = (): TrainRig => {
       const trainOffset = t.x - TRAIN.firstCarX
       DOOR_XS.forEach((x, i) => {
         const cx = x + trainOffset
-        m4.compose(new Vector3(cx, FLOOR.B2 + DOOR_H / 2, -(TRAIN.bodyYMin + 0.2)), q, one)
+        m4.compose(new Vector3(cx, FLOOR.B2 + DOOR_H / 2, -(TRAIN.bodyYMin + 0.2) - yOffset), q, one)
         holes.setMatrixAt(i, m4)
         for (const sgn of [-1, 1] as const) {
           const idx = i * 2 + (sgn === -1 ? 0 : 1)
           m4.compose(
-            new Vector3(cx + sgn * (PANEL_W / 2 + slide), FLOOR.B2 + DOOR_H / 2, -(TRAIN.bodyYMin + 0.07)),
+            new Vector3(
+              cx + sgn * (PANEL_W / 2 + slide), FLOOR.B2 + DOOR_H / 2,
+              -(TRAIN.bodyYMin + 0.07) - yOffset,
+            ),
             q, one,
           )
           carDoors.setMatrixAt(idx, m4)
           m4.compose(
-            new Vector3(x + sgn * (PANEL_W / 2 + slide), FLOOR.B2 + 0.98, -PSD_Y),
+            new Vector3(x + sgn * (PANEL_W / 2 + slide), FLOOR.B2 + 0.98, -PSD_Y - yOffset),
             q, one,
           )
           psdDoors.setMatrixAt(idx, m4)

@@ -16,6 +16,9 @@ import type { GameState } from '../state/types'
 // 스타일은 `css/hud.css` 가 단일 원천이다 — UI 킷(/uikit.html)이 같은 파일을 읽는다.
 // `?inline` 은 파일 내용을 문자열로 준다: 주입 방식(<style> 삽입)은 예전과 같다.
 import CSS from './css/hud.css?inline'
+
+/** 슬롯 아이콘 PNG 위치 — `tools/items_icon_render.py` 가 굽는 자리와 같아야 한다 */
+const ICON_BASE = `${import.meta.env.BASE_URL}icons/items/`
 /**
  * Figma `game-hud-ui` 에서 내보낸 아이콘 **원본 그대로**를 인라인한다.
  * `?raw` 라서 파일이 곧 에셋이고, 다시 그리거나 대체하지 않는다.
@@ -138,9 +141,14 @@ export const createHud = (mount: HTMLElement): Hud => {
     const d = document.createElement('div')
     d.className = 'slot'
     // 키캡 표기 — 10번은 `0` 이다(`Digit0`). 숫자열 순서를 그대로 읽는다
-    d.innerHTML = `<b>${i === 9 ? 0 : i + 1}</b><span></span>`
+    // 아이콘은 빌드타임에 구운 3D 렌더 PNG(`tools/items_icon_render.py`) — 없는
+    // 아이템은 onerror가 has-icon을 안 붙여서 글리프 이모지로 그대로 남는다
+    d.innerHTML = `<b>${i === 9 ? 0 : i + 1}</b><span></span><img class="icon" alt="">`
     invEl.appendChild(d)
-    return { box: d, glyph: d.querySelector('span') as HTMLElement, last: '' }
+    const icon = d.querySelector('img') as HTMLImageElement
+    icon.onload = () => d.classList.add('has-icon')
+    icon.onerror = () => d.classList.remove('has-icon')
+    return { box: d, glyph: d.querySelector('span') as HTMLElement, icon, last: '' }
   })
   /**
    * UI-14 교체 창 — 슬롯 줄 바로 위에 붙는 얇은 게이지 하나.
@@ -168,6 +176,7 @@ export const createHud = (mount: HTMLElement): Hud => {
   let lastLocked = false
   let lastCoord = ''
   let lastSig = ''
+  let lastPlaying = true
   const shown = new Map<number, HTMLElement>()
 
   return {
@@ -182,6 +191,18 @@ export const createHud = (mount: HTMLElement): Hud => {
       obsBody.textContent = body
     },
     sync(s, pointerLocked) {
+      /**
+       * 타이틀·엔딩에서는 HUD 를 통째로 숨긴다.
+       *
+       * 예전엔 두 화면이 HUD **위에** 겹쳐 떴다. 타이틀에 `3:00` 타이머·스태미너
+       * `100%`·`소지품 0/10` 이 다 보이는데 셋 다 아직 시작도 안 한 판의 값이고,
+       * 엔딩에서는 결과 카드와 같은 밝기로 겹쳐 어느 쪽을 읽어야 하는지 알 수 없었다.
+       * (실측: `tests/e2e/__shots__/00-title.png` · `ending-e06.png`)
+       *
+       * 미니맵·디버그·상호작용 표시는 전부 이 루트 안이라 같이 따라간다.
+       */
+      const playing = s.phase === 'playing' || s.phase === 'boarding'
+      if (playing !== lastPlaying) { el.className = playing ? '' : 'off'; lastPlaying = playing }
       lockHint.className =
         firstPerson && !pointerLocked && (s.phase === 'playing' || s.phase === 'boarding') ? 'on' : ''
       cross.className = firstPerson && pointerLocked ? 'on' : ''
@@ -255,17 +276,24 @@ export const createHud = (mount: HTMLElement): Hud => {
         const item = s.inventory[i] ?? null
         const def = item ? itemDef(item) : null
         const worn = !!(def?.flag && s.flags.includes(def.flag))
+        // 손에 든 칸 — 착용(`worn`)과 다른 축이다. 마스크는 쓰는 것이고 우산은 드는 것이다
+        const inHand = s.hand.slot === i && s.hand.item !== null && s.hand.item === item
         const swappable = swapOn && i !== s.swap.newSlot
-        const key = `${item ?? ''}|${worn ? 'w' : ''}|${swapOn ? (swappable ? 's' : 'n') : ''}`
+        const key = `${item ?? ''}|${worn ? 'w' : ''}|${inHand ? 'h' : ''}` +
+          `|${swapOn ? (swappable ? 's' : 'n') : ''}`
         if (key === slot.last) continue
         slot.glyph.textContent = def ? def.glyph : ''
+        // 아이콘 없는 아이템(커피·신문지·캐리어·지갑·EMP)은 onerror가
+        // has-icon을 떼어내 위 glyph 텍스트가 그대로 보인다
+        if (def) slot.icon.src = `${ICON_BASE}${def.node}.png`
+        else { slot.icon.removeAttribute('src'); slot.box.classList.remove('has-icon') }
         slot.box.title = def ? (def.cost ? `${def.name} — ${def.cost}` : def.name) : ''
-        slot.box.className = [
-          'slot',
-          item ? 'has' : '',
-          worn ? 'worn' : '',
-          swappable ? 'swappable' : '',
-        ].filter(Boolean).join(' ')
+        // className을 통짜로 다시 쓰면 icon.onload 가 비동기로 붙인 has-icon이
+        // 지워진다 — 개별 토글로 그 클래스만 건드리지 않는다
+        slot.box.classList.toggle('has', !!item)
+        slot.box.classList.toggle('worn', worn)
+        slot.box.classList.toggle('inhand', inHand)
+        slot.box.classList.toggle('swappable', swappable)
         slot.last = key
       }
 

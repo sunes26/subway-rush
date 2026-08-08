@@ -11,17 +11,24 @@ import { resolveEnding } from '../data/endings'
 import { TRAFFIC_LIGHT, zoneAt } from '../data/world'
 import { applyAll } from '../state/reducer'
 import type { Action, GameState } from '../state/types'
+import { ambushSystem } from './ambush'
 import { chaseSolids, chaseSystem } from './chase'
 import { crowdSolids, crowdSystem } from './crowd'
 import { setDynamicSolids } from './collision'
+import { disembarkSystem } from './disembark'
 import { gateFlaps, gateKnockback, gatesSystem } from './gates'
 import { interactSystem } from './interact'
+import { knockdownSystem } from './knockdown'
 import { movementSystem } from './movement'
 import { emergencyDoor, emergencySystem } from './emergency'
 import { obstacleSystem } from './obstacles'
 import { staffSystem } from './staff'
 import { qteSystem } from './qte'
-import { psdDoors, trainAt, trainSystem } from './train'
+import {
+  psdDoors, psdDoors2, trainAt, trainClock, trainClock2, trainSystem, trainSystem2,
+  trainTriggerSystem, trainTriggerSystem2,
+} from './train'
+import { umbrellaSystem } from './umbrella'
 
 export type TickCtx = Readonly<{ input: InputFrame; cameraYaw: number }>
 
@@ -36,12 +43,13 @@ export const lightRemainSec = (s: GameState): number =>
  *
  * 예전에는 여기에 적신호 차단벽(`LIGHT-BLOCK`)이 하나 더 있었다. 지금은 **없다** —
  * 디렉터 지시로 적신호에도 건널 수 있다. 대신 차가 진짜 위험이 됐다:
- * 차체에 닿으면 `RESPAWN` 으로 스폰에 되돌아간다(`main.ts` 의 `roadHazard` 판정).
+ * 차체에 닿으면 즉사(E-18)로 그 자리에서 끝난다(`main.ts` 의 `roadHazard` 판정).
  * 벽으로 막던 것을 규칙이 아니라 **결과**로 바꾼 것이다.
  */
 export const rebuildDynamics = (s: GameState): void => {
   setDynamicSolids([
-    ...gateFlaps(s), ...psdDoors(s), ...chaseSolids(s), ...crowdSolids(s), ...emergencyDoor(s),
+    ...gateFlaps(s), ...psdDoors(s), ...psdDoors2(s), ...chaseSolids(s), ...crowdSolids(s),
+    ...emergencyDoor(s),
   ])
 }
 
@@ -51,14 +59,27 @@ export const tick = (state: GameState, dtMs: number, ctx: TickCtx): GameState =>
   // 1) 시계 전진
   s = applyAll(s, [{ t: 'ADVANCE', dtMs }])
 
-  // 2) 열차는 시간의 순수 함수 — 리듀서를 거치지 않고 파생한다
-  const train = trainAt(s.elapsedMs)
+  // 2) 계단/엘리베이터 위치 트리거 — 같은 틱에 반영되도록 열차 파생보다 먼저 처리한다
+  s = applyAll(s, trainTriggerSystem(s))
+  s = applyAll(s, trainTriggerSystem2(s))
+
+  // 열차는 시간의 순수 함수(트리거를 반영한 `trainClock`) — 리듀서를 거치지 않고 파생한다
+  const train = trainAt(trainClock(s))
   if (
     train.state !== s.train.state ||
     train.x !== s.train.x ||
     train.doorProgress !== s.train.doorProgress
   ) {
     s = { ...s, train }
+  }
+  // 반대 방면 열차도 같은 식으로 파생한다
+  const train2 = trainAt(trainClock2(s))
+  if (
+    train2.state !== s.train2.state ||
+    train2.x !== s.train2.x ||
+    train2.doorProgress !== s.train2.doorProgress
+  ) {
+    s = { ...s, train2 }
   }
 
   // 3) 동적 충돌체 갱신 (이동 전에 반드시)
@@ -80,11 +101,23 @@ export const tick = (state: GameState, dtMs: number, ctx: TickCtx): GameState =>
   /** 역무원도 이동 뒤다 — 추격과 같은 이유(한 프레임 늦은 위치를 보면 판정이 어긋난다) */
   s = applyAll(s, staffSystem(s))
 
+  /** 개찰구 매복 — x≥57 트리거도 이번 스텝의 최종 위치로 판정해야 한다 */
+  s = applyAll(s, ambushSystem(s, { dtMs }))
+
+  /**
+   * 차에 치인 뒤 — 시간만 흘린다. **시작은 `main.ts` 가 낸다**(차는 렌더 쪽에서 굴러간다).
+   * 매복 바로 뒤에 두는 이유는 둘 다 "쓰러지는 동안 다른 판정을 받지 않아야" 하기 때문이다.
+   */
+  s = applyAll(s, knockdownSystem(s, { dtMs }))
+
   /**
    * 인파 — 역류의 밀어내기는 `MOVE` 전량 재발행이라 반드시 이동 **뒤**여야 한다
    * (`gateKnockback` 과 같은 수법·같은 이유).
    */
   s = applyAll(s, crowdSystem(s, { dtMs, prev: before }))
+
+  /** 하차 인파(디렉터 지시) — 역류와 같은 이유로 이동 뒤. 부딪힌 순간에만 민다 */
+  s = applyAll(s, disembarkSystem(s, { dtMs }))
 
   /**
    * 방해요소는 **인파 뒤**다. 인파에 밀려 물청소 구역으로 들어가는 일이 있고,
@@ -102,6 +135,14 @@ export const tick = (state: GameState, dtMs: number, ctx: TickCtx): GameState =>
   s = applyAll(s, interactSystem(s, { dtMs, input: ctx.input, cameraYaw: ctx.cameraYaw }))
   s = applyAll(s, qteSystem(s, { dtMs, input: ctx.input }))
 
+  /**
+   * 펼친 우산 훑기 — **상호작용 뒤**다. 같은 스텝에 좌클릭으로 편 우산이 곧바로
+   * 판정에 들어가야 "펴자마자 옆 사람이 날아간다"가 성립한다.
+   * (인파 솔리드는 이번 스텝 시작에 이미 확정됐으므로 실제로 길이 열리는 것은
+   *  다음 스텝이다 — 예전 슬롯 키 경로와 같은 한 프레임이라 체감이 달라지지 않는다.)
+   */
+  s = applyAll(s, umbrellaSystem(s, { dtMs }))
+
   const gateActions = gatesSystem(s)
   s = applyAll(s, gateActions)
   s = applyAll(s, gateKnockback(s, before))
@@ -113,6 +154,7 @@ export const tick = (state: GameState, dtMs: number, ctx: TickCtx): GameState =>
   s = applyAll(s, emergencySystem(s))
 
   s = applyAll(s, trainSystem(s))
+  s = applyAll(s, trainSystem2(s))
 
   // 5) 존 판정
   const zone = zoneAt(s.player.pos.x, s.player.pos.z)
@@ -121,8 +163,16 @@ export const tick = (state: GameState, dtMs: number, ctx: TickCtx): GameState =>
   // 6) 종료 판정
   //    자유 탐색(`?freeplay`)에서는 열차가 떠나도 끝내지 않는다 — 맵을 계속 보라는 뜻이다.
   if (s.freeplay) return s
-  if (s.phase === 'boarding' && s.train.state === 'departed') {
-    s = applyAll(s, [{ t: 'END', endingId: resolveEnding(s).id }])
+  /**
+   * 탄 게 반대 방면(`boardedTrain2`)이면 **그 열차**의 출발을 본다 — 본편 열차(`s.train`)는
+   * 계속 대기 중이라 영원히 안 끝난다. 안 탔을 때(missed) 는 여전히 본편만 본다 —
+   * 반대 방면 열차가 그냥 지나가는 건 이 판의 실패 사유가 아니다.
+   */
+  if (s.phase === 'boarding') {
+    const boardedTrainStatus = s.boardedTrain2 ? s.train2 : s.train
+    if (boardedTrainStatus.state === 'departed') {
+      s = applyAll(s, [{ t: 'END', endingId: resolveEnding(s).id }])
+    }
   } else if (s.phase === 'playing' && s.train.state === 'departed') {
     s = applyAll(s, [{ t: 'END', endingId: resolveEnding(s).id }])
   }

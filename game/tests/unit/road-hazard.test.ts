@@ -10,7 +10,9 @@
 
 import { describe, expect, it } from 'vitest'
 import { MOVE } from '../../src/data/tuning'
+import { ENDINGS } from '../../src/data/endings'
 import { boxHitsCircle, carHits, type CarBox } from '../../src/systems/roadHazard'
+import { start } from './_pilot'
 
 /** 남북 차선(이면도로) 차 — 길이축이 y */
 const NS: CarBox = { x: -28.8, y: 27.0, hx: 0.85, hy: 2.10 }
@@ -64,5 +66,16 @@ describe('carHits', () => {
       { x: -25.2, y: 27.0, hx: 0.85, hy: 2.10 },
     ]
     expect(carHits(lanes, -27.0, 27.0, MOVE.radius)).toBe(false)
+  })
+})
+
+describe('E-18 (차에 치임)', () => {
+  it('정의가 등록돼 있고 강제(when 항상 거짓)다 — resolveEnding 을 안 탄다', () => {
+    // 실제 발행은 `main.ts` 의 렌더 루프(carHits + END)가 한다 — 여기서 재는 건
+    // 등록·강제 불변식뿐이다. 배선이 살아 있는지는 `tests/e2e/road.spec.ts` 가 본다.
+    const e18 = ENDINGS.find((e) => e.id === 'E-18')
+    expect(e18).toBeDefined()
+    expect(e18?.when(start(7))).toBe(false)
+    expect(e18?.when({ ...start(7), boarded: true, timeLeftMs: 0 })).toBe(false)
   })
 })

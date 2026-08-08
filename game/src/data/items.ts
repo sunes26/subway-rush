@@ -36,17 +36,39 @@ export type ItemDef = Readonly<{
   flag?: FlagId
   /**
    * 줍는 즉시 착용하는가 (P2 · 디렉터 지시).
-   * **대가가 가벼운 착용형에만** 준다 — 마스크·캐리어는 켜는 순간이 곧 판단이라 손을 안 댄다.
+   * 이어폰·마스크처럼 **소지 자체가 곧 능력**인 착용형은 전부 켠다.
+   * 캐리어만 예외다 — 켜는(끄는) 순간이 곧 이동속도를 깎는 판단이라 손을 안 댄다.
    */
   autoWear?: boolean
+  /**
+   * 슬롯 키로 끄고 켤 수 있는가 (기본 참).
+   * 디렉터 지시 — 이어폰·마스크는 **소지 자체가 능력**이라 따로 껐다 켰다 할 수 없다.
+   * 대가가 있는 캐리어만 여전히 토글이다.
+   */
+  toggleable?: boolean
+  /**
+   * 슬롯 키로 손에 들 수 있는가 (기본 참).
+   * 디렉터 지시 — 이어폰은 귀에 꽂는 물건이지 손에 드는 물건이 아니다.
+   * `false`면 `toggleable: false` 착용형이 손 대신 아무 일도 안 한다.
+   */
+  holdable?: boolean
   /** 무효화하는 방해요소 — `systems/obstacles.ts` 의 표와 **양방향 일치**해야 한다 */
   negates?: readonly ObsId[]
   /** 인벤 아이콘 대신 쓰는 1글자 — 3분 게임에 아이콘 에셋을 만들 이유가 없다 */
   glyph: string
   /** `1``2``3` 으로 사용했을 때 근처에 대상이 없으면 나오는 사유 */
   noTargetReason: string
-  /** 착용형의 대가 — HUD 툴팁 1줄. 대가 없는 착용형은 그냥 상시 켜 두면 되므로 판단이 없다 */
+  /**
+   * 착용형 HUD 툴팁 1줄 — 디렉터 지시로 **정확한 수치 대신 두루뭉실한 힌트**를 준다.
+   * 무슨 방해요소를 막는지 스스로 짐작하게 하는 것이 목적이다.
+   */
   cost?: string
+  /**
+   * 착용형을 켜고 끌 때 뜨는 토스트 — 디렉터 지시로 `"OO 착용"/"OO 해제"` 대신
+   * 몸으로 느껴지는 감각을 준다. 없으면 `${name} 착용/해제`로 대체한다.
+   */
+  wearOnText?: string
+  wearOffText?: string
 }>
 
 const DEFS: readonly ItemDef[] = [
@@ -60,8 +82,8 @@ const DEFS: readonly ItemDef[] = [
     // 효자손 자체가 시간을 벌어 주지는 않는다 — **자판기를 열어 잔액부족(OBS-02)을 푼다**
     negates: ['OBS-02'],
     glyph: '🪃',
-    // 효자손은 "쓰는" 물건이 아니라 자판기 상호작용의 **조건**이다.
-    noTargetReason: '자판기 앞에서 써야 한다',
+    // 디렉터 지시 — 정확한 사용법 대신 두루뭉실한 힌트
+    noTargetReason: '자판기 아래를 훑기 좋아 보인다',
   },
   {
     id: 'I-05',
@@ -72,11 +94,12 @@ const DEFS: readonly ItemDef[] = [
     use: 'wear',
     flag: 'EARBUDS_ON',
     autoWear: true,
+    toggleable: false,
+    holdable: false,
     negates: ['OBS-06', 'OBS-07'],
     glyph: '🎧',
     noTargetReason: '이미 끼고 있다',
-    // 대가 — 안 그러면 상시 착용이 정답이라 판단이 없다
-    cost: '착용 중엔 안내 LED 힌트가 안 들린다',
+    cost: '누군가의 말을 무시할 수 있을 것 같다',
   },
   {
     id: 'I-06',
@@ -86,10 +109,13 @@ const DEFS: readonly ItemDef[] = [
     consumable: false,
     use: 'wear',
     flag: 'MASK_ON',
+    autoWear: true,
+    toggleable: false,
+    holdable: false,
     negates: ['OBS-04'],
     glyph: '😷',
     noTargetReason: '이미 쓰고 있다',
-    cost: '스태미너 회복이 20% 느리다',
+    cost: '사람들 사이를 좀 더 수월하게 비집고 나갈 수 있을 것 같다',
   },
   {
     id: 'I-07',
@@ -110,18 +136,23 @@ const DEFS: readonly ItemDef[] = [
     use: 'auto',
     negates: ['OBS-05'],
     glyph: '📰',
-    noTargetReason: '젖은 바닥에서 알아서 깔린다',
+    noTargetReason: '바닥에 깔면 안 미끄러질 것 같다',
   },
   {
     id: 'I-09',
     name: '우산',
     node: 'ITM09_Umbrella',
     slot: true,
-    consumable: true,
+    /**
+     * **소모되지 않는다** (디렉터 지시 2026-08-07). 예전엔 한 번 쓰면 사라졌는데,
+     * 맵에 우산이 한 자루뿐이라 E-11("우산 밀기 3회")이 도달 불가능한 엔딩이었다.
+     * 지금은 들고 · 펼치고 · 인파를 훑는다 (`systems/umbrella.ts`).
+     */
+    consumable: false,
     use: 'use',
     negates: ['OBS-03'],
     glyph: '☂',
-    noTargetReason: '여기서 쓸 데가 없다',
+    noTargetReason: '펼치면 뭔가 막아줄 것 같다',
   },
   {
     id: 'I-10',
@@ -134,7 +165,9 @@ const DEFS: readonly ItemDef[] = [
     negates: ['OBS-03', 'OBS-04'],
     glyph: '🧳',
     noTargetReason: '이미 끌고 있다',
-    cost: '끄는 동안 이동속도 −20%',
+    cost: '끌고 다니면 사람들 사이를 밀고 나갈 수 있을 것 같다',
+    wearOnText: '한쪽 손이 무거워졌다',
+    wearOffText: '손이 가벼워졌다',
   },
   {
     id: 'I-11',
@@ -145,7 +178,7 @@ const DEFS: readonly ItemDef[] = [
     use: 'key',
     negates: ['OBS-01'],
     glyph: '👛',
-    noTargetReason: '유실물센터 창구에 맡겨야 한다',
+    noTargetReason: '주인을 찾아줄 수 있을 것 같다',
   },
   {
     id: 'I-12',
@@ -156,7 +189,7 @@ const DEFS: readonly ItemDef[] = [
     use: 'use',
     negates: ['OBS-14'],
     glyph: '🍡',
-    noTargetReason: '드릴 사람이 없다',
+    noTargetReason: '누군가에게 선물하면 좋아할 것 같다',
   },
   /**
    * 오답 4종 — 편의점 매대의 나머지. **`negates` 를 비워 둔다.**
@@ -172,7 +205,7 @@ const DEFS: readonly ItemDef[] = [
     consumable: true,
     use: 'use',
     glyph: '🥛',
-    noTargetReason: '드릴 사람이 없다',
+    noTargetReason: '누군가에게 선물하면 좋아할 것 같다',
   },
   {
     id: 'I-16',
@@ -182,7 +215,7 @@ const DEFS: readonly ItemDef[] = [
     consumable: true,
     use: 'use',
     glyph: '🍫',
-    noTargetReason: '드릴 사람이 없다',
+    noTargetReason: '누군가에게 선물하면 좋아할 것 같다',
   },
   {
     id: 'I-17',
@@ -192,7 +225,7 @@ const DEFS: readonly ItemDef[] = [
     consumable: true,
     use: 'use',
     glyph: '🥤',
-    noTargetReason: '드릴 사람이 없다',
+    noTargetReason: '누군가에게 선물하면 좋아할 것 같다',
   },
   {
     id: 'I-18',
@@ -202,7 +235,7 @@ const DEFS: readonly ItemDef[] = [
     consumable: true,
     use: 'use',
     glyph: '🍤',
-    noTargetReason: '드릴 사람이 없다',
+    noTargetReason: '누군가에게 선물하면 좋아할 것 같다',
   },
   {
     id: 'I-13',
@@ -224,7 +257,7 @@ const DEFS: readonly ItemDef[] = [
     use: 'auto',
     negates: ['OBS-08'],
     glyph: '💥',
-    noTargetReason: '길이 막히면 알아서 터진다',
+    noTargetReason: '들고만 있어도 뭔가 막아줄 것 같다',
   },
 
   // ── 슬롯 미점유 ──
@@ -285,6 +318,27 @@ export const GIFT_ITEMS: readonly ItemId[] = ['I-12', 'I-15', 'I-16', 'I-17', 'I
 
 /** 정답 — 할아버지가 받는 유일한 선물 */
 export const GIFT_CORRECT: ItemId = 'I-12'
+
+/**
+ * 편의점 상점 UI 표시가격(원) — **꾸밈이다.** 실제 잔액을 깎지 않는다.
+ * 선물은 여전히 1회 무료 선택(`buyGift`)이다 — 값을 매겨 잔액이 모자라면 못 사게
+ * 만들면 정답(`I-12`)을 아예 못 사는 판이 생겨 퍼즐이 막힌다(시작 잔액은 항상 0원).
+ * 양갱·새우깡이 같은 값인 이유: 가격 차이 자체가 힌트가 되면 안 된다
+ * (`giftBranches` 의 note 를 전부 비우는 규칙과 같은 이유) — 두 후보를 묶어 애매하게 둔다.
+ */
+export const SHOP_PRICE: Readonly<Partial<Record<ItemId, number>>> = {
+  'I-12': 200,
+  'I-15': 100,
+  'I-16': 100,
+  'I-17': 100,
+  'I-18': 200,
+}
+
+/**
+ * 마스크 실가격(원) — 편의점 상점 6번 칸의 **유일한 구매처**다(디렉터 지시로
+ * 물리 진열대를 없앴다). `SHOP_PRICE`와 달리 꾸밈이 아니라 `BALANCE`를 실제로 깎는다.
+ */
+export const MASK_PRICE = 1500
 
 /** 착용형 — HUD가 켜짐/꺼짐을 표시한다 */
 export const WEARABLES: readonly ItemDef[] = DEFS.filter((d) => d.use === 'wear')

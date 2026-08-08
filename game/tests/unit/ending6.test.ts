@@ -5,6 +5,7 @@
  * (S12-7 양심 게이지 숫자 미표시 · S12-8 조롱 문구는 코드 리뷰 / 아래 어휘 검사)
  */
 
+import { EMPTY_TALLY } from '../../src/state/reducer'
 import { describe, expect, it } from 'vitest'
 import { ENDINGS, FAIL_HINTS, resolveEnding } from '../../src/data/endings'
 import { CHASE, TOTAL_TIME_MS } from '../../src/data/tuning'
@@ -45,15 +46,17 @@ describe('S12-1 엔딩 6종이 각각 재현된다', () => {
     const s = start(7, {
       boarded: true,
       timeLeftMs: 20_000,
-      tally: { coinsEarned: 3000, itemsUsed: [], secrets: [], pushes: 0 },
+      tally: { ...EMPTY_TALLY, coinsEarned: 3000, itemsUsed: [], secrets: [], pushes: 0 },
     })
     expect(resolveEnding(s).id).toBe('E-14')
   })
 
-  it('전부 서로 다른 id·title 을 갖는다 (선물 퍼즐 2종 포함 16종)', () => {
-    expect(ENDINGS.length).toBe(16)
-    expect(new Set(ENDINGS.map((e) => e.id)).size).toBe(16)
-    expect(new Set(ENDINGS.map((e) => e.title)).size).toBe(16)
+  // 선물 퍼즐 2종(E-15·E-16) + 개찰구 매복(E-17) + 차에 치임(E-18) 포함 18종
+  // (디렉터 지시로 16→17→18 확장)
+  it('전부 서로 다른 id·title 을 갖는다 (강제 엔딩 4종 포함 18종)', () => {
+    expect(ENDINGS.length).toBe(18)
+    expect(new Set(ENDINGS.map((e) => e.id)).size).toBe(18)
+    expect(new Set(ENDINGS.map((e) => e.title)).size).toBe(18)
   })
 })
 
@@ -72,7 +75,7 @@ describe('S12-2~S12-3 우선순위', () => {
       boarded: true,
       timeLeftMs: 20_000,
       scores: { conscience: -5, style: 0, knowledge: 0 },
-      tally: { coinsEarned: 4500, itemsUsed: [], secrets: [], pushes: 0 },
+      tally: { ...EMPTY_TALLY, coinsEarned: 4500, itemsUsed: [], secrets: [], pushes: 0 },
     })
     expect(resolveEnding(s).id, 'E-14 priority 90 > E-10 80').toBe('E-14')
   })
@@ -128,11 +131,12 @@ describe('S12-4~S12-6 채점 축', () => {
   })
 
   it('S12-5 스타일 = 사용 아이템 **종류** 수 (같은 종류 2회는 1)', () => {
-    // 마스크를 두 번 쓴다 — 두 번째는 이미 착용 중이라 사유만 나온다
-    const s0 = put(start(7, { inventory: ['I-06', null, null] }), 30, 15, FLOOR.B1)
+    // 캐리어를 두 번 쓴다 — 두 번째는 이미 끌고 있다가 놓는 것뿐이다
+    // (이어폰·마스크는 토글이 없어졌으므로 여전히 토글인 캐리어로 잰다)
+    const s0 = put(start(7, { inventory: ['I-10', null, null] }), 30, 15, FLOOR.B1)
     let s = tap(s0, { pressSlot: 1 })
     expect(s.scores.style).toBe(1)
-    expect(s.tally.itemsUsed).toEqual(['I-06'])
+    expect(s.tally.itemsUsed).toEqual(['I-10'])
     s = tap(wait(s, 100), { pressSlot: 1 })
     expect(s.scores.style, '종류가 늘지 않았으므로 그대로').toBe(1)
   })
@@ -146,7 +150,10 @@ describe('S12-4~S12-6 채점 축', () => {
   })
 
   it('S12-6 자판기 성공 1회 = 시크릿 1건 (재긁기 불가하므로 중복 불가)', () => {
-    let s = put(start(7, { inventory: ['I-01', null, null] }), VEND_A.x, VEND_A.y - 1.1, FLOOR.B1)
+    let s = put(
+      start(7, { inventory: ['I-01', null, null], hand: { item: 'I-01', slot: 0, open: false } }),
+      VEND_A.x, VEND_A.y - 1.1, FLOOR.B1,
+    )
     const yaw = yawTo(s, VEND_A.x, VEND_A.y)
     s = tap(s, { pressInteract: true }, yaw)
     expect(s.qte.active).toBe(true)
@@ -217,7 +224,7 @@ describe('S12 엔딩 판정이 시뮬 종료와 연결된다', () => {
       { timeLeftMs: -99_999 },
       { timeLeftMs: TOTAL_TIME_MS },
       { scores: { conscience: 5, style: 9, knowledge: 12 } },
-      { tally: { coinsEarned: 99_999, itemsUsed: [], secrets: [], pushes: 0 } },
+      { tally: { ...EMPTY_TALLY, coinsEarned: 99_999, itemsUsed: [], secrets: [], pushes: 0 } },
     ]
     for (const p of wild) expect(() => resolveEnding(start(7, p))).not.toThrow()
   })

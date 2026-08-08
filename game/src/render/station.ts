@@ -77,9 +77,14 @@ const VISIBLE_RANGE = 95
  */
 const USE_LIGHTMAP = false
 
-/** 병합하지 않고 개별로 남길 부품 (상태에 따라 움직이거나 색이 바뀐다) */
+/**
+ * 병합하지 않고 개별로 남길 부품 (상태에 따라 움직이거나 색이 바뀐다).
+ * 앞의 `(B_)?` 는 반대 방면 열차·안전문(Blender 복제, 디렉터 지시)을 잡는다 —
+ * `B_TR_door_12`·`B_Z5_psd_door_3` 도 원본과 똑같이 동적 부품으로 분류돼야
+ * 문이 안 열리는 채로 굳지 않는다.
+ */
 const DYNAMIC_NAME =
-  /^(Z3_GATE_G\d_[NS]_flap|Z3_sign_G\d_face|Z3_GATE_G\d_floorlamp|Z5_psd_door_\d+|TR_door_|TR_dwin_|Z1_OBJ02_signal)/
+  /^(B_)?(Z3_GATE_G\d_[NS]_flap|Z3_sign_G\d_face|Z3_GATE_G\d_floorlamp|Z5_psd_door_\d+|TR_door_|TR_dwin_|Z1_OBJ02_signal)/
 // ⚠ 여기 올린 머티리얼은 **쓰는 오브젝트마다 드로우 콜 1개**가 된다 (병합에서 빠지므로).
 // `SIGN_DARK`가 올라가 있었는데, 그 색으로 칠해진 것 중 실제로 상태에 따라 바뀌는 건
 // 게이트 표지판 **면**(`Z3_sign_G\d_face`)뿐이고 그건 위 이름 규칙이 이미 잡는다.
@@ -223,6 +228,12 @@ const SELF_LIT_MATERIALS = new Set([
   // ⚠ 바탕 띠(`HQ_PIDS_BAND`)는 **일부러 뺀다.** 같이 발광시키면 띠의 번짐이
   //   글자를 덮어 주황 덩어리가 된다. 실사 전광판도 어두운 바탕에 밝은 글자다.
   'HQ_PIDS_TXT',
+  // 객실 형광 라인. 승강장에서 열차 안이 **밝게** 보여야 "탈 수 있는 칸"으로 읽힌다.
+  // ⚠ 천장판(`TR_INNER`)은 **일부러 뺐다.** 같이 발광시키면 음영이 사라져 객실 위쪽
+  //   절반이 흰 공백으로 날아간다(실제로 그렇게 나와서 되돌렸다) — 전광판 바탕 띠를
+  //   뺀 것과 같은 이유다. 빛은 기구가 내고 천장은 그 빛을 받는 면이어야 한다.
+  // `GLOW_EXCLUDE` 에도 올려 뒀다 — 열차가 움직여서 글로우 판이 못 따라온다.
+  'TR_LIGHT',
 ])
 
 /**
@@ -280,15 +291,27 @@ const NODE_DROP: ReadonlySet<string> = new Set([
 
 type Bucket = { geos: BufferGeometry[]; color: number }
 
-/** 씬 하나를 훑어 정적 메시는 머티리얼별로 모으고, 동적 메시는 그대로 넘긴다. */
+/**
+ * 씬 하나를 훑어 정적 메시는 머티리얼별로 모으고, 동적 메시는 그대로 넘긴다.
+ *
+ * @param splitOpp 켜면 `B_` 접두사가 붙은 메시(반대 방면 열차 복제본, 디렉터 지시)를
+ *   `oppBuckets`/`oppOverhead` 로 따로 모은다 — 반대 방면 열차 몸체는 본편과
+ *   **다른 x** 로 움직여야 하므로 같은 머티리얼이라도 한 버킷에 섞이면 안 된다.
+ */
 const collect = (
   scene: Object3D,
   glow: GlowQuad[],
   glowOverhead: GlowQuad[],
   shadows: ShadowQuad[] | null,
-): { buckets: Map<string, Bucket>; overhead: Map<string, Bucket>; dynamics: Mesh[] } => {
+  splitOpp = false,
+): {
+  buckets: Map<string, Bucket>; overhead: Map<string, Bucket>; dynamics: Mesh[]
+  oppBuckets: Map<string, Bucket>; oppOverhead: Map<string, Bucket>
+} => {
   const buckets = new Map<string, Bucket>()
   const overhead = new Map<string, Bucket>()
+  const oppBuckets = new Map<string, Bucket>()
+  const oppOverhead = new Map<string, Bucket>()
   const dynamics: Mesh[] = []
   scene.updateWorldMatrix(true, true)
 
@@ -309,7 +332,8 @@ const collect = (
     geo.deleteAttribute('uv1')
     geo.deleteAttribute('tangent')
     const isUp = isOverhead(m.name, matName)
-    const into = isUp ? overhead : buckets
+    const opp = splitOpp && m.name.startsWith('B_')
+    const into = opp ? (isUp ? oppOverhead : oppBuckets) : (isUp ? overhead : buckets)
 
     /**
      * 글로우 판은 **병합 전에** 뜬다. 병합 후에는 `merged:AD_PANEL` 하나가 존 전체라
@@ -337,7 +361,7 @@ const collect = (
     if (b) b.geos.push(geo)
     else into.set(key, { geos: [geo], color: baseColor(m.material) })
   })
-  return { buckets, overhead, dynamics }
+  return { buckets, overhead, dynamics, oppBuckets, oppOverhead }
 }
 
 /**
@@ -557,6 +581,9 @@ export const loadStation = async (
   let overheadOn = true
   const trainGroup = new Group()
   trainGroup.name = 'station:train'
+  /** 반대 방면 열차(디렉터 지시) — 본편과 다른 x 로 움직이므로 몸체를 별도 그룹에 둔다 */
+  const train2Group = new Group()
+  train2Group.name = 'station:train2'
 
   const flaps: Flap[] = []
   const signs: SignFace[] = []
@@ -592,6 +619,19 @@ export const loadStation = async (
   const signBoxes = new Map<number, Box3>()
   const psdGeo: { left: BufferGeometry[]; right: BufferGeometry[] } = { left: [], right: [] }
   const trainGeo: { left: BufferGeometry[]; right: BufferGeometry[] } = { left: [], right: [] }
+  /**
+   * 차문의 **창**만 따로 받는 뱅크.
+   *
+   * 문짝과 한 덩어리로 합치면 뱅크의 단색(0x6f8797)으로 칠해져 **불투명한 판**이 된다.
+   * 그러면 닫힌 열차가 통짜 회색 상자로 읽히고, 객실을 지어 넣어도 밖에서 안 보인다.
+   * 유리 뱅크를 하나 더 두는 값(드로우 콜 2개)이 그 정보값보다 싸다 —
+   * 안전문 유리를 투명으로 둔 이유(`GLASS_MATERIALS` 주석)와 같은 판단이다.
+   */
+  const dwinGeo: { left: BufferGeometry[]; right: BufferGeometry[] } = { left: [], right: [] }
+  /** 반대 방면 안전문·차문(`B_` 접두사) — 본편과 다른 doorProgress 로 슬라이드한다 */
+  const psdGeo2: { left: BufferGeometry[]; right: BufferGeometry[] } = { left: [], right: [] }
+  const trainGeo2: { left: BufferGeometry[]; right: BufferGeometry[] } = { left: [], right: [] }
+  const dwinGeo2: { left: BufferGeometry[]; right: BufferGeometry[] } = { left: [], right: [] }
 
   let mergedCount = 0
   let dynamicCount = 0
@@ -611,8 +651,8 @@ export const loadStation = async (
     const group = isTrain ? trainGroup : new Group()
     group.name = `station:${zone}`
     // 열차는 매 프레임 x 로 움직인다 — 월드 좌표 그림자를 붙이면 떠난 자리에 그림자만 남는다
-    const { buckets, overhead, dynamics } =
-      collect(scene, glowQuads, glowOverheadQuads, isTrain ? null : shadowQuads)
+    const { buckets, overhead, dynamics, oppBuckets, oppOverhead } =
+      collect(scene, glowQuads, glowOverheadQuads, isTrain ? null : shadowQuads, isTrain)
     const before = group.children.length
     mergeBuckets(buckets, group, lightMap)
     const oGroup = new Group()
@@ -621,22 +661,43 @@ export const loadStation = async (
     if (oGroup.children.length > 0) { group.add(oGroup); overheadGroups.push(oGroup) }
     mergedCount += group.children.length - before + oGroup.children.length
 
+    // 반대 방면 열차 몸체(`B_` 접두사) — 본편 `trainGroup` 이 아니라 `train2Group` 에 쌓는다
+    if (isTrain) {
+      const before2 = train2Group.children.length
+      mergeBuckets(oppBuckets, train2Group, lightMap)
+      const oGroup2 = new Group()
+      oGroup2.name = 'overhead:Z5_TRAIN_opp'
+      mergeBuckets(oppOverhead, oGroup2, lightMap)
+      if (oGroup2.children.length > 0) { train2Group.add(oGroup2); overheadGroups.push(oGroup2) }
+      mergedCount += train2Group.children.length - before2 + oGroup2.children.length
+    }
+
     for (const m of dynamics) {
       const matName = Array.isArray(m.material) ? m.material[0]?.name ?? '' : m.material.name
+      const opp = m.name.startsWith('B_')
 
       // ── 안전문 · 차문: 전부 같은 doorProgress로 움직이므로 좌/우 두 덩어리로 합친다.
-      //    개별로 두면 이 둘만으로 드로우 콜 96개다.
-      if (/^Z5_psd_door_/.test(m.name) || /^TR_door_|^TR_dwin_/.test(m.name)) {
+      //    개별로 두면 이 둘만으로 드로우 콜 96개다. `B_` 접두사(반대 방면)는 별도
+      //    뱅크(`psdGeo2`/`trainGeo2`)로 갈라 본편과 다른 doorProgress 로 움직인다.
+      if (/^(B_)?Z5_psd_door_/.test(m.name) || /^(B_)?(TR_door_|TR_dwin_)/.test(m.name)) {
         const x = worldX(m)
+        // 문짝은 **좌/우 두 장**이고 원점이 각자 자기 쪽에 있다(`tools/hq_train.py`).
+        // 한 장짜리 슬래브였을 때는 원점이 개구 중심이라 `x >= x` 가 늘 참이 되어
+        // 32짝이 전부 'right' 로 몰렸고, 그래서 문이 반만 열렸다.
         const side = x >= nearestDoor(x) ? 'right' : 'left'
-        ;(/^Z5_psd_door_/.test(m.name) ? psdGeo : trainGeo)[side].push(bakeGeo(m))
+        const isPsd = /Z5_psd_door_/.test(m.name)
+        const isWin = /^(B_)?TR_dwin_/.test(m.name)
+        const geoSet = isPsd
+          ? (opp ? psdGeo2 : psdGeo)
+          : isWin ? (opp ? dwinGeo2 : dwinGeo) : (opp ? trainGeo2 : trainGeo)
+        geoSet[side].push(bakeGeo(m))
         dynamicCount++
         continue
       }
 
       const node = new Mesh(bakeGeo(m), m.material as Material)
       node.name = m.name
-      group.add(node)
+      ;(isTrain && opp ? train2Group : group).add(node)
       dynamicCount++
 
       const flapM = /^Z3_GATE_G(\d)_([NS])_flap$/.exec(m.name)
@@ -713,8 +774,16 @@ export const loadStation = async (
   const z5 = zoneGroups.find((z) => z.group.name === 'station:Z5_PLATFORM')?.group ?? root
   const psdBank = bank(psdGeo, 0xc6ced4, z5, true)
   const trainBank = bank(trainGeo, 0x6f8797, trainGroup)
+  const dwinBank = bank(dwinGeo, 0xa9c3cf, trainGroup, true)
   root.add(trainGroup)
-  mergedCount += 4
+  mergedCount += 6
+
+  // 반대 방면 안전문·차문 — 같은 식, 별도 뱅크로 `train2Group` 에 붙인다
+  const psdBank2 = bank(psdGeo2, 0xc6ced4, z5, true)
+  const trainBank2 = bank(trainGeo2, 0x6f8797, train2Group)
+  const dwinBank2 = bank(dwinGeo2, 0xa9c3cf, train2Group, true)
+  root.add(train2Group)
+  mergedCount += 6
 
   // ── 색각 보조 기호 — GLB 사인 면 앞에 ▲ / ✕ 를 얹는다.
   //    색만으로 구분하면 이 게임의 유일한 판단 근거가 색각 이상 플레이어에게서 사라진다.
@@ -870,6 +939,22 @@ export const loadStation = async (
       trainGroup.position.x = t.x - TRAIN.firstCarX
       if (trainBank.left) trainBank.left.position.x = -slide
       if (trainBank.right) trainBank.right.position.x = slide
+      // 문창은 문짝과 **같이** 움직여야 한다 — 따로 두면 유리만 제자리에 남는다
+      if (dwinBank.left) dwinBank.left.position.x = -slide
+      if (dwinBank.right) dwinBank.right.position.x = slide
+
+      // ── 반대 방면 안전문 · 열차 — 같은 식, `s.train2` 를 본다
+      const slide2 = s.train2.doorProgress * 0.78
+      if (psdBank2.left) psdBank2.left.position.x = -slide2
+      if (psdBank2.right) psdBank2.right.position.x = slide2
+
+      const t2 = s.train2
+      train2Group.visible = t2.state !== 'incoming' && t2.x < 300
+      train2Group.position.x = t2.x - TRAIN.firstCarX
+      if (trainBank2.left) trainBank2.left.position.x = -slide2
+      if (trainBank2.right) trainBank2.right.position.x = slide2
+      if (dwinBank2.left) dwinBank2.left.position.x = -slide2
+      if (dwinBank2.right) dwinBank2.right.position.x = slide2
 
       // ── 신호등
       for (const m of tlReds) m.color.copy(greenLight ? dark : red)

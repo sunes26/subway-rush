@@ -47,8 +47,19 @@ export const WET_ZONE: Rect = [82, 4.4, 89, 9.6]
 /** OBS-06 전단지 배포원 — Z1 보도, 횡단보도와 출입구 사이 */
 export const FLYER_AT = { x: -36, y: 27.4 } as const
 
-/** OBS-07 "도 아세요" 아주머니 — Z2 대합실, 유도선(y 14)에서 살짝 북쪽 */
-export const AJUMMA_AT = { x: 34, y: 20.4 } as const
+/** OBS-07 "도 아세요" 아주머니 순찰 중심 — Z2 대합실, 유도선(y 14)에서 살짝 북쪽 */
+const AJUMMA_CENTER = { x: 34, y: 20.4 } as const
+
+/**
+ * OBS-07 아주머니 — 제자리가 아니라 중심에서 좌우로 오간다.
+ * 좀비폰족(`zombieAt`)과 같은 수법: **시간의 순수 함수**라 렌더와 판정이 같은 식을 쓴다.
+ */
+export const ajummaAt = (elapsedMs: number): { x: number; y: number } => {
+  const period = OBSTACLE.ajummaPeriodMs
+  const t = ((elapsedMs % period) / period) * 2          // 0..2
+  const k = t <= 1 ? t : 2 - t                           // 삼각파 0..1..0
+  return { x: AJUMMA_CENTER.x - OBSTACLE.ajummaPatrolM + k * OBSTACLE.ajummaPatrolM * 2, y: AJUMMA_CENTER.y }
+}
 
 /**
  * OBS-10 공사중 막다른 길 — `OBJ-28-N`(y 6.6~7.0, x 44~56)과
@@ -119,8 +130,11 @@ const RULES: readonly Rule[] = [
   },
   {
     id: 'OBS-07',
-    fires: (s) => onFloor(s.player.pos.z, FLOOR.B1) &&
-      near(s, AJUMMA_AT.x, AJUMMA_AT.y, OBSTACLE.ajummaRangeM),
+    fires: (s) => {
+      if (!onFloor(s.player.pos.z, FLOOR.B1)) return false
+      const at = ajummaAt(s.elapsedMs)
+      return near(s, at.x, at.y, OBSTACLE.ajummaRangeM)
+    },
     effect: () => [
       { t: 'TIME_PENALTY', ms: OBSTACLE.ajummaPenaltyMs, label: '도 아세요' },
       { t: 'STALL', ms: OBSTACLE.ajummaStallMs },
@@ -136,8 +150,8 @@ const RULES: readonly Rule[] = [
       const z = zombieAt(s.elapsedMs)
       return near(s, z.x, z.y, OBSTACLE.zombieRangeM)
     },
+    // 시간을 깎지 않는다 — 부딪힌 만큼 그 자리에 붙잡힌다 (STALL 전용)
     effect: () => [
-      { t: 'TIME_PENALTY', ms: OBSTACLE.zombiePenaltyMs, label: '부딪힘' },
       { t: 'STALL', ms: OBSTACLE.zombieStallMs },
       { t: 'FX', kind: 'toast', text: '폰만 보던 사람과 부딪혔다', lifeMs: 1600, value: 0 },
     ],

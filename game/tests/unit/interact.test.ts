@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { byId } from '../../src/data/interactables'
 import { INTERACT } from '../../src/data/tuning'
 import { FLOOR } from '../../src/data/world'
 import type { GameState, ItemId } from '../../src/state/types'
@@ -39,6 +40,38 @@ describe('S8-1 조준 판정', () => {
   it('사거리 3.0m를 넘으면 바라봐도 잡히지 않는다', () => {
     const s = atZ2(VEND_A.x, VEND_A.y - (INTERACT.reachM + 0.5))
     expect(aimAt(s, yawTo(s, VEND_A.x, VEND_A.y)).id).toBeNull()
+  })
+})
+
+describe('화장실 입구 (OBJ-14-WC)', () => {
+  /**
+   * 실측 입구(디렉터 지시) — x41.0~47.4·y24.4~24.5·z−6.0 박스의 중심.
+   * 좌표를 하드코딩하지 않고 `byId`로 읽는다 — 자리가 또 밀리면(예전에 한 번
+   * 그랬다) 이 테스트가 데이터를 못 따라가는 게 아니라 데이터 자체를 검증한다.
+   */
+  const wc = byId('OBJ-14-WC')!
+
+  it('실측 입구 박스(x41.0~47.4·y24.4~24.5) 안에 있다', () => {
+    expect(wc.x).toBeGreaterThanOrEqual(41.0)
+    expect(wc.x).toBeLessThanOrEqual(47.4)
+    expect(wc.y).toBeGreaterThanOrEqual(24.4)
+    expect(wc.y).toBeLessThanOrEqual(24.5)
+    expect(wc.z).toBe(FLOOR.B1)
+  })
+
+  it('입구 앞에 서서 보면 조준된다', () => {
+    const s = atZ2(wc.x, wc.y - 1.1)
+    const aim = aimAt(s, yawTo(s, wc.x, wc.y))
+    expect(aim.id).toBe('OBJ-14-WC')
+  })
+
+  it('들어가면 TOILET_USED 가 켜진다 (E-13 트리거)', () => {
+    const s0 = atZ2(wc.x, wc.y - 1.1)
+    const yaw = yawTo(s0, wc.x, wc.y)
+    const opened = tap(s0, { pressInteract: true }, yaw)
+    expect(opened.act.busyId, '문을 열고 들어가는 1.2초 판정이 시작돼야 한다').toBe('OBJ-14-WC')
+    const s = wait(opened, 1500, yaw)
+    expect(s.flags).toContain('TOILET_USED')
   })
 })
 
@@ -148,7 +181,7 @@ describe('S8-7 조건 미충족은 사유만 낸다', () => {
     const yaw = yawTo(s, VEND_A.x, VEND_A.y)
     s = tap(s, { pressInteract: true }, yaw)
 
-    expect(s.act.denyText, 'GDD §5.1의 예시 문구 그대로').toBe('효자손이 필요하다')
+    expect(s.act.denyText, '디렉터 지시로 두루뭉실한 힌트').toBe('효자손을 쥐고 있어야 가능할 것 같다')
     expect(s.act.denyMs).toBeGreaterThan(0)
     expect(s.qte.active, 'QTE는 열리지 않는다').toBe(false)
     expect(s.cardBalance).toBe(before.bal)

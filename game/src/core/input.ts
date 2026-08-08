@@ -78,6 +78,13 @@ export type InputSource = {
   sample(): InputFrame
   /** 설정 반영 — 감도 배율(1 이 기본)과 상하 반전 */
   setLook(o: { sens: number; invertY: boolean }): void
+  /**
+   * 대화 중(붕어빵 아저씨 등 마우스로 고르는 화면)엔 `false` —
+   * 포인터 락 **재진입**을 막는다. `false`로 걸린 채 이미 락돼 있으면 그 자리에서 즉시 푼다.
+   * 이게 없으면 대화창(작은 패널) 밖 화면을 클릭하는 순간 다시 락이 걸려
+   * (`onPointerDown` 의 "락 안 걸려 있으면 좌클릭 = 재진입" 규칙) 마우스가 도로 시선 회전이 된다.
+   */
+  setPointerLockAllowed(allowed: boolean): void
   dispose(): void
 }
 
@@ -99,6 +106,8 @@ export const createInput = (target: HTMLElement): InputSource => {
   let pressInteract = false
   let pressSlot = 0
   let pressCancel = false
+  /** `setPointerLockAllowed` 참고 — 기본은 항상 허용 */
+  let lockAllowed = true
   /** 프레임 누적 원본 x 델타 — QTE 전용. 시선 필터(core/look)를 우회한다 */
   /** 시선 델타 필터 상태 — 스킵 원인별 처리는 core/look.ts 참고 */
   let look: LookState = EMPTY_LOOK
@@ -153,7 +162,10 @@ export const createInput = (target: HTMLElement): InputSource => {
 
   const onPointerDown = (e: PointerEvent): void => {
     // 좌클릭 = 포인터 락 요청. 1인칭 시선의 유일한 진입점이다.
-    if (e.button === 0 && document.pointerLockElement !== target) requestLock()
+    // 대화 중(`lockAllowed=false`)엔 재진입을 안 한다 — 패널 밖을 클릭해도 조용히 무시된다.
+    if (e.button === 0 && document.pointerLockElement !== target) {
+      if (lockAllowed) requestLock()
+    }
     // **락이 이미 걸린 뒤의** 좌클릭은 상호작용이다 (GDD §7.1 "E / 좌클릭").
     // 락 진입 클릭과 겹치지 않는다 — 진입은 위 분기가 먹는다.
     else if (e.button === 0) pressInteract = true
@@ -217,6 +229,10 @@ export const createInput = (target: HTMLElement): InputSource => {
     setLook(o) {
       sensScale = Math.min(3, Math.max(0.25, o.sens))
       pitchSign = o.invertY ? 1 : -1
+    },
+    setPointerLockAllowed(allowed) {
+      lockAllowed = allowed
+      if (!allowed && document.pointerLockElement === target) document.exitPointerLock()
     },
     sample(): InputFrame {
       // 이 프레임에 반영할 시선 델타를 꺼낸다. 넘치는 몫은 필터가 다음 프레임으로 이월한다.

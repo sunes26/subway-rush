@@ -18,6 +18,20 @@
 
 /* ─────────────── 공통 레이어 ─────────────── */
 #hud{position:absolute;inset:0;font-family:var(--sans);user-select:none}
+/* 타이틀·엔딩에서는 통째로 사라진다 (`ui/hud.ts sync()` 가 붙인다).
+   `visibility` 가 아니라 `display` 인 이유: 숨은 위젯이 레이아웃·히트영역을
+   남기면 그 위에 뜬 화면의 클릭이 먹힌다. */
+#hud.off{display:none}
+/*
+ * 인트로에서 조작권이 넘어올 때 **HUD 가 톡 튀어나오지 않게** 한다.
+ *
+ * `display:none` 에서 돌아오는 순간 애니메이션이 다시 시작되는 성질을 쓴다 —
+ * 별도의 신호나 클래스 없이 이 한 줄로 끝난다. 길게 끌면 시작이 굼떠 보이므로
+ * 0.32초. 검은 화면으로 덮는 페이드는 쓰지 않는다(브리프 §18).
+ */
+#hud{animation:hud-in .32s ease-out both}
+@keyframes hud-in{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){#hud{animation:none}}
 
 /* Figma 패널 — 반투명 검정 · 실낱 테두리 · 깊은 그림자. 모든 위젯이 이 한 규칙을 쓴다 */
 .hud-panel{background:var(--panel);border:1px solid var(--panel-line);
@@ -106,8 +120,18 @@
 #hud .slot::after{content:'';width:16px;height:16px;border-radius:2px;
   background:rgba(255,255,255,.06)}
 #hud .slot.has::after{display:none}
+/* 3D 렌더 아이콘(`tools/items_icon_render.py`) — 모델 없는 아이템은 로드가
+   실패해 has-icon이 안 붙고 글리프 이모지(span)가 그대로 보인다 */
+#hud .slot .icon{display:none;grid-area:1/1;width:40px;height:40px;object-fit:contain}
+#hud .slot.has-icon .icon{display:block}
+#hud .slot.has-icon span{display:none}
 /* 착용 중(마스크) — 선택 슬롯과 같은 시안 강조. Figma 의 선택 상태를 이 의미로 쓴다 */
 #hud .slot.worn{border:2px solid var(--accent);box-shadow:0 0 8px rgba(0,240,255,.4)}
+/* 손에 든 칸 — 착용(시안 테두리)·교체(골드 테두리)와 **다른 축**이라 테두리를 안 쓴다.
+   밑변에 흰 띠 하나. 마스크를 쓴 채 우산을 들 수 있으므로 둘이 겹쳐도 읽혀야 한다 */
+#hud .slot.inhand{background:rgba(255,255,255,.14)}
+#hud .slot.inhand::before{content:'';position:absolute;left:8px;right:8px;bottom:0;
+  height:3px;border-radius:2px;background:#fff;box-shadow:0 0 8px rgba(255,255,255,.7)}
 #hud .slot b{position:absolute;right:3px;bottom:3px;background:var(--chip);
   border-radius:4px;padding:1px 3px;font-family:var(--mono);font-size:9px;
   font-weight:700;color:var(--muted)}
