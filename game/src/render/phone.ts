@@ -121,7 +121,7 @@ export type Phone = Readonly<{
  * 손에 비해 작아서 화면이 안 읽힌다. 조금 키워 **읽히는 크기**로 잡는다 —
  * 이 게임의 다른 소품도 같은 이유로 실물보다 크다.
  */
-const SIZE = { w: 0.115, h: 0.235, d: 0.014 } as const
+const SIZE = { w: 0.128, h: 0.262, d: 0.014 } as const
 
 export const buildPhone = (): Phone => {
   const root = new Group()

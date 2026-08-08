@@ -937,8 +937,8 @@ window.__game = {
       arm: (() => {
         const out: Record<string, [number, number, number]> = {}
         const v = new Vector3()
-        for (const n of ['ShoulderR', 'UpperArmR', 'LowerArmR', 'UpperArmL', 'LowerArmL',
-          'Chest', 'Spine', 'Hips']) {
+        for (const n of ['ShoulderR', 'UpperArmR', 'LowerArmR',
+          'Chest', 'Spine', 'Hips', 'UpperLegR', 'LowerLegR', 'FootR', 'Head']) {
           const o = player?.root.getObjectByName(n)
           if (o) { o.getWorldPosition(v); out[n] = [+v.x.toFixed(3), +v.y.toFixed(3), +v.z.toFixed(3)] }
         }

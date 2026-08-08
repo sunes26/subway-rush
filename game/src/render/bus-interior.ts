@@ -142,6 +142,18 @@ const soft = (
 }
 
 /**
+ * 좌면 높이(바닥에서 방석 윗면까지, m).
+ *
+ * ★ 실물 시내버스는 0.42 다. 그런데 이 캐릭터는 **정강이가 0.275m 뿐이다**
+ *   (실측: 골반 0.870 · 무릎 0.804 · 발목 0.529 → 허벅지 0.303 · 정강이 0.275).
+ *   0.42 짜리 좌석에 앉히면 발이 바닥에서 15cm 떠서 아이가 어른 의자에 앉은
+ *   그림이 되고, 골반을 좌면에 맞추면 이번엔 다리가 안 닿는다.
+ *
+ *   실물 치수보다 **캐릭터 체형이 먼저다**(브리프 §5). 정강이 + 여유 로 잡는다.
+ */
+const SEAT_H = 0.30
+
+/**
  * 좌석 한 벌 — **방석 · 등받이 · 다리** 세 부분이 눈으로 구분된다.
  *
  * 진행 방향(+x, 동쪽)을 보고 앉는다. 그래서 등받이는 방석의 **서쪽**에 선다.
@@ -156,20 +168,21 @@ const seatUnit = (cx: number, cy: number, width: number): Group => {
   const g = new Group()
   const f = BUS.floor
   const z = tz(cy)
-  // 방석
-  g.add(soft(0.48, 0.11, width, 0.035, C.cushion, cx + 0.01, f + 0.42, z))
-  // 등받이 — 뒤로 조금 눕는다
-  const back = soft(0.09, 0.52, width, 0.028, C.seatBack, cx - 0.235, f + 0.72, z)
+  // 방석 — 윗면이 `f + SEAT_H` 에 오도록 중심을 잡는다
+  g.add(soft(0.46, 0.11, width, 0.035, C.cushion, cx + 0.01, f + SEAT_H - 0.055, z))
+  // 등받이 — 방석 윗면에서 올라간다. 뒤로 조금 눕는다
+  const back = soft(0.09, 0.50, width, 0.028, C.seatBack, cx - 0.225, f + SEAT_H + 0.25, z)
   back.rotation.z = 0.09
   g.add(back)
   // 등받이 위 손잡이 — 시내버스에 늘 있는 것. 이거 하나로 좌석이 가구가 된다
   const grip = new Mesh(new CylinderGeometry(0.018, 0.018, width * 0.72, 8), toonMat(C.pole))
   grip.rotation.x = Math.PI / 2
-  grip.position.set(cx - 0.20, f + 1.00, z)
+  grip.position.set(cx - 0.19, f + SEAT_H + 0.52, z)
   g.add(grip)
   // 다리 — 방석이 떠 있으면 얹어 놓은 것처럼 보인다
+  const legH = SEAT_H - 0.11
   for (const side of [-1, 1]) {
-    g.add(box(0.05, 0.36, 0.05, C.frame, cx + 0.14, f + 0.185, z + side * (width / 2 - 0.10)))
+    g.add(box(0.05, legH, 0.05, C.frame, cx + 0.13, f + legH / 2, z + side * (width / 2 - 0.10)))
   }
   return g
 }
