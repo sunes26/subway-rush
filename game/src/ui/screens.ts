@@ -18,7 +18,7 @@
 
 import { formatClock } from '../core/math'
 import { loadSave } from '../core/save'
-import { pickLine, resolveEnding, type EndingDef } from '../data/endings'
+import { ENDINGS, pickLine, resolveEnding, type EndingDef } from '../data/endings'
 import { QUEUE_MARKERS } from '../data/world'
 import type { EndingId, GameState } from '../state/types'
 // 스타일은 `css/screens.css` 가 단일 원천이다 — UI 킷(/uikit.html)이 같은 파일을 읽는다.
@@ -38,10 +38,16 @@ export type Screens = Readonly<{
 const NEXT_TRAIN = '4분 30초'
 
 /**
- * 판정 문구. **색이 아니라 글자가 상태를 말한다** — 색만으로 구분하면 색각 이상이나
- * 저대비 환경에서 성공과 실패가 같은 화면이 된다. 색은 거들 뿐이다.
+ * 최종 상태 셋. **`실패` 라는 한글 라벨은 쓰지 않는다.**
+ *
+ * 열차를 놓친 것과 단소에 맞아 끝난 것은 둘 다 목표 미달성이지만, `실패` 는
+ * 플레이어를 채점하는 말이라 남는 감정이 자책뿐이다. `GAME OVER` 는 상태를
+ * 말할 뿐이고, 그 위에 얹히는 문구가 체념이든 황당함이든 자유로워진다.
+ *
+ * 색이 아니라 **글자가 상태를 말한다** — 색만으로 구분하면 색각 이상이나
+ * 저대비 환경에서 세 상태가 같은 화면이 된다. 색은 거들 뿐이다.
  */
-const TONE_WORD = { success: '성공', fail: '실패', hidden: '특별' } as const
+const STATUS = { success: 'SUCCESS', fail: 'GAME OVER', hidden: 'SPECIAL' } as const
 
 /**
  * **무슨 일이 일어났는가** — 엔딩마다 한 줄. 농담보다 먼저 온다.
@@ -54,21 +60,21 @@ const TONE_WORD = { success: '성공', fail: '실패', hidden: '특별' } as con
  */
 const WHAT_HAPPENED: Readonly<Record<EndingId, string>> = {
   'E-01': '열차에 탑승했습니다.',
-  'E-02': '열차에 탑승했습니다.',
-  'E-03': '열차에 탑승했습니다.',
-  'E-04': '문이 닫히기 직전에 탔습니다.',
+  'E-02': '여유 있게 열차에 탑승했습니다.',
+  'E-03': '여유 있게 열차에 탑승했습니다.',
+  'E-04': '닫히는 문 사이로 간신히 탑승했습니다.',
   'E-05': '모든 조건을 채우고 탑승했습니다.',
-  'E-06': '열차를 놓쳤습니다.',
-  'E-07': '열차를 놓쳤습니다.',
-  'E-08': '반대 방향 열차에 탔습니다.',
-  'E-09': '요금을 내지 않고 통과했습니다.',
-  'E-10': '양심을 잃은 채 승강장에 닿았습니다.',
-  'E-11': '우산으로 사람들을 밀었습니다.',
+  'E-06': '눈앞에서 열차를 놓쳤습니다.',
+  'E-07': '출근 시간을 넘겼습니다.',
+  'E-08': '반대 방향 열차에 탑승했습니다.',
+  'E-09': '요금을 내지 않고 통과하다 적발됐습니다.',
+  'E-10': '훔친 채로 승강장에 도달했습니다.',
+  'E-11': '우산으로 인파를 밀어냈습니다.',
   'E-12': '열차는 놓쳤지만 세 사람을 도왔습니다.',
   'E-13': '화장실에 들렀습니다.',
-  'E-14': '동전을 모아 두고 탑승했습니다.',
-  'E-15': '할아버지께 원하지 않는 것을 드렸습니다.',
-  'E-16': '단소에 두 번째로 맞았습니다.',
+  'E-14': '동전을 모아 열차에 탑승했습니다.',
+  'E-15': '할아버지가 선물을 돌려주셨습니다.',
+  'E-16': '도망치지 못했습니다.',
 }
 
 /** 화면에 띄우는 결과값 한 칸. `wide` 면 두 칸을 합쳐 한 줄로 쓴다. */
@@ -138,6 +144,20 @@ const factsFor = (e: EndingDef, s: GameState): readonly Fact[] => {
       return s.boarded ? [left] : [next]
   }
 }
+
+/**
+ * 화면에 띄울 엔딩 — **`state.endingId` 가 먼저다.**
+ *
+ * 예전엔 여기서 매번 `resolveEnding(s)` 로 다시 계산했다. 그런데 E-15(오답 선물)·
+ * E-16(단소 2대째)은 `when` 이 **항상 거짓**인 강제 엔딩이라(`data/endings.ts`),
+ * 시스템이 `{ t: 'END', endingId }` 로 발행해 놓아도 재계산은 절대 그 둘을 못
+ * 고른다 — 실측: E-16 으로 끝낸 판이 화면에는 E-07 지각 확정으로 떴다.
+ * 그 둘은 사실상 **화면에 뜰 수 없는 엔딩**이었다.
+ *
+ * 발행된 id 가 있으면 그것을 쓰고, 없을 때만(옛 세이브·직접 조작) 계산으로 떨어진다.
+ */
+const shown = (s: GameState): EndingDef =>
+  (s.endingId ? ENDINGS.find((e) => e.id === s.endingId) : undefined) ?? resolveEnding(s)
 
 export const createScreens = (mount: HTMLElement): Screens => {
   const style = document.createElement('style')
@@ -214,7 +234,7 @@ export const createScreens = (mount: HTMLElement): Screens => {
    * 저대비 환경에서 성공과 실패가 같은 화면이 된다.
    */
   const ending = (s: GameState): string => {
-    const e = resolveEnding(s)
+    const e = shown(s)
     el.className = `on ${e.tone}`
     const facts = factsFor(e, s)
 
@@ -223,13 +243,13 @@ export const createScreens = (mount: HTMLElement): Screens => {
         <div class="brackets"><i></i><i></i></div>
         <div class="face">
           <div class="head s1">
-            <span><span class="line2">2</span>신도림 방면</span>
-            <span>${e.id}</span>
+            <span><span class="line2">2</span>2호선 신도림 방면</span>
+            <span class="eid">${e.id}</span>
           </div>
           <div class="name s2">${e.tone === 'hidden' ? '★ ' : ''}${e.title}</div>
           <div class="what s3">${WHAT_HAPPENED[e.id]}</div>
           <div class="facts s4">
-            <dl class="status"><dt>상태</dt><dd>${TONE_WORD[e.tone]}</dd></dl>
+            <dl class="status"><dd>${STATUS[e.tone]}</dd></dl>
             ${facts.map((f) => `
             <dl${f.wide ? ' class="wide"' : ''}>
               ${f.label ? `<dt>${f.label}</dt>` : ''}<dd>${f.value}</dd>
@@ -273,6 +293,18 @@ export const createScreens = (mount: HTMLElement): Screens => {
       lastKey = key
       if (prevPhase === 'title' && s.phase === 'playing') flash()
       prevPhase = s.phase
+      /**
+       * 게임이 끝났다는 것을 **배경으로** 말한다.
+       *
+       * 결과만 띄우면 뒤의 3D 가 선명해서 아직 플레이 중인 것처럼 보인다.
+       * 캔버스에 blur·감채·감광을 걸면 배경은 분위기만 남고 정보 전달을 그만둔다.
+       *
+       * ★ 캔버스 **한 장에만** 건다. `backdrop-filter` 로 오버레이를 깔면 판 뒤를
+       *   매 프레임 다시 흐려야 하고, WebGL 포스트프로세싱은 셰이더 패스가 는다.
+       *   `filter` 는 이미 합성된 결과를 한 번 처리하는 것이라 가장 싸다.
+       * ★ **타이틀에는 안 건다** — 시작 화면의 배경은 살아 있어야 한다.
+       */
+      document.body.classList.toggle('run-ended', s.phase === 'ended')
       if (s.phase === 'title') {
         el.className = 'on'
         el.innerHTML = title()
