@@ -60,8 +60,19 @@ describe('S18-1 신규 8종이 각각 도달 가능하다', () => {
     })).toBe('E-03')
   })
 
-  it('E-07 지각 확정 — 미탑승 + 양심 음수', () => {
-    expect(at({ boarded: false, scores: { conscience: -1, style: 0, knowledge: 0 } })).toBe('E-07')
+  it('E-07 지각 확정 — 미탑승 + 개찰구를 못 넘음', () => {
+    /**
+     * 판정 축이 양심 → **도달 지점**으로 바뀌었다. 지각은 시간 문제지 도덕이 아니다.
+     * 기준은 승강장이 아니라 **개찰 통과**다 — 승강장으로 자르면 아무것도 안 하고
+     * 끝난 판이 곧장 「지각 확정」을 받아, E-06 을 온화한 기본 실패로 둔 설계가 깨진다.
+     */
+    const gates = (attempts: number, passed = false): Partial<GameState> =>
+      ({ boarded: false, gates: { ...start(7).gates, attempts, passed } })
+    expect(at(gates(2)), '시도했는데 못 넘었다').toBe('E-07')
+    expect(at(gates(0)), '아무것도 안 했으면 온화한 기본 실패다').toBe('E-06')
+    expect(at(gates(3, true)), '넘었는데 못 탔으면 E-06').toBe('E-06')
+    expect(at({ ...gates(2), scores: { conscience: 3, style: 0, knowledge: 0 } }),
+      '양심이 높아도 막혔으면 지각이다').toBe('E-07')
   })
 
   /**
@@ -76,7 +87,7 @@ describe('S18-1 신규 8종이 각각 도달 가능하다', () => {
     const seen = new Set<EndingId>([
       at(trueRun()),
       at({ boarded: true, tally: tally({ coinsEarned: 3000 }) }),
-      at({ boarded: false, flags: ['WALLET_RETURNED', 'GRANDPA_HELPED', 'SEAT_YIELDED'] }),
+      at({ boarded: false, flags: ['WALLET_RETURNED', 'GRANDPA_HELPED'] }),
       at({ scores: { conscience: -3, style: 0, knowledge: 0 } }),
       at({ tally: tally({ pushes: 3 }) }),
       at({ flags: ['BUSTED'] }),
@@ -86,7 +97,8 @@ describe('S18-1 신규 8종이 각각 도달 가능하다', () => {
       at({ boarded: true, timeLeftMs: 900 }),
       at({ boarded: true, timeLeftMs: 35_000 }),
       at({ boarded: true, timeLeftMs: 12_000 }),
-      at({ boarded: false, scores: { conscience: -1, style: 0, knowledge: 0 } }),
+      // E-07 — 개찰구를 시도했는데 못 넘었다(양심이 아니라 도달 지점이 축이다)
+      at({ boarded: false, gates: { ...start(7).gates, attempts: 2 } }),
       at({}),
     ])
     expect(seen.size, [...seen].sort().join(',')).toBe(14)
