@@ -68,25 +68,28 @@ body.run-ended #gl{filter:blur(5px) saturate(.90) brightness(.80);
 #screen .board{position:relative;width:min(1040px,92vw);background:var(--frame);
   border:1px solid var(--edge);border-radius:2px;padding:6px;font-family:var(--mono)}
 /*
- * 천장 매달림.
+ * 천장 매달림 — **봉은 화면 위로 잘려 나간다.**
  *
- * 예전엔 판 위로 가느다란 막대 둘만 세워 뒀는데, **위에 아무것도 없어서** 매달린
- * 게 아니라 안테나가 솟은 것처럼 보였다. 실물은 천장 슬래브에 행어 봉이 박히고
- * 봉 끝에 판이 물린다 — 그 셋(천장선 · 봉 · 물림쇠)을 다 그려야 매달려 보인다.
+ * 처음엔 30px 짜리 막대 둘을 세우고 그 위에 가로선을 그어 천장인 척했다. 그런데
+ * 그 가로선이 곧 화면의 천장이 되어 버려서, 판이 천장에 달린 게 아니라 **선반
+ * 위에 얹힌 것**처럼 보였다. 봉이 끝나는 자리가 보이면 거기가 천장이다.
+ *
+ * 그래서 반대로 간다 — 가짜 천장을 지우고 봉을 화면 밖까지 끌어올린다. 끝이
+ * 안 보이면 천장은 화면 위 어딘가에 있는 것이 되고, 그건 실제로 안내판을 올려다볼
+ * 때 보이는 그림이다. 시야에 천장이 다 들어오는 역은 없다.
+ *
+ * `bottom:100%` + `100vh` 인 이유: 타이틀(6vh)과 결과(15vh)의 상단 여백이 달라서
+ * 고정 높이로는 한쪽이 뜬다. 판 위쪽 끝에서 화면 한 장만큼 올리면 둘 다 넘긴다.
  */
-#screen .brackets{position:absolute;top:-30px;left:0;right:0;height:30px;
-  display:flex;justify-content:space-between;padding:0 13%}
-#screen .brackets i{position:relative;width:7px;height:30px;
-  background:linear-gradient(#3a3a3d,#232326)}
-/* 천장 쪽 고정판 */
-#screen .brackets i::before{content:'';position:absolute;top:0;left:-7px;right:-7px;height:4px;
-  background:#3a3a3d;border-radius:1px}
-/* 판을 무는 물림쇠 */
-#screen .brackets i::after{content:'';position:absolute;bottom:0;left:-4px;right:-4px;height:6px;
-  background:var(--frame);border:1px solid var(--edge);border-bottom:none}
-/* 천장 슬래브 — 봉이 어디에 박혀 있는지 보여 주는 선 */
-#screen .board::before{content:'';position:absolute;top:-30px;left:-6%;right:-6%;height:3px;
-  background:rgba(58,58,61,.85)}
+#screen{overflow:hidden}   /* 봉을 화면 위 끝에서 자른다 */
+#screen .brackets{position:absolute;bottom:100%;left:0;right:0;height:100vh;
+  display:flex;justify-content:space-between;padding:0 13%;align-items:flex-end}
+/* 가로 그라디언트다 — 세로로 넣으면 위로 갈수록 흐려져 봉이 아니라 흔적이 된다 */
+#screen .brackets i{width:7px;height:100%;position:relative;
+  background:linear-gradient(90deg,#26262a,#3f3f44 38%,#1e1e21)}
+/* 판을 무는 물림쇠 — 봉보다 조금 넓어야 얹힌 게 아니라 물린 것으로 읽힌다 */
+#screen .brackets i::after{content:'';position:absolute;bottom:0;left:-5px;right:-5px;height:10px;
+  background:linear-gradient(90deg,#232327,#3a3a3f 38%,#1b1b1e);border-radius:1px 1px 0 0}
 #screen .face{position:relative;background:var(--panel);border-radius:1px;
   padding:16px 22px;overflow:hidden}
 #screen .face::after{content:'';position:absolute;inset:0;background-image:var(--px);

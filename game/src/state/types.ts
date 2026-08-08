@@ -9,7 +9,14 @@ export type { ObsId }
 
 export type { ZoneId }
 
-export type Phase = 'title' | 'playing' | 'boarding' | 'ended'
+/**
+ * `intro` 는 **시뮬이 도는 페이즈가 아니다.**
+ *
+ * `ADVANCE` 는 `playing`/`boarding` 에서만 진행하므로(`reducer.ts`) 인트로가
+ * 도는 6.6초 동안 제한시간은 180초 그대로 멈춰 있다. 그게 맞다 — 인트로는
+ * 아직 버스 안이고, 플레이어는 아무것도 조작하지 못한다.
+ */
+export type Phase = 'title' | 'intro' | 'playing' | 'boarding' | 'ended'
 
 /** P0은 2종. 배열 구조는 완성해 두고 P1~P2에서 항목만 추가한다 (GDD §9.4) */
 export type EndingId =

@@ -30,6 +30,9 @@ import { createDialog } from './ui/dialog'
 import { createHud } from './ui/hud'
 import { createScreens } from './ui/screens'
 import { createCollection } from './ui/collection'
+import { createIntro } from './ui/intro'
+import { actorAt, busDx, DOORS_MS, INTRO_MS, poseAt } from './render/intro'
+import { buildBusInterior, type BusInterior } from './render/bus-interior'
 import { createSettings } from './ui/settings'
 import { RES_SCALES, type Settings } from './core/settings'
 import { createAmbience } from './audio/ambience'
@@ -89,6 +92,7 @@ const hud = createHud(uiRoot)
 const dialog = createDialog(uiRoot)
 const screens = createScreens(uiRoot)
 const collection = createCollection(uiRoot)
+const intro = createIntro(uiRoot)
 
 /**
  * UI-15 설정(ESC) — **일시정지 겸 설정**.
@@ -271,6 +275,66 @@ const recordIfEnded = (s: GameState): void => {
  * 설정은 그 **아무도 안 쓸 때**만 가져간다 — 우선순위를 뒤집으면 대화 도중 ESC 가
  * 설정을 열어 버리고, 플레이어는 취소하려다 일시정지를 만난다.
  */
+// ─────────────────── 인트로 ───────────────────
+
+/** 인트로 시작 시각. `null` 이면 인트로가 아니다 */
+let introAt: number | null = null
+/**
+ * E2E 전용 — 인트로 시계를 이 값에 **못 박는다**.
+ *
+ * 벽시계로 스크럽하면 스크린샷을 찍기까지 흐른 시간만큼 다른 샷이 잡힌다
+ * (소프트웨어 래스터에서 한 프레임이 수백 ms 다). 시각을 고정하면 몇 프레임이
+ * 걸리든 같은 그림이 나온다.
+ */
+let introHold: number | null = null
+/** 지금 인트로의 **버스 안** 구간인가 — 차량 렌더를 끊는 데 쓴다 */
+let introInBus = false
+
+/**
+ * 버스 실내 — 인트로에만 존재한다.
+ *
+ * 게임 중에는 한 번도 안 보이는 물건이라 부팅 때 짓지 않는다. 처음 인트로가
+ * 돌 때 한 번 만들고 그 뒤로는 재사용한다(재시작할 때마다 다시 지으면 그때마다
+ * 지오메트리를 새로 올린다).
+ *
+ * 외피는 station GLB 가 이미 갖고 있다. 카메라가 그 안에 들어가면 앞면이 컬링돼
+ * 저절로 투명해지므로, 우리가 만들 것은 **안에서 보이는 것들**뿐이다.
+ */
+let busIn: BusInterior | null = null
+
+const startIntro = (): void => {
+  introAt = performance.now()
+  state = { ...state, phase: 'intro' }
+  intro.show()
+  if (!busIn) { busIn = buildBusInterior(); stage.scene.add(busIn.root) }
+  busIn.root.visible = true
+  busIn.setDoor(0)
+  player?.setVisible(true)
+}
+
+/**
+ * 인트로를 끝내고 조작권을 넘긴다. 끝까지 본 경우와 건너뛴 경우가 **같은 코드**를
+ * 지난다 — 건너뛰기 전용 경로를 따로 두면 거기서만 안 돌아오는 상태가 생긴다.
+ */
+const endIntro = (): void => {
+  introAt = null
+  intro.hide()
+  introHold = null
+  introInBus = false
+  if (busIn) busIn.root.visible = false
+  /**
+   * ★ 화각을 **반드시** 되돌린다.
+   *
+   * 인트로는 질주 구간에서 화각을 74° → 85° 로 열었다가 끝에서 정확히 74° 로
+   * 닫는다. 그런데 **건너뛰면 그 닫는 프레임을 안 지난다** — 85° 인 채로 조작권이
+   * 넘어간다. 그리고 카메라 릭은 이걸 못 고친다: 릭은 자기 내부 `fov` 변수와
+   * 목표값을 비교하는데 둘 다 74 라 "바꿀 것이 없다"고 판단하고 카메라를
+   * 손대지 않는다. 실제로 화각이 벌어진 채 판이 끝까지 간다.
+   */
+  applyView()
+  state = { ...state, phase: 'playing' }
+}
+
 const escIsFree = (s: GameState): boolean =>
   !collection.isOpen() && s.act.dialogId === null && !s.qte.active &&
   !s.swap.active && s.act.busyId === null
@@ -314,9 +378,24 @@ const handleMeta = (f: InputFrame): void => {
     if (f.pressCancel) settings.close()
     return
   }
+  /**
+   * 인트로는 **언제나 건너뛸 수 있고, 그 판정이 설정보다 먼저다.**
+   *
+   * 이 게임은 3분짜리를 반복해 엔딩 17종을 모으는 구조다. 매번 6.6초를 강제로
+   * 보여 주면 그 구조가 곧 벌이 된다. ESC·ENTER 어느 쪽이든 받는다 — 급한 사람이
+   * 어느 키를 누를지 정해 놓고 기다릴 이유가 없다.
+   *
+   * ★ 순서가 중요하다. 아래 `settings.open()` 보다 뒤에 두면 ESC 가 설정을 열어
+   *   버려서 화면에 적어 둔 `ESC 건너뛰기` 가 거짓말이 된다. 인트로에서 ESC 는
+   *   건너뛰기 전용이다.
+   */
+  if (state.phase === 'intro') {
+    if (f.pressCancel || f.pressStart) endIntro()
+    return
+  }
   if (f.pressCancel && escIsFree(state)) { settings.open(); return }
 
-  if (state.phase === 'title' && f.pressStart) state = { ...state, phase: 'playing' }
+  if (state.phase === 'title' && f.pressStart) startIntro()
   if (state.phase === 'ended' && f.pressRestart) restart()
 }
 
@@ -419,7 +498,60 @@ const frame = (now: number): void => {
   }
 
   const dtSec = Math.min(dt, 100) / 1000
-  cameraRig.update(state, sample, dtSec, renderPos)
+  /**
+   * 인트로 동안에는 **카메라 릭을 아예 안 돌린다.**
+   *
+   * 릭을 돌린 뒤 위에 덮어쓰는 방법도 되지만, 릭은 내부에 앵커·오클루전 같은
+   * 상태를 들고 감쇠시킨다. 그 상태가 인트로 6.6초를 엉뚱한 값으로 채우면
+   * 조작권이 넘어온 순간 카메라가 그 값에서부터 기어 나온다. 아예 안 건드리면
+   * 릭은 스폰 기준 초기값 그대로 있다가 이어받는다.
+   *
+   * 좌표 변환은 `camera-rig.ts` 의 1인칭 분기와 **글자 그대로 같은 식**이다 —
+   * 여기서 한 글자라도 달라지면 마지막 프레임이 어긋난다.
+   */
+  if (introAt !== null) {
+    const t = introHold ?? now - introAt
+    if (t >= INTRO_MS) { endIntro() } else {
+      /**
+       * 3인칭 구간에서는 **주인공과 버스 실내를 직접 몰아준다.**
+       *
+       * 시뮬은 인트로 동안 한 발짝도 안 움직인다(`ADVANCE` 가 `playing` 에서만
+       * 진행한다). 그래서 리그에 넘길 상태를 `actorAt` 값으로 만들어 준다 —
+       * 리그의 클립 선택 규칙(`moving`→Walk · `sprinting`→Sprint)을 그대로 쓰려고
+       * 위치만 바꾼 가짜 상태를 넘긴다. 리그를 고쳐 인트로 전용 경로를 내면
+       * 게임에서 쓰는 경로와 두 벌이 된다.
+       */
+      const a = actorAt(t)
+      introInBus = a.visible
+      const at = { x: a.x, y: a.y, z: a.z }
+      player?.setVisible(a.visible)
+      if (a.visible) {
+        player?.sync({
+          ...state,
+          phase: 'playing',
+          player: {
+            ...state.player, pos: at, facing: a.facing,
+            moving: a.clip !== 'Idle', sprinting: a.clip === 'Run', grounded: true,
+          },
+        }, dtSec, at)
+      }
+      if (busIn) {
+        busIn.root.position.x = busDx(t)
+        busIn.setDoor((t - DOORS_MS) / 620)
+      }
+
+      const p = poseAt(t)
+      stage.camera.position.set(p.x, p.eye, -p.y)
+      stage.camera.rotation.order = 'YXZ'
+      stage.camera.rotation.set(p.pitch, p.yaw - Math.PI / 2, 0)
+      stage.camera.near = 0.08
+      stage.camera.fov = p.fov
+      stage.camera.updateProjectionMatrix()
+      intro.sync(t)
+    }
+  } else {
+    cameraRig.update(state, sample, dtSec, renderPos)
+  }
   /**
    * 타이틀에서 배경을 살려 두는 시계.
    *
@@ -431,7 +563,7 @@ const frame = (now: number): void => {
    *   제한시간이 흐른다. 렌더에만 쓰는 값을 따로 만들어 넘기면 시뮬은 순수하게
    *   남고 헤드리스 스윕·유닛 테스트도 그대로다.
    */
-  const view = state.phase === 'title'
+  const view = state.phase === 'title' || state.phase === 'intro'
     ? { ...state, lightMs: now % TRAFFIC_LIGHT.cycleMs }
     : state
   stage.setMood(view.zone, dtSec)
@@ -440,9 +572,17 @@ const frame = (now: number): void => {
   guideArrows.update(now / 1000, renderPos)
   // 보행 신호가 녹색이면 횡단보도를 지나는 이면도로 차가 선다(`cars.ts` 교차로 규약)
   if (traffic) {
-    // 지하에서는 통째로 끈다. 안 그러면 승강장에서도 차 8콜 · 38 k 삼각형이 얹힌다
-    // (실측: 차를 넣자 Z2~Z5 가 전부 같이 늘었다 — 존 밖인데 계속 그리고 있었다).
-    traffic.group.visible = renderPos.z > -3
+    /**
+     * 지하에서는 통째로 끈다. 안 그러면 승강장에서도 차 8콜 · 38 k 삼각형이 얹힌다
+     * (실측: 차를 넣자 Z2~Z5 가 전부 같이 늘었다 — 존 밖인데 계속 그리고 있었다).
+     *
+     * ★ 인트로에서 버스 안에 있는 동안에도 끈다. 서행 차선이 y 20.5 인데 버스는
+     *   y 19.1~21.7 이라 **차가 버스를 관통한다**. 게임 중에는 버스 안에서 볼 일이
+     *   없어 드러나지 않던 것이 인트로에서 정면으로 보인다(실측 스크린샷에서
+     *   승용차 한 대가 실내 한복판에 서 있었다). 차선을 옮기면 정류장 앞 차도가
+     *   비어 보이므로, 안 보이는 3.2초만 끄는 쪽이 싸다.
+     */
+    traffic.group.visible = renderPos.z > -3 && !(introAt !== null && introInBus)
     traffic.update(dtSec, lightIsGreen(view), lightRemainSec(view))
     /**
      * 차에 치이면 스폰으로. 적신호 차단벽을 걷어낸 대신 들어온 규칙이다.
@@ -491,7 +631,13 @@ const frame = (now: number): void => {
       hitCooldownMs = HIT_COOLDOWN_MS
     }
   }
-  player?.sync(state, dtSec, renderPos)
+  /**
+   * ★ 인트로 중에는 **건너뛴다.** 위 인트로 분기가 이미 `actorAt` 값으로 리그를
+   *   한 번 동기화했는데, 여기서 진짜 상태로 다시 동기화하면 그 값이 덮여
+   *   주인공이 스폰(−58, 24)으로 돌아간다 — 카메라는 버스 안(−62, 20.5)을 보고
+   *   있으므로 화면에서는 **그냥 사라진 것처럼** 보인다. 실제로 그랬다.
+   */
+  if (introAt === null) player?.sync(state, dtSec, renderPos)
   // P1 렌더는 상태를 **읽기만** 한다 — 판정은 전부 systems/ 에 있다
   props?.sync(state, dtSec, now / 1000)
   actors?.sync(state, dtSec)
@@ -617,6 +763,18 @@ declare global {
       stepsReady(): boolean
       /** 1인칭 시선을 강제한다 (E2E용 — 포인터 락 없이 시점 검증) */
       look(yaw: number, pitch?: number): void
+      /**
+       * 인트로를 임의 시각으로 돌린다 (E2E — 6.6초를 실시간으로 기다리지 않는다).
+       *
+       * 소프트웨어 래스터에서는 한 프레임이 수백 ms 라, 벽시계로 기다리면 어느
+       * 샷의 프레임이 잡힐지 알 수 없다. **보고 싶은 시각을 직접 지정한다.**
+       */
+      seekIntro(tMs: number): void
+      /** 인트로 한 프레임의 실측값 — 카메라·주인공이 실제로 어디 있는가 (E2E) */
+      introProbe(): {
+        cam: [number, number, number]; actor: [number, number, number]
+        dist: number; visible: boolean
+      }
       /** 지금 화면 안에 들어온 게이트 표지 수 (0~6) */
       visibleGates(): number
       mode(): 'fp' | 'tp'
@@ -704,6 +862,21 @@ window.__game = {
   camTrace: () => camTrace.splice(0, camTrace.length),
   setInterp: (on: boolean) => { interpOn = on },
   look: (yaw, pitch = 0) => { forcedInput = { ...(forcedInput ?? {}), lookYaw: yaw, lookPitch: pitch } },
+  introProbe: () => {
+    const t = introHold ?? 0
+    const a = actorAt(t)
+    const c = stage.camera.position
+    return {
+      cam: [c.x, c.y, c.z] as [number, number, number],
+      actor: [a.x, a.y, a.z] as [number, number, number],
+      dist: Math.hypot(a.x - c.x, -a.y - c.z),
+      visible: player?.root.visible ?? false,
+    }
+  },
+  seekIntro: (tMs) => {
+    if (introAt === null) startIntro()
+    introHold = tMs
+  },
   mode: () => cameraRig.mode(),
   toggleView: () => { cameraRig.toggleMode(); applyView() },
   visibleGates: () => {
