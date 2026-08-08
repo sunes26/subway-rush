@@ -95,7 +95,13 @@ export const trainTriggerSystem = (s: GameState): Action[] => {
   if (!rectContains(TRAIN_TRIGGER_ZONE, s.player.pos.x, s.player.pos.y)) return []
   return [
     { t: 'TRAIN_TRIGGER' },
-    { t: 'FX', kind: 'toast', text: '안내방송 — "잠시 후 열차가 도착합니다"', lifeMs: 2400, value: 0 },
+    /**
+     * **방면을 말한다.** "잠시 후 열차가 도착합니다"는 어느 쪽 열차인지를 안 알려 준다 —
+     * 승강장이 둘인 역에서 그 안내는 정보가 아니다. 실제 안내방송도 행선을 먼저 말한다.
+     * 반대편(`trainTriggerSystem2`)이 「신촌 방면」이라고 말하는 것과 짝이 맞아야,
+     * 플레이어가 방송만 듣고도 자기가 어느 승강장에 서 있는지 알 수 있다.
+     */
+    { t: 'FX', kind: 'toast', text: '안내방송 — "잠시 후 신도림 방면 열차가 도착합니다"', lifeMs: 2400, value: 0 },
   ]
 }
 
@@ -127,7 +133,13 @@ export const trainTriggerSystem2 = (s: GameState): Action[] => {
   if (!rectContains(TRAIN_TRIGGER_ZONE_OPP, s.player.pos.x, s.player.pos.y)) return []
   return [
     { t: 'TRAIN_TRIGGER2' },
-    { t: 'FX', kind: 'toast', text: '안내방송 — "반대 방면 열차가 곧 도착합니다"', lifeMs: 2400, value: 0 },
+    /**
+     * 「반대 방면」이 아니라 **「신촌 방면」**이다. 역 안내방송은 행선을 말하지
+     * "당신 기준으로 반대쪽"이라고 말하지 않는다 — 그건 게임이 플레이어에게 하는 말이지
+     * 세계가 하는 말이 아니다. 사인(`z3fork-b` 「신촌 방면」)과 같은 이름을 써야
+     * **방송을 듣고 잘못 탄 것을 스스로 알아챌 수 있다.** 그게 E-08 의 재료다.
+     */
+    { t: 'FX', kind: 'toast', text: '안내방송 — "잠시 후 신촌 방면 열차가 도착합니다"', lifeMs: 2400, value: 0 },
   ]
 }
 

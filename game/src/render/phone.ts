@@ -77,7 +77,13 @@ const drawScreen = (): HTMLCanvasElement => {
   g.textAlign = 'left'
   g.fillStyle = '#e9e7e1'
   g.font = `600 33px ${sans}`
-  g.fillText('신도림역', 74, 123)
+  /**
+   * 이 판의 무대는 **홍대입구역**이다. 붕어빵 아저씨가 이미 그렇게 말하고 있고
+   * (`data/interactables.ts` `FISHCAKE_GREETING`), 개찰구 분기 사인도 그 전제로 서 있다 —
+   * 직진이 「합정 방면」, 북쪽이 「신촌 방면」인 것은 홍대입구에서만 성립한다.
+   * 여기만 「신도림역」이라 혼자 어긋나 있었다. 신도림은 **목적지 방면**이지 이 역이 아니다.
+   */
+  g.fillText('홍대입구역', 74, 123)
 
   const rule = (y: number, a = '#23252b'): void => {
     g.strokeStyle = a
