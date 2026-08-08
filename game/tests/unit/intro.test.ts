@@ -237,3 +237,44 @@ describe('인트로 — 연출 규칙', () => {
     expect(actorAt(SWAP_MS).clip, '내려선 뒤엔 뛴다').toBe('Run')
   })
 })
+
+describe('인트로 — 편집 문법', () => {
+  /**
+   * 화면 좌표로 옮긴 주인공의 진행 방향. **+1 이면 오른쪽으로 간다.**
+   *
+   * 카메라가 보는 방향(yaw)을 기준으로 진행 방향을 좌우 성분으로 분해한다.
+   * 요 0 = 동쪽이므로 카메라의 오른쪽 벡터는 (sin yaw, −cos yaw) 다
+   * (`camera-rig.ts` 의 1인칭이 쓰는 것과 같은 규약).
+   */
+  const screenDir = (t: number): number => {
+    const a = actorAt(t)
+    const b = actorAt(t + 120)
+    const mx = b.x - a.x
+    const my = b.y - a.y
+    if (Math.hypot(mx, my) < 1e-4) return 0
+    const { yaw } = poseAt(t)
+    return (mx * Math.sin(yaw) - my * Math.cos(yaw)) / Math.hypot(mx, my)
+  }
+
+  it('180° 규칙 — ③ 에서 나오는 방향과 ④ 에서 뛰는 방향이 안 뒤집힌다', () => {
+    /**
+     * ③ 에서 화면 오른쪽으로 나왔는데 ④ 에서 왼쪽으로 뛰면 관객은 방향을 잃는다.
+     * 두 샷의 좌우 성분 **부호가 같아야** 한다(둘 중 하나가 거의 정면이면 0 근처라
+     * 부호가 의미 없으므로 그때는 통과시킨다).
+     */
+    const exit = screenDir(3900)      // ③ 문에서 내려서는 중
+    const run = screenDir(4400)       // ④ 뛰기 시작
+    if (Math.abs(exit) > 0.25 && Math.abs(run) > 0.25) {
+      expect(Math.sign(exit), `③ ${exit.toFixed(2)} · ④ ${run.toFixed(2)} — 좌우가 뒤집혔다`)
+        .toBe(Math.sign(run))
+    }
+    // 적어도 한쪽은 화면을 가로지르는 성분이 있어야 "나온다/뛴다"가 읽힌다
+    expect(Math.max(Math.abs(exit), Math.abs(run))).toBeGreaterThan(0.1)
+  })
+
+  it('하차 지점과 질주 시작 지점이 같다 — 순간이동 금지 (§25)', () => {
+    const a = actorAt(SHOT.door - 1)
+    const b = actorAt(SHOT.door + 1)
+    expect(Math.hypot(b.x - a.x, b.y - a.y), '컷 경계에서 사람이 튄다').toBeLessThan(0.02)
+  })
+})

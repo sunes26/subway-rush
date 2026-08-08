@@ -293,6 +293,9 @@ let introAt: number | null = null
 let introHold: number | null = null
 /** 지금 인트로의 **버스 안** 구간인가 — 차량 렌더를 끊는 데 쓴다 */
 let introInBus = false
+/** 프레임 밝기 계측(E2E) — 다음 렌더 직후 한 번 읽는다 */
+let lumaWant = false
+let lumaValue = -1
 /** 단계별 눈 검사(QA)용 자유 카메라. `null` 이면 평소대로 릭이 카메라를 몬다 */
 let freeCamAt: { pos: [number, number, number]; look: [number, number, number] } | null = null
 
@@ -758,6 +761,26 @@ const frame = (now: number): void => {
   if (camTrace.length > 1200) camTrace.splice(0, 2)
 
   stage.renderer.render(stage.scene, stage.camera)
+  /**
+   * 프레임 평균 밝기 — **렌더 직후에만** 읽을 수 있다.
+   *
+   * `preserveDrawingBuffer` 가 꺼져 있어(기본값) 프레임이 넘어가면 버퍼가 비워진다.
+   * 그래서 캔버스를 `drawImage` 로 퍼 오면 **전부 검게** 나온다 — 실제로 그렇게
+   * 재다가 밝기 0 만 잔뜩 얻었고, 화이트아웃 검사가 통째로 무효였다.
+   * 여기서 `readPixels` 로 한 번 긁어 두면 E2E 가 나중에 꺼내 볼 수 있다.
+   */
+  if (lumaWant) {
+    lumaWant = false
+    const gl = stage.renderer.getContext()
+    const w = 96, h = 54
+    const buf = new Uint8Array(w * h * 4)
+    const size = stage.renderer.getDrawingBufferSize(new Vector2())
+    gl.readPixels(((size.x - w) / 2) | 0, ((size.y - h) / 2) | 0, w, h,
+      gl.RGBA, gl.UNSIGNED_BYTE, buf)
+    let sum = 0
+    for (let i = 0; i < buf.length; i += 4) sum += buf[i]! + buf[i + 1]! + buf[i + 2]!
+    lumaValue = sum / (buf.length / 4) / 3
+  }
 }
 
 // ─────────────────── 기동 ───────────────────
@@ -846,12 +869,16 @@ declare global {
        * 샷의 프레임이 잡힐지 알 수 없다. **보고 싶은 시각을 직접 지정한다.**
        */
       seekIntro(tMs: number): void
+      /** 다음 프레임의 화면 중앙 평균 밝기를 요청한다 (E2E) */
+      wantLuma(): void
+      /** 마지막으로 잰 값. 아직이면 −1 */
+      luma(): number
       /** 자유 카메라 — 단계별 눈 검사(QA)용. 월드 좌표로 세우고 한 점을 본다 */
       freeCam(pos: [number, number, number], look: [number, number, number]): void
       /** 인트로 한 프레임의 실측값 — 카메라·주인공이 실제로 어디 있는가 (E2E) */
       introProbe(): {
         cam: [number, number, number]; actor: [number, number, number]
-        dist: number; visible: boolean; phone: string
+        dist: number; visible: boolean; phone: string; busOn: number
         arm: Record<string, [number, number, number]>
       }
       /** 지금 화면 안에 들어온 게이트 표지 수 (0~6) */
@@ -950,6 +977,8 @@ window.__game = {
       actor: [a.x, a.y, a.z] as [number, number, number],
       dist: Math.hypot(a.x - c.x, -a.y - c.z),
       visible: player?.root.visible ?? false,
+      /** 버스 외피 네 조각이 지금 켜져 있는가 — 연속성 검사용 */
+      busOn: busExterior().filter((o) => o.visible).length,
       phone: (() => {
         if (!phone) return 'none'
         const v = new Vector3()
@@ -983,6 +1012,8 @@ window.__game = {
   freeCam: (pos, look) => {
     freeCamAt = { pos, look }
   },
+  wantLuma: () => { lumaWant = true; lumaValue = -1 },
+  luma: () => lumaValue,
   seekIntro: (tMs) => {
     if (introAt === null) startIntro()
     introHold = tMs
