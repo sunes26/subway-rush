@@ -122,7 +122,9 @@ describe('A-2 · S6-4 — 처음부터 끝까지 플레이 가능', () => {
 
     for (let i = 0; i < 60 * 200 && !s.boarded; i++) {
       const open = s.train.state === 'open' || s.train.state === 'closing'
-      const target = open ? { x: doorX, y: 12.2 } : { x: doorX, y: 10.2 }
+      // 열리면 **객실 안까지** 걸어 들어간다 — 탑승은 문 앞이 아니라 안에서 성립한다
+      // (`TRAIN.cabinBoardY` 13.0). 예전 목표 12.2 는 문틀 앞이라 이제 안 탄다.
+      const target = open ? { x: doorX, y: 13.6 } : { x: doorX, y: 10.2 }
       s = tick(s, STEP, { input: seek(s, target.x, target.y), cameraYaw: 0 })
     }
     expect(s.boarded, '탑승 실패').toBe(true)
@@ -130,8 +132,9 @@ describe('A-2 · S6-4 — 처음부터 끝까지 플레이 가능', () => {
     // 이 테스트가 증명하는 것은 **완주 가능성**이므로 성공 계열이면 된다.
     expect(resolveEnding(s).tone).toBe('success')
 
-    // 열차가 떠나면 엔딩 화면으로 넘어간다
-    for (let i = 0; i < 60 * 20 && s.phase !== 'ended'; i++) {
+    // 탔으면 곧 떠난다 — 문 닫힘 1.2초 + 잠깐 0.8초 = 3.2초면 'departed' 다
+    // (`TRAIN.boardDwellMs` · `systems/train.ts withBoarding`). 예산 10초면 넉넉하다.
+    for (let i = 0; i < 60 * 10 && s.phase !== 'ended'; i++) {
       s = tick(s, STEP, { input: EMPTY_INPUT, cameraYaw: 0 })
     }
     expect(s.phase).toBe('ended')

@@ -367,6 +367,15 @@ export type GameState = Readonly<{
   lightMs: number
   boarded: boolean
   boardedDoorX: number | null
+  /**
+   * 탑승한 순간의 `elapsedMs`.
+   *
+   * 위치 트리거로 열차가 앞당겨 오면 탑승도 앞당겨진다(70초쯤). 출발 시각은 원래
+   * 3분 예산 그대로라, 이 값이 없으면 객실 안에서 110초를 그냥 기다리게 된다.
+   * `systems/train.ts trainClock` 이 이 값을 보고 **탄 뒤에만** 시계를 닫힘 구간으로
+   * 밀어 준다 — 늦게 탄 경우(이미 172초를 넘겼으면)에는 아무것도 안 바뀐다.
+   */
+  boardedAtMs: number | null
   /** 탄 게 `train2`(반대 방면)인가 — 출발 판정이 어느 열차를 볼지 이걸로 가른다 */
   boardedTrain2: boolean
   endingId: EndingId | null
