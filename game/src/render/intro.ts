@@ -256,7 +256,17 @@ export const actorAt = (tMs: number): ActorState => {
       * (1 - seg(t, SHOT.phone - 260, SHOT.phone)),
     clip: run > 0 ? 'Run' : toDoor > 0 ? 'Walk' : 'Idle',
     sit,
-    visible: t < INTRO_MS,
+    /**
+     * ★ 카메라가 머리에 **닿기 전에** 감춘다.
+     *
+     * 마지막 프레임까지 켜 두었더니 카메라가 머리 속으로 들어가 **흰 덩어리가
+     * 화면을 덮었다** — 녹화본에서 6.51s 프레임의 평균 밝기가 107 → 117 로 튀는
+     * 그 지점이다. 페이드도 톤매핑도 아니고 **캐릭터 메시**였다.
+     *
+     * 300ms 앞서 끄면 그때 카메라는 아직 0.4m 뒤라 머리가 화면을 다 안 덮는다.
+     * 그 뒤 300ms 는 이미 사실상 1인칭이라 없어진 것이 눈에 안 띈다.
+     */
+    visible: t < INTRO_MS - 300,
   }
 }
 
@@ -348,12 +358,16 @@ export const poseAt = (tMs: number): IntroPose => {
    * ⚠ 어깨 **높이**에 두면 화면 뒷면만 보인다. 휴대폰 화면은 주인공의 얼굴을
    *   향하므로(실측 법선: 월드 −0.75, +0.66, −0.05 = 뒤·위), 카메라도 그 법선을
    *   따라 **머리 위쪽**에 서야 화면이 읽힌다. 어깨 너머로 같이 내려다보는 각이다.
+   *
+   * ⚠ 그런데 머리 **바로 뒤**에 두면 머리가 화면 3분의 1 을 먹고 폰보다 커진다
+   *   (브리프 §4). 머리를 **옆으로 지나쳐** 폰 쪽으로 붙는다 — 어깨와 머리 일부는
+   *   전경에 남고, 초점은 손과 화면으로 간다.
    */
   if (t < SHOT.phone) {
     const p = framed(
-      [SEAT.x - 0.42, SEAT.y - 0.38, 1.76],
-      [SEAT.x - 0.35, SEAT.y - 0.34, 1.70],
-      [SEAT.x + 0.16, SEAT.y - 0.19, 1.26],
+      [SEAT.x - 0.10, SEAT.y - 0.56, 1.56],
+      [SEAT.x - 0.04, SEAT.y - 0.52, 1.53],
+      [SEAT.x + 0.34, SEAT.y - 0.26, 1.28],
       seg(t, SHOT.interior, SHOT.phone), dx,
     )
     return { ...p, eye: p.eye + shake * 0.015, pitch: p.pitch + shake * 0.004 - brakeDip(t) }

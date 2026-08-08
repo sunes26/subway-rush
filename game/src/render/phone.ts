@@ -121,7 +121,7 @@ export type Phone = Readonly<{
  * 손에 비해 작아서 화면이 안 읽힌다. 조금 키워 **읽히는 크기**로 잡는다 —
  * 이 게임의 다른 소품도 같은 이유로 실물보다 크다.
  */
-const SIZE = { w: 0.128, h: 0.262, d: 0.014 } as const
+const SIZE = { w: 0.150, h: 0.305, d: 0.014 } as const
 
 export const buildPhone = (): Phone => {
   const root = new Group()
@@ -175,8 +175,23 @@ export const buildPhone = (): Phone => {
    *
    * 길이는 팔뚝(≈0.21m)만큼. `CHAR_SCALE` 이 곱해지므로 그것으로 나눈다.
    */
-  root.position.set(0, 0.21 / CHAR_SCALE, 0.022)
-  root.rotation.set(0.34, 0, -0.16)
+  /**
+   * ★ 손 **너머**에 둔다.
+   *
+   * 팔뚝 끝(= 손)에 폰의 **중심**을 맞췄더니 손이 화면 한복판을 가렸다.
+   * 실제로 사람은 폰의 아래쪽 모서리를 쥔다 — 그래서 손보다 폰 높이의 절반쯤
+   * 더 내보낸다(0.21 → 0.33). 그러면 손은 아래 모서리에 걸리고 정보 영역이
+   * 통째로 열린다.
+   *
+   * 로컬 값은 월드의 1/`CHAR_SCALE` 이다 — 본에 매달리면 그 배율이 곱해진다.
+   */
+  root.position.set(0.01, 0.33 / CHAR_SCALE, 0.030)
+  /**
+   * 화면을 카메라 쪽으로 조금 더 연다(브리프 §5 가 허용한 cinematic cheat).
+   * 손목 각도 그대로면 화면이 카메라에 지나치게 비스듬해 글자가 안 읽힌다.
+   * 폰이 카메라를 향해 들려 있는 것처럼 보일 만큼 돌리지는 않는다.
+   */
+  root.rotation.set(0.52, 0, -0.26)
   root.visible = false
 
   return {

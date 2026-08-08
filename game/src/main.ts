@@ -34,6 +34,7 @@ import { createIntro } from './ui/intro'
 import { actorAt, busDx, DOORS_MS, INTRO_MS, poseAt, SHOT } from './render/intro'
 import { buildBusInterior, type BusInterior } from './render/bus-interior'
 import { buildWestRoad } from './render/west-road'
+import { loadPassengers, type Passengers } from './render/passengers'
 import { makePoseRig, type PoseRig } from './render/pose'
 import { buildPhone, type Phone } from './render/phone'
 import { createSettings } from './ui/settings'
@@ -309,6 +310,14 @@ let busIn: BusInterior | null = null
 /** 인트로 전용 서쪽 도로 연장 — 버스가 달릴 거리를 만든다 */
 let westRoad: { root: Object3D; dispose(): void } | null = null
 /**
+ * 인트로 버스 승객. 기존 NPC 를 그대로 태운다.
+ *
+ * **인트로가 처음 돌 때 불러온다.** 부팅에 얹으면 안 볼 수도 있는 것을 매번 기다리게
+ * 되고, GLB 는 이미 액터 로딩으로 캐시에 들어와 있어 다시 받지 않는다.
+ */
+let riders: Passengers | null = null
+let ridersLoading = false
+/**
  * 버스 외피 네 조각(`merged:BUS_*`). 실내가 24m 서쪽에서 다가오는 동안에는
  * **숨긴다** — 안 그러면 우리가 탄 버스가 저 앞에 주차된 버스를 향해 달린다.
  */
@@ -331,6 +340,14 @@ const startIntro = (): void => {
   if (!busIn) { busIn = buildBusInterior(); stage.scene.add(busIn.root) }
   if (!westRoad) { westRoad = buildWestRoad(); stage.scene.add(westRoad.root) }
   westRoad.root.visible = true
+  if (!riders && !ridersLoading) {
+    ridersLoading = true
+    void loadPassengers(BASE)
+      .then((p) => { riders = p; stage.scene.add(p.root) })
+      // 승객이 없어도 인트로는 끝까지 돈다 — 배경이지 사건이 아니다
+      .catch((e: unknown) => { console.error('[intro] 승객 로드 실패', e) })
+  }
+  riders?.setVisible(true)
   // QA — 실내가 외피를 가리는지 A/B 로 가른다
   busIn.root.visible = !/[?&]nointerior/.test(location.search)
   busIn.setDoor(0)
@@ -348,6 +365,7 @@ const endIntro = (): void => {
   introInBus = false
   phone?.setVisible(false)
   if (westRoad) westRoad.root.visible = false
+  riders?.setVisible(false)
   for (const o of busExterior()) o.visible = true
   if (busIn) busIn.root.visible = false
   /**
@@ -589,6 +607,10 @@ const frame = (now: number): void => {
       const inside = t < SHOT.phone
       for (const o of busExterior()) o.visible = !inside
       if (westRoad) westRoad.root.visible = inside
+      // 승객은 버스와 **같이** 달린다. 하나라도 빠뜨리면 그것만 미끄러진다
+      riders?.setVisible(inside)
+      riders?.setBusDx(busDx(t))
+      riders?.update(dtSec)
       if (busIn) {
         busIn.root.position.x = busDx(t)
         busIn.setDoor((t - DOORS_MS) / 620)

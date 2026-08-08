@@ -52,9 +52,15 @@ describe('인트로 — 이음매', () => {
     expect(Math.abs(b.yaw - a.yaw), '전환에서 시선이 튄다').toBeLessThan(0.01)
     expect(Math.abs(b.eye - a.eye), '전환에서 눈높이가 튄다').toBeLessThan(0.01)
     expect(Math.abs(b.fov - a.fov), '전환에서 화각이 튄다').toBeLessThan(0.2)
-    // 그 순간 주인공이 사라진다 — 안 사라지면 자기 뒤통수를 안에서 본다
-    expect(actorAt(SWAP_MS - 1).visible).toBe(true)
-    expect(actorAt(SWAP_MS).visible).toBe(false)
+    /**
+     * 주인공은 **끝나기 300ms 전에** 사라진다.
+     *
+     * 마지막 프레임까지 켜 두면 카메라가 머리 속으로 들어가 흰 덩어리가 화면을
+     * 덮는다 — 녹화본에서 평균 밝기가 107 → 117 로 튀던 그 프레임이다.
+     * 300ms 앞서 끄면 그때 카메라는 아직 0.4m 뒤라 머리가 화면을 다 안 덮는다.
+     */
+    expect(actorAt(INTRO_MS - 400).visible, '아직 보인다').toBe(true)
+    expect(actorAt(INTRO_MS - 200).visible, '카메라가 닿기 전에 사라진다').toBe(false)
   })
 
   it('샷 **안에서는** 카메라가 안 튄다', () => {
