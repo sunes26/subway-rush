@@ -17,9 +17,10 @@
  */
 
 import { formatClock } from '../core/math'
+import { loadSave } from '../core/save'
 import { pickLine, resolveEnding, type EndingDef } from '../data/endings'
 import { QUEUE_MARKERS } from '../data/world'
-import type { GameState } from '../state/types'
+import type { EndingId, GameState } from '../state/types'
 // 스타일은 `css/screens.css` 가 단일 원천이다 — UI 킷(/uikit.html)이 같은 파일을 읽는다.
 import CSS from './css/screens.css?inline'
 
@@ -36,8 +37,39 @@ export type Screens = Readonly<{
  */
 const NEXT_TRAIN = '4분 30초'
 
-/** 판정 문구 — 상태값에만 색이 붙는다. 판 전체를 물들이지 않는다. */
+/**
+ * 판정 문구. **색이 아니라 글자가 상태를 말한다** — 색만으로 구분하면 색각 이상이나
+ * 저대비 환경에서 성공과 실패가 같은 화면이 된다. 색은 거들 뿐이다.
+ */
 const TONE_WORD = { success: '성공', fail: '실패', hidden: '특별' } as const
+
+/**
+ * **무슨 일이 일어났는가** — 엔딩마다 한 줄. 농담보다 먼저 온다.
+ *
+ * 예전 판은 제목과 대사만 있어서, 처음 보는 사람은 `다음 열차` + `승강장 의자가
+ * 비어 있다` 를 읽고도 자기가 열차를 놓친 건지 탄 건지 몰랐다. 재치 있는 문구가
+ * 설명을 대신하면 안 된다 — 사실 → 수치 → 속마음, 세 겹으로 쌓는다.
+ *
+ * `data/endings.ts` 는 건드리지 않는다. 이건 표현 계층의 문장이다.
+ */
+const WHAT_HAPPENED: Readonly<Record<EndingId, string>> = {
+  'E-01': '열차에 탑승했습니다.',
+  'E-02': '열차에 탑승했습니다.',
+  'E-03': '열차에 탑승했습니다.',
+  'E-04': '문이 닫히기 직전에 탔습니다.',
+  'E-05': '모든 조건을 채우고 탑승했습니다.',
+  'E-06': '열차를 놓쳤습니다.',
+  'E-07': '열차를 놓쳤습니다.',
+  'E-08': '반대 방향 열차에 탔습니다.',
+  'E-09': '요금을 내지 않고 통과했습니다.',
+  'E-10': '양심을 잃은 채 승강장에 닿았습니다.',
+  'E-11': '우산으로 사람들을 밀었습니다.',
+  'E-12': '열차는 놓쳤지만 세 사람을 도왔습니다.',
+  'E-13': '화장실에 들렀습니다.',
+  'E-14': '동전을 모아 두고 탑승했습니다.',
+  'E-15': '할아버지께 원하지 않는 것을 드렸습니다.',
+  'E-16': '단소에 두 번째로 맞았습니다.',
+}
 
 /** 화면에 띄우는 결과값 한 칸. `wide` 면 두 칸을 합쳐 한 줄로 쓴다. */
 type Fact = Readonly<{ label: string; value: string; wide?: boolean }>
@@ -124,17 +156,27 @@ export const createScreens = (mount: HTMLElement): Screens => {
   let lastKey = ''
 
   /**
-   * 타이틀 — 매달린 안내판 한 장. 화면에서 **가장 먼저 읽혀야 하는 것은 게임 이름**이다.
+   * 타이틀 — 매달린 안내판 한 장. **가로 3단 사인 구조**다.
    *
-   * 그래서 `PRESS ENTER` 를 흰 LED 로 내린다. 앰버로 두면 로고와 같은 밝기라
-   * 시선이 갈린다 — 안내판에서 앰버는 "지금 무슨 열차가 오는가"의 색이지
-   * 버튼의 색이 아니다.
+   *   1단  로고 | 행선 정보
+   *   2단  목표 — "180초 안에 지하철에 타세요."
+   *   3단  입력 — ENTER 게임 시작 | ESC 설정
+   *
+   * 2단이 이번에 새로 들어갔다. 처음 오는 사람은 앞선 판을 보고 **무엇을 해야
+   * 하는 게임인지 알 수 없었다** — 로고와 열차 시각만으로는 규칙이 안 나온다.
+   * 광고 문구가 아니라 규칙 한 줄이다.
+   *
+   * `PRESS ENTER` 는 흰 LED 로 두되 문구를 `ENTER 게임 시작` 으로 바꿔 **동작**을
+   * 적는다. 두 번째 판부터는 `출근 시작` 이 된다 — 규칙을 이미 아는 사람에게
+   * 같은 안내를 반복하지 않는다.
    */
-  const title = (): string => `
+  const title = (): string => {
+    const first = loadSave().plays === 0
+    return `
     <div class="board title">
       <div class="brackets"><i></i><i></i></div>
       <div class="face">
-        <div class="row">
+        <div class="row s1">
           <div class="logo">
             <span class="train" aria-hidden="true"></span>
             <b class="ko"><em>지하철</em> <u>러쉬</u></b>
@@ -147,11 +189,30 @@ export const createScreens = (mount: HTMLElement): Screens => {
             <dl><dt>다음 열차</dt><dd>${NEXT_TRAIN}</dd></dl>
           </div>
         </div>
-        <div class="cta"><i>▶</i><b>PRESS ENTER</b><i>◀</i></div>
-        <div class="keys"><span><b>ESC</b> 설정</span></div>
+        <div class="goal s2">
+          <b>180초 안에 지하철에 타세요.</b>
+          <span>뛰고, 피하고, 필요한 건 챙기세요.</span>
+        </div>
+        <div class="keys s3">
+          <span class="go"><b>ENTER</b> ${first ? '게임 시작' : '출근 시작'}</span>
+          <span><b>ESC</b> 설정</span>
+        </div>
       </div>
     </div>`
+  }
 
+  /**
+   * 엔딩 — 같은 판, 다른 내용. **사실 → 수치 → 속마음** 순으로 쌓는다.
+   *
+   *   1단  제목
+   *   2단  무슨 일이 있었는가 (한 줄 사실)
+   *   3단  상태 + 관련 값 최대 2개
+   *   4단  속마음 한 줄
+   *   5단  입력
+   *
+   * 상태는 `상태 실패` 처럼 **글자로** 적는다. 색만 바꾸면 색각 이상이나
+   * 저대비 환경에서 성공과 실패가 같은 화면이 된다.
+   */
   const ending = (s: GameState): string => {
     const e = resolveEnding(s)
     el.className = `on ${e.tone}`
@@ -161,23 +222,45 @@ export const createScreens = (mount: HTMLElement): Screens => {
       <div class="board result">
         <div class="brackets"><i></i><i></i></div>
         <div class="face">
-          <div class="head">
+          <div class="head s1">
             <span><span class="line2">2</span>신도림 방면</span>
             <span>${e.id}</span>
           </div>
-          <div class="title-row">
-            <div class="name">${e.tone === 'hidden' ? '★ ' : ''}${e.title}</div>
-            <div class="verdict">${TONE_WORD[e.tone]}</div>
-          </div>
-          <div class="say">${pickLine(e, s.seed)}</div>
-          ${facts.length === 0 ? '' : `<div class="facts">${facts.map((f) => `
+          <div class="name s2">${e.tone === 'hidden' ? '★ ' : ''}${e.title}</div>
+          <div class="what s3">${WHAT_HAPPENED[e.id]}</div>
+          <div class="facts s4">
+            <dl class="status"><dt>상태</dt><dd>${TONE_WORD[e.tone]}</dd></dl>
+            ${facts.map((f) => `
             <dl${f.wide ? ' class="wide"' : ''}>
               ${f.label ? `<dt>${f.label}</dt>` : ''}<dd>${f.value}</dd>
-            </dl>`).join('')}</div>`}
-          <div class="keys"><span><b>R</b> 다시하기</span><span><b>ESC</b> 설정</span></div>
+            </dl>`).join('')}
+          </div>
+          <div class="say s5">${pickLine(e, s.seed)}</div>
+          <div class="keys s6">
+            <span><b>R</b> 다시하기</span>
+            <span><b>ESC</b> 설정</span>
+          </div>
         </div>
       </div>`
   }
+
+  /**
+   * `ENTER` 직후의 짧은 전환.
+   *
+   * ★ **게임을 붙잡지 않는다.** 시뮬은 이미 `playing` 으로 넘어가 돌고 있고,
+   *   이건 그 위에 0.5초 떴다 사라지는 표시일 뿐이다. 전환을 위해 조작을
+   *   막으면 3분짜리 게임에서 그 0.5초가 그대로 손해가 된다.
+   *   `pointer-events:none` 이라 클릭도 통과한다.
+   */
+  const flash = (): void => {
+    const f = document.createElement('div')
+    f.className = 'flash'
+    f.textContent = '열차 진입 중'
+    mount.appendChild(f)
+    window.setTimeout(() => f.remove(), 620)
+  }
+
+  let prevPhase: GameState['phase'] | '' = ''
 
   return {
     hideLoading() { loading.style.display = 'none' },
@@ -188,6 +271,8 @@ export const createScreens = (mount: HTMLElement): Screens => {
         `${s.timeLeftMs}:${s.scores.conscience},${s.tally.coinsEarned},${s.tally.pushes}`
       if (key === lastKey) return
       lastKey = key
+      if (prevPhase === 'title' && s.phase === 'playing') flash()
+      prevPhase = s.phase
       if (s.phase === 'title') {
         el.className = 'on'
         el.innerHTML = title()
