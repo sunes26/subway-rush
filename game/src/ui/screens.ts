@@ -180,7 +180,7 @@ export const createScreens = (mount: HTMLElement): Screens => {
    * 타이틀 — 매달린 안내판 한 장. **가로 3단 사인 구조**다.
    *
    *   1단  로고 | 행선 정보
-   *   2단  목표 — "180초 안에 신촌 방면 지하철에 탑승하세요."
+   *   2단  목표 — "180초 안에 신도림 방면 지하철에 탑승하세요."
    *   3단  입력 — ENTER 게임 시작 | ESC 설정
    *
    * 2단이 이번에 새로 들어갔다. 처음 오는 사람은 앞선 판을 보고 **무엇을 해야
@@ -211,13 +211,13 @@ export const createScreens = (mount: HTMLElement): Screens => {
             <small>SUBWAY RUSH</small>
           </div>
           <div class="arrive">
-            <div class="dir"><span class="line2">2</span>신촌 방면</div>
+            <div class="dir"><span class="line2">2</span>신도림 방면</div>
             <dl><dt>이번 열차</dt><dd class="soon">잠시 후 도착</dd></dl>
             <dl><dt>다음 열차</dt><dd>${NEXT_TRAIN}</dd></dl>
           </div>
         </div>
         <div class="goal s2">
-          <b>180초 안에 신촌 방면 지하철에 탑승하세요.</b>
+          <b>180초 안에 신도림 방면 지하철에 탑승하세요.</b>
           <span>뛰는 것만으로는 안 될 수 있습니다.</span>
         </div>
         <div class="keys s3">
@@ -251,7 +251,7 @@ export const createScreens = (mount: HTMLElement): Screens => {
         <div class="brackets"><i></i><i></i></div>
         <div class="face">
           <div class="head s1">
-            <span><span class="line2">2</span>2호선 신촌 방면</span>
+            <span><span class="line2">2</span>2호선 신도림 방면</span>
             <span class="eid">${e.id}</span>
           </div>
           <div class="title-row s2">
