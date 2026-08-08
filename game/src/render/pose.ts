@@ -1,5 +1,5 @@
 /**
- * 착석 포즈 — **클립 없이 본을 직접 접는다.**
+ * 포즈 — **클립 없이 본을 직접 접는다.**
  *
  * ■ 왜 이게 가능한가
  *
@@ -30,9 +30,16 @@ import { Euler, Quaternion, type Object3D } from 'three'
 /** 어느 축으로 접히는지는 리그마다 다르다 — 실측으로 정한다 */
 export type SitAxis = 'x' | 'z'
 
-export type SitRig = Readonly<{
-  /** `k` 0 = 서 있음 · 1 = 앉음. `mixer.update()` **뒤에** 부른다 */
-  apply(k: number): void
+export type PoseInput = Readonly<{
+  /** 0 서 있음 · 1 앉음 */
+  sit: number
+  /** 0 팔 내림 · 1 휴대폰을 들어 본다 */
+  phone: number
+}>
+
+export type PoseRig = Readonly<{
+  /** `mixer.update()` **뒤에** 부른다 */
+  apply(p: PoseInput): void
   /** 본을 못 찾았으면 false — 리그가 바뀐 것이다 */
   ok: boolean
 }>
@@ -63,7 +70,10 @@ export const SIT_DROP = 0.26
  * 처음엔 파일 이름 그대로 찾다가 점 없는 `Spine` 하나만 잡혔다. 그런데도 조용히
  * 넘어가서 "다리가 안 접힌다"는 증상만 남았다 — 아래 `ok` 를 반드시 확인해야 한다.
  */
-const NAMES = ['UpperLegL', 'UpperLegR', 'LowerLegL', 'LowerLegR', 'Spine'] as const
+const NAMES = [
+  'UpperLegL', 'UpperLegR', 'LowerLegL', 'LowerLegR', 'Spine',
+  'UpperArmR', 'LowerArmR', 'Head',
+] as const
 type BoneName = (typeof NAMES)[number]
 
 /**
@@ -73,7 +83,7 @@ type BoneName = (typeof NAMES)[number]
  * 앉으면 둘 다 대략 직각이 되는데, 그대로 90° 를 주면 무릎이 딱 붙어 굳어 보인다.
  * 실제로는 넓적다리가 조금 덜 접히고 종아리가 살짝 뒤로 빠진다.
  */
-const TARGET: Readonly<Record<BoneName, number>> = {
+const SIT: Readonly<Partial<Record<BoneName, number>>> = {
   UpperLegL: -1.42,
   UpperLegR: -1.42,
   LowerLegL: 1.30,
@@ -82,7 +92,23 @@ const TARGET: Readonly<Record<BoneName, number>> = {
   Spine: 0.07,
 }
 
-export const makeSitRig = (root: Object3D, axis: SitAxis = 'x'): SitRig => {
+/** 팔이 접히는 방향 — 리그마다 다르다. `?armsign=-1` 로 뒤집어 실측한다 */
+const ARM_SIGN = typeof location !== 'undefined' && /[?&]armsign=-1/.test(location.search) ? -1 : 1
+
+/**
+ * 휴대폰을 들어 보는 자세 — 오른팔을 접고 고개를 살짝 숙인다.
+ *
+ * 손 본이 없어서(골격이 `...LowerArmR` 에서 끝난다) 팔뚝 끝이 곧 손이다.
+ * 휴대폰은 그 자리에 붙는다(`render/phone.ts`).
+ */
+const PHONE: Readonly<Partial<Record<BoneName, number>>> = {
+  UpperArmR: ARM_SIGN * 0.95,
+  LowerArmR: ARM_SIGN * 1.15,
+  // 화면을 내려다본다. 크게 숙이면 얼굴이 안 보인다
+  Head: 0.28,
+}
+
+export const makePoseRig = (root: Object3D, axis: SitAxis = 'x'): PoseRig => {
   const bones = new Map<BoneName, Object3D>()
   const rest = new Map<BoneName, Quaternion>()
   /** 표기 흔들림(점·언더스코어·대소문자)을 지우고 맞춘다 */
@@ -101,11 +127,12 @@ export const makeSitRig = (root: Object3D, axis: SitAxis = 'x'): SitRig => {
 
   return {
     ok: bones.size === NAMES.length,
-    apply(k) {
-      if (k <= 0) return
-      const t = Math.max(0, Math.min(1, k))
+    apply({ sit, phone }) {
+      if (sit <= 0 && phone <= 0) return
+      const s01 = Math.max(0, Math.min(1, sit))
+      const p01 = Math.max(0, Math.min(1, phone))
       for (const [name, bone] of bones) {
-        const a = TARGET[name] * t
+        const a = (SIT[name] ?? 0) * s01 + (PHONE[name] ?? 0) * p01
         e.set(axis === 'x' ? a : 0, 0, axis === 'z' ? a : 0)
         q.setFromEuler(e)
         /**

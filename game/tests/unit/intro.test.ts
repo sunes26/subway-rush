@@ -16,9 +16,9 @@ import { describe, expect, it } from 'vitest'
 import { FPV } from '../../src/data/tuning'
 import { SLABS, SPAWN } from '../../src/data/world'
 import { BUS } from '../../src/render/bus-interior'
-import { SIT_DROP } from '../../src/render/sit-pose'
+import { SIT_DROP } from '../../src/render/pose'
 import {
-  actorAt, busDx, BUS_STOP_MS, FINAL_POSE, INTRO_MS, poseAt, SHOT, SWAP_MS,
+  actorAt, busDx, busShake, BUS_STOP_MS, FINAL_POSE, INTRO_MS, poseAt, SHOT, SWAP_MS,
 } from '../../src/render/intro'
 
 /** 50ms 격자로 인트로 전체를 훑는다 */
@@ -56,13 +56,37 @@ describe('인트로 — 이음매', () => {
     expect(actorAt(SWAP_MS).visible).toBe(false)
   })
 
-  it('샷 경계에서 끊기지 않는다', () => {
-    for (const t of [SHOT.bus, SHOT.phone, SHOT.alight]) {
-      const a = poseAt(t - 1)
-      const b = poseAt(t + 1)
-      expect(Math.hypot(b.x - a.x, b.y - a.y), `${t}ms 에서 위치가 튄다`).toBeLessThan(0.05)
-      expect(Math.abs(b.yaw - a.yaw), `${t}ms 에서 시선이 튄다`).toBeLessThan(0.02)
-      expect(Math.abs(b.eye - a.eye), `${t}ms 에서 눈높이가 튄다`).toBeLessThan(0.02)
+  it('샷 **안에서는** 카메라가 안 튄다', () => {
+    /**
+     * 샷 경계는 이제 **컷이다** — 거기서 값이 바뀌는 것은 의도다. 예전엔 어깨
+     * 오프셋 하나로 계속 따라다녀서 경계가 없었고, 그게 "자유 카메라처럼
+     * 움직인다"의 정체였다. 지킬 것은 **한 샷 안에서 카메라가 흔들리지 않는 것**이다.
+     */
+    /**
+     * ①②③ 은 **서 있는 카메라**다 — 20ms 에 3cm 넘게 움직이면 그건 밀기(dolly)가
+     * 아니라 떠다니는 것이다. ④ 만 예외로 빠르게 따라간다(주인공이 뛰므로 당연하다).
+     * 대신 ④ 는 **가속이 튀지 않는지**를 본다 — 속도가 아니라 덜컹거림이 문제다.
+     */
+    const still: [number, number][] = [
+      [0, SHOT.interior], [SHOT.interior, SHOT.phone], [SHOT.phone, SHOT.door],
+    ]
+    for (const [a0, a1] of still) {
+      for (let t = a0 + 20; t < a1 - 20; t += 20) {
+        const a = poseAt(t)
+        const b = poseAt(t + 20)
+        expect(Math.hypot(b.x - a.x, b.y - a.y), `${t}ms 위치`).toBeLessThan(0.03)
+        expect(Math.abs(b.yaw - a.yaw), `${t}ms 시선`).toBeLessThan(0.03)
+      }
+    }
+    let prevStep = 0
+    for (let t = SHOT.door + 20; t < INTRO_MS - 20; t += 20) {
+      const a = poseAt(t)
+      const b = poseAt(t + 20)
+      const step = Math.hypot(b.x - a.x, b.y - a.y)
+      if (prevStep > 0) {
+        expect(Math.abs(step - prevStep), `${t}ms 에서 카메라가 덜컹거린다`).toBeLessThan(0.02)
+      }
+      prevStep = step
     }
   })
 
@@ -82,22 +106,25 @@ describe('인트로 — 무대 경계', () => {
     })
   })
 
-  it('시선이 서쪽으로 넘어가지 않는다', () => {
+  it('버스 안 샷에서는 시선이 서쪽으로 넘어가지 않는다', () => {
     /**
      * 화각이 수평 106° 라 요가 π/2(북)를 넘으면 화면 왼쪽 절반이 서쪽을 향한다.
      * 처음에 카메라를 주인공 **동쪽**에 두고 서쪽을 보게 했더니 요가 161° 였다 —
      * 그건 지도 끝을 정면으로 보는 각이다. 그래서 남서쪽으로 옮겼다.
+     *
+     * ③ 외부 샷은 예외다. 거기서는 인도에 서서 **버스를 본다** — 서쪽을 보지만
+     * 시야를 버스 차체가 채우므로 지도 끝이 안 보인다.
      */
-    everyFrame((t) => {
+    for (let t = 0; t < SHOT.phone; t += 50) {
       const { yaw } = poseAt(t)
       expect(yaw, `${t}ms 에서 서쪽을 봤다`).toBeLessThanOrEqual(Math.PI / 2)
       expect(yaw, `${t}ms 에서 남쪽(차도)을 봤다`).toBeGreaterThanOrEqual(-0.01)
-    })
+    }
   })
 
-  it('버스 안에 있는 동안 카메라와 주인공이 차체를 안 뚫는다', () => {
+  it('버스 안 샷에서 카메라와 주인공이 차체를 안 뚫는다', () => {
     // 버스는 `busDx` 만큼 서쪽에 있다 — 경계도 같이 움직인다
-    for (let t = 0; t <= SWAP_MS - 500; t += 50) {
+    for (let t = 0; t < SHOT.phone; t += 50) {
       const dx = busDx(t)
       for (const [who, p] of [['카메라', poseAt(t)], ['주인공', actorAt(t)]] as const) {
         expect(p.x, `${t}ms ${who} x`).toBeGreaterThan(BUS.xMin + dx)
@@ -141,11 +168,12 @@ describe('인트로 — 연출 규칙', () => {
      *   남아서 몸이 앞으로 갔다가 돌아오는 것을 그린다 — 관성이라 버스가 선
      *   순간 딱 끊기면 오히려 틀린 그림이다. 그게 끝난 뒤부터가 "정지"다.
      */
-    const a = poseAt(BUS_STOP_MS + 400)
-    const b = poseAt(BUS_STOP_MS + 460)
-    expect(Math.abs(b.eye - a.eye)).toBeLessThan(1e-9)
-    expect(Math.abs(b.yaw - a.yaw)).toBeLessThan(1e-9)
-    expect(Math.abs(b.pitch - a.pitch)).toBeLessThan(1e-9)
+    expect(Math.abs(busShake(BUS_STOP_MS)), '정차 시각').toBeLessThan(1e-9)
+    expect(Math.abs(busShake(BUS_STOP_MS + 400)), '정차 후').toBeLessThan(1e-9)
+    // 달리는 동안에는 실제로 흔들려야 한다 — 0 이면 넣으나 마나다
+    let peak = 0
+    for (let t = 0; t < BUS_STOP_MS * 0.6; t += 17) peak = Math.max(peak, Math.abs(busShake(t)))
+    expect(peak, '주행 중에는 흔들려야 한다').toBeGreaterThan(0.3)
   })
 
   it('3인칭 구간에서 카메라가 바닥을 보지 않는다', () => {
@@ -155,7 +183,8 @@ describe('인트로 — 연출 규칙', () => {
      * 주인공보다 눈에 띄었다 — 가까이서 보면 그 원판이 카메라 쪽으로 뻗어 나온다.
      * 카메라를 가슴 높이(`AIM_H` 1.15)로 낮춰 거의 수평으로 본다.
      */
-    for (const t of [300, 1200, 2400]) {
+    // ① 실내 미디엄. ② OTS 는 휴대폰을 내려다보는 샷이라 여기 해당하지 않는다
+    for (const t of [200, 700, 1300]) {
       expect(Math.abs(poseAt(t).pitch), `${t}ms 에서 시선이 기울었다`).toBeLessThan(0.25)
     }
     // 1인칭으로 넘어가면 정확히 수평이다
@@ -163,7 +192,7 @@ describe('인트로 — 연출 규칙', () => {
   })
 
   it('질주 구간에서만 화각이 열린다', () => {
-    expect(poseAt(SWAP_MS + 500).fov).toBeGreaterThan(FPV.fovDeg + 5)
+    expect(poseAt(SHOT.door + 500).fov).toBeGreaterThan(FPV.fovDeg + 5)
     // 버스 안에서는 기본 화각 그대로 — 서 있는데 시야가 넓어질 이유가 없다
     expect(poseAt(800).fov).toBeCloseTo(FPV.fovDeg, 6)
   })

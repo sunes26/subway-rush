@@ -71,3 +71,88 @@ for (const axis of ['x', 'z'] as const) {
     console.log('AXIS', axis, JSON.stringify(await page.evaluate(() => window.__game!.introProbe())))
   })
 }
+
+/** STEP 5·6 — 네 샷을 실제 인트로 카메라로 찍는다 */
+test('STEP 5·6 — 4샷', async ({ page }) => {
+  test.setTimeout(240_000)
+  await boot(page)
+  const marks: [string, number][] = [
+    ['c1-interior', 700], ['c2-ots', 2100], ['c2-ots-late', 2600],
+    ['c3-door-shut', 2850], ['c3-door-open', 3400], ['c3-alight', 3980],
+    ['c4-run', 4700], ['c4-late', 5450],
+  ]
+  for (const [name, t] of marks) {
+    await page.evaluate((ms) => window.__game!.seekIntro(ms), t)
+    await page.waitForTimeout(650)
+    await page.screenshot({ path: `${DIR}/${name}.png` })
+    console.log('P', name, JSON.stringify(await page.evaluate(() => window.__game!.introProbe())))
+  }
+})
+
+for (const sign of ['1', '-1'] as const) {
+  test(`팔 방향 실측 — armsign=${sign}`, async ({ page }) => {
+    test.setTimeout(180_000)
+    await page.goto(`/?seed=7&armsign=${sign}`)
+    await page.waitForFunction(() => !!window.__game, null, { timeout: 30_000 })
+    await page.waitForFunction(
+      () => (document.getElementById('load') as HTMLElement | null)?.style.display === 'none',
+      null, { timeout: 90_000 })
+    await page.waitForTimeout(900)
+    await page.evaluate(() => window.__game!.seekIntro(2100))
+    await page.waitForTimeout(800)
+    await page.screenshot({ path: `${DIR}/arm-${sign}.png` })
+    console.log('ARM', sign, JSON.stringify(await page.evaluate(() => window.__game!.introProbe())))
+  })
+}
+
+/** ③ 샷 카메라 자리에서 **실내 없이** 찍는다 — 회백색의 정체를 가른다 */
+test('대조 — ③ 카메라 · 실내 없음', async ({ page }) => {
+  test.setTimeout(180_000)
+  await boot(page)
+  await cam(page, [-54.6, 26.0, 1.95], [-60.1, 22.1, 1.15])
+  await page.screenshot({ path: `${DIR}/ctl-no-interior.png` })
+})
+
+for (const q of ['', '&nointerior'] as const) {
+  test(`③ A/B — 실내${q ? ' 없음' : ' 있음'}`, async ({ page }) => {
+    test.setTimeout(180_000)
+    await page.goto(`/?seed=7${q}`)
+    await page.waitForFunction(() => !!window.__game, null, { timeout: 30_000 })
+    await page.waitForFunction(
+      () => (document.getElementById('load') as HTMLElement | null)?.style.display === 'none',
+      null, { timeout: 90_000 })
+    await page.waitForTimeout(900)
+    await page.evaluate(() => window.__game!.seekIntro(3980))
+    await page.waitForTimeout(800)
+    await page.screenshot({ path: `${DIR}/ab-${q ? 'off' : 'on'}.png` })
+  })
+}
+
+test('③ 흰 면의 정체', async ({ page }) => {
+  test.setTimeout(180_000)
+  await boot(page)
+  await page.evaluate(() => window.__game!.seekIntro(3400))
+  await page.waitForTimeout(800)
+  for (const [nx, ny] of [[-0.19, 0.31], [-0.45, 0.20], [-0.62, 0.05]] as const) {
+    const hits = await page.evaluate(([x, y]) => window.__game!.pick(x, y), [nx, ny])
+    console.log('PICK', nx, ny, JSON.stringify(hits.slice(0, 4)))
+  }
+})
+
+for (const q of ['', '&nointerior'] as const) {
+  test(`③ 차체 픽 — 실내${q ? ' 없음' : ' 있음'}`, async ({ page }) => {
+    test.setTimeout(180_000)
+    await page.goto(`/?seed=7${q}`)
+    await page.waitForFunction(() => !!window.__game, null, { timeout: 30_000 })
+    await page.waitForFunction(
+      () => (document.getElementById('load') as HTMLElement | null)?.style.display === 'none',
+      null, { timeout: 90_000 })
+    await page.waitForTimeout(900)
+    await page.evaluate(() => window.__game!.seekIntro(3980))
+    await page.waitForTimeout(800)
+    for (const [nx, ny] of [[0.41, -0.19], [0.62, -0.28]] as const) {
+      const hits = await page.evaluate(([x, y]) => window.__game!.pick(x, y), [nx, ny])
+      console.log('BODY', q || 'ON', nx, JSON.stringify(hits.slice(0, 3)))
+    }
+  })
+}

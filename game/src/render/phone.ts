@@ -1,0 +1,174 @@
+/**
+ * 휴대폰 — **주인공의 손에 있는 실물**이다.
+ *
+ * ■ 왜 화면 구석의 카드가 아닌가
+ *
+ * 이전 판은 앱 화면을 DOM 카드로 화면 오른쪽 아래에 띄웠다. 정보는 읽혔지만
+ * 그건 **주인공이 보는 물건이 아니라 플레이어에게 주는 HUD** 였다. 3인칭에서
+ * 인물은 아무것도 안 들고 있는데 옆에 앱 화면이 떠 있으니 공간이 두 겹이 된다.
+ *
+ * 그래서 3D 로 옮겼다. 팔에 붙어 있으므로 카메라가 어디로 가든 손과 같이 움직이고,
+ * 어깨 너머(OTS) 구도에서 자연스럽게 읽힌다.
+ *
+ * ■ 손 본이 없다
+ *
+ * 이 리그의 팔은 `LowerArmR` 에서 끝난다(골격 17: Root·Hips·Spine·Chest·Head·
+ * Shoulder/UpperArm/LowerArm{L,R}·UpperLeg/LowerLeg/Foot{L,R}). 그래서 팔뚝 끝을
+ * 손으로 친다 — 3등신 SD 라 손가락이 없어 어차피 구분이 안 간다.
+ *
+ * ■ 화면은 캔버스로 그린다
+ *
+ * 텍스트를 폴리곤으로 만들 수 없고, 스프라이트로 겹치면 각도가 안 맞는다.
+ * 2D 캔버스에 앱 화면을 그려 텍스처로 붙이면 **화면이 진짜 화면처럼** 기울고 돈다.
+ * `MeshBasicMaterial` 이라 조명을 안 받는다 — 발광하는 화면이므로 그게 맞다.
+ */
+
+import {
+  BoxGeometry, CanvasTexture, Group, LinearFilter, Mesh, MeshBasicMaterial,
+  PlaneGeometry, SRGBColorSpace, type Object3D, type Texture,
+} from 'three'
+import { toonMat } from './toon'
+
+/** 화면 픽셀 — 세로가 긴 비율. 너무 키우면 텍스처만 무거워진다 */
+const W = 320
+const H = 660
+
+/**
+ * 앱 화면. **"3분 후"가 가장 먼저 읽혀야 한다** — 크기·색·자리 셋을 다 준다.
+ * 나머지는 그 숫자를 뒷받침하는 보조 정보다.
+ */
+const drawScreen = (): HTMLCanvasElement => {
+  const c = document.createElement('canvas')
+  c.width = W
+  c.height = H
+  const g = c.getContext('2d')!
+  const sans = '"Noto Sans KR", "Apple SD Gothic Neo", system-ui, sans-serif'
+
+  g.fillStyle = '#0d0e11'
+  g.fillRect(0, 0, W, H)
+
+  // 상태 표시줄
+  g.fillStyle = '#7d818b'
+  g.font = `500 22px ${sans}`
+  g.fillText('08:47', 22, 42)
+  g.textAlign = 'right'
+  g.fillText('LTE', W - 22, 42)
+  g.textAlign = 'left'
+
+  // 노선 · 역
+  g.fillStyle = '#00A84D'
+  g.beginPath(); g.arc(36, 104, 15, 0, Math.PI * 2); g.fill()
+  g.fillStyle = '#fff'
+  g.font = `700 19px ${sans}`
+  g.textAlign = 'center'
+  g.fillText('2', 36, 111)
+  g.textAlign = 'left'
+  g.fillStyle = '#e9e7e1'
+  g.font = `600 26px ${sans}`
+  g.fillText('신도림역', 62, 113)
+
+  const rule = (y: number): void => {
+    g.strokeStyle = '#23252b'
+    g.lineWidth = 2
+    g.beginPath(); g.moveTo(22, y); g.lineTo(W - 22, y); g.stroke()
+  }
+
+  // 이번 열차 — 이 화면의 전부
+  rule(154)
+  g.fillStyle = '#8a8e98'
+  g.font = `500 22px ${sans}`
+  g.fillText('이번 열차', 22, 196)
+  g.fillStyle = '#FF8A1E'
+  g.font = `800 78px ${sans}`
+  g.fillText('3분 후', 22, 280)
+
+  // 다음 열차
+  rule(318)
+  g.fillStyle = '#8a8e98'
+  g.font = `500 22px ${sans}`
+  g.fillText('다음 열차', 22, 360)
+  g.fillStyle = '#cfcdc7'
+  g.font = `600 34px ${sans}`
+  g.fillText('7분 30초 후', 22, 404)
+
+  // 보조 — 출근 시각. 08:47 과 나란히 놓이면 "놓치면 지각"이 저절로 만들어진다
+  rule(448)
+  g.fillStyle = '#8a8e98'
+  g.font = `500 21px ${sans}`
+  g.fillText('출근', 22, 486)
+  g.fillStyle = '#E5484D'
+  g.font = `600 21px ${sans}`
+  g.fillText('09:00', 88, 486)
+  g.fillStyle = '#8a8e98'
+  g.textAlign = 'right'
+  g.font = `500 21px ${sans}`
+  g.fillText('도보 4분', W - 22, 486)
+
+  return c
+}
+
+export type Phone = Readonly<{
+  root: Group
+  /** 팔뚝 본에 매단다. 이미 붙어 있으면 아무 일도 안 한다 */
+  attachTo(bone: Object3D): void
+  setVisible(on: boolean): void
+  dispose(): void
+}>
+
+/**
+ * 실물 치수(m). 주인공이 1.48m 인 3등신이라 실제 휴대폰(0.15m)을 그대로 쓰면
+ * 손에 비해 작아서 화면이 안 읽힌다. 조금 키워 **읽히는 크기**로 잡는다 —
+ * 이 게임의 다른 소품도 같은 이유로 실물보다 크다.
+ */
+const SIZE = { w: 0.115, h: 0.235, d: 0.014 } as const
+
+export const buildPhone = (): Phone => {
+  const root = new Group()
+  root.name = 'intro-phone'
+
+  const body = new Mesh(
+    new BoxGeometry(SIZE.w, SIZE.h, SIZE.d),
+    toonMat(0x23252b),
+  )
+  root.add(body)
+
+  const tex: Texture = new CanvasTexture(drawScreen())
+  tex.colorSpace = SRGBColorSpace
+  tex.minFilter = LinearFilter
+  tex.magFilter = LinearFilter
+  const screen = new Mesh(
+    new PlaneGeometry(SIZE.w - 0.012, SIZE.h - 0.016),
+    // 화면은 스스로 빛난다 — 툰 램프를 태우면 회색이 된다
+    new MeshBasicMaterial({ map: tex, toneMapped: false }),
+  )
+  screen.position.z = SIZE.d / 2 + 0.001
+  /**
+   * ⚠ 화면이 **거꾸로** 붙는다. 팔뚝 본의 로컬 축 방향 때문에 휴대폰이 뒤집힌
+   * 자세로 매달리는데, 몸체는 대칭이라 티가 안 나고 화면 글자만 180° 돈다
+   * (실측 스크린샷에서 초록 원이 오른쪽, 역 이름이 아래에 있었다).
+   * 몸체를 돌리면 손에 쥔 각도가 틀어지므로 **화면만** 제자리로 돌린다.
+   */
+  screen.rotation.z = Math.PI
+  root.add(screen)
+
+  /**
+   * 팔뚝 본 기준 자리. 본의 로컬 축이 리그마다 달라 **실측으로 정했다** —
+   * 팔뚝 끝(손)이 오는 자리에 놓고 화면이 얼굴을 향하도록 눕힌다.
+   */
+  root.position.set(0, -0.30, 0.10)
+  root.rotation.set(-1.05, 0, 0)
+  root.visible = false
+
+  return {
+    root,
+    attachTo(bone) {
+      if (root.parent !== bone) bone.add(root)
+    },
+    setVisible(on) { root.visible = on },
+    dispose() {
+      root.traverse((o) => { if (o instanceof Mesh) o.geometry.dispose() })
+      tex.dispose()
+      root.removeFromParent()
+    },
+  }
+}

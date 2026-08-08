@@ -1,9 +1,11 @@
 /**
  * 인트로 오버레이 — **화면에만 존재하는 것들**을 맡는다.
  *
- * 버스 실내는 여기 없다. 3인칭으로 바뀌면서 실물 지오메트리가 필요해져
- * `render/bus-interior.ts` 로 옮겼다(`css/intro.css` 헤더 참고). 문 여닫이도
- * 이제 진짜 문짝이 한다. 남은 것은 휴대폰 화면 · 놀람 · 속도선 · 3:00 이다.
+ * 실내도 휴대폰도 여기 없다. 둘 다 실물 지오메트리로 옮겼다
+ * (`render/bus-interior.ts` · `render/phone.ts`). 화면 구석에 뜨는 앱 카드는
+ * 주인공이 보는 물건이 아니라 플레이어에게 주는 HUD 라 공간이 두 겹이 됐다.
+ *
+ * 남은 것은 속도선 · 아주 짧은 섬광 · 3:00 뿐이다.
  *
  * ■ 자막을 쓰지 않는다
  *
@@ -25,26 +27,15 @@ export type Intro = Readonly<{
   hide(): void
 }>
 
-/** 휴대폰이 올라오는 구간 */
-const PHONE_IN = SHOT.bus + 120
-const PHONE_OUT = SHOT.phone - 240
-/** 열차 시간을 알아보는 순간 — 놀람 비트 */
-const BEAT_MS = SHOT.bus + 700
+/** 열차 시간을 알아보는 순간 — 화면을 아주 짧게 한 번 친다 */
+const BEAT_MS = SHOT.interior + 620
 /** `3:00` — 조작권이 넘어오기 직전에 떴다가 사라진다 */
 const CLOCK_IN = INTRO_MS - 900
 const CLOCK_OUT = INTRO_MS - 260
 
 const MARKUP = `
 <div class="rush"></div>
-<div class="bang">!!!</div>
 <div class="jolt"></div>
-<div class="phone">
-  <div class="bar"><span>08:47</span><span>LTE</span></div>
-  <div class="app"><span class="l2">2</span><b>신도림역 · 내선순환</b></div>
-  <dl class="row now"><dt>이번 열차</dt><dd>3분 후</dd></dl>
-  <dl class="row"><dt>다음 열차</dt><dd>7분 30초 후</dd></dl>
-  <div class="foot"><span>출근 <b>09:00</b></span><span>도보 4분</span></div>
-</div>
 <div class="clock">3:00</div>
 <div class="skip">ESC 건너뛰기</div>`
 
@@ -69,10 +60,10 @@ export const createIntro = (mount: HTMLElement): Intro => {
     show() { el.classList.add('on') },
     hide() { el.className = '' },
     sync(t) {
-      el.classList.toggle('phone-on', t >= PHONE_IN && t < PHONE_OUT)
-      el.classList.toggle('beat', t >= BEAT_MS && t < BEAT_MS + 520)
+      // 놀람은 화면을 한 번 치는 것으로 끝낸다 — 큰 `!!!` 에 기대지 않는다(브리프 §17)
+      el.classList.toggle('beat', t >= BEAT_MS && t < BEAT_MS + 240)
       // 속도선은 하차가 끝나고 나서다. 내려서는 동안 흐르면 넘어진 것처럼 보인다
-      el.classList.toggle('rush-on', t >= SHOT.alight && t < INTRO_MS - 160)
+      el.classList.toggle('rush-on', t >= SHOT.door + 120 && t < INTRO_MS - 200)
       el.classList.toggle('clock-on', t >= CLOCK_IN)
       el.classList.toggle('clock-out', t >= CLOCK_OUT)
     },

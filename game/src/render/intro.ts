@@ -43,39 +43,49 @@ import { clamp01, easeInOut, easeOutCubic, lerp } from '../core/math'
 import { FPV } from '../data/tuning'
 import { SPAWN } from '../data/world'
 import { BUS, DOOR_X } from './bus-interior'
-import { SIT_DROP } from './sit-pose'
+import { SIT_DROP } from './pose'
 
 /** 샷 경계(ms). 합이 6.6초 — 브리프의 6~8초 안이다 */
+/**
+ * 네 개의 샷. **경계는 컷이다** — 그 사이를 카메라가 떠다니지 않는다.
+ *
+ * 이전 판은 어깨 오프셋 하나로 주인공을 계속 따라다녔다. 그게 "자유 카메라처럼
+ * 움직인다"의 정체였다 — 촬영이 아니라 관찰이었고, 그래서 어느 한 프레임도
+ * 구도가 잡히지 않았다. 이제 각 샷은 **자기 자리에 서서** 아주 조금만 민다.
+ */
 export const SHOT = {
-  /** 버스 이동 — 아직 급하지 않다 */
-  bus: 1600,
-  /** 열차 시간 확인 — 여기서 상황이 뒤집힌다 */
-  phone: 3200,
-  /** 정차 → 문 열림 → 하차. **순서가 보여야 한다** */
-  alight: 4700,
-  /** 역으로 질주 — 조작권이 넘어가는 곳 */
-  dash: 6600,
+  /** ① 버스 실내 미디엄 — 앉아 있다 */
+  interior: 1400,
+  /** ② 휴대폰 OTS — 어깨 너머로 화면이 읽힌다 */
+  phone: 2800,
+  /** ③ 버스 외부 · 문 — 기존 버스에서 내린다 */
+  door: 4100,
+  /** ④ 질주 팔로우 — 조작권이 넘어가는 곳 */
+  dash: 5800,
 } as const
 
 export const INTRO_MS = SHOT.dash
 
-/** 카메라가 주인공의 머리에 도달해 1인칭이 되는 시각 */
-export const SWAP_MS = SHOT.alight
+/**
+ * 카메라가 주인공의 머리에 도달해 1인칭이 되는 시각 = **인트로의 끝**.
+ * 마지막 샷이 뒤에서 따라가다 그대로 눈으로 들어간다.
+ */
+export const SWAP_MS = INTRO_MS
 
 /**
  * 버스가 완전히 멈추는 시각.
  *
- * 하차(SHOT 3)가 시작되는 3200ms 보다 **먼저**여야 한다. 브리프가 못 박은
+ * 하차(SHOT 3)가 시작되는 2800ms 보다 **먼저**여야 한다. 브리프가 못 박은
  * *"움직이는 버스에서 뛰어내리는 것처럼 보이면 안 된다"* 가 이 한 줄이다.
  * 정지 후 300ms 를 비워 두어 "섰다"가 눈에 읽힌 뒤에 문이 열린다.
  */
-export const BUS_STOP_MS = 2900
+export const BUS_STOP_MS = 2550
 
 /** 문이 열리기 시작하는 시각 */
-export const DOORS_MS = BUS_STOP_MS + 300
+export const DOORS_MS = 2880
 
 /** 자리에서 일어서는 시각 — 문이 열리고 나서다 */
-export const STAND_MS = DOORS_MS + 320
+export const STAND_MS = 3160
 
 /**
  * ■ 서쪽 끝이 이 연출의 진짜 제약이다
@@ -84,12 +94,12 @@ export const STAND_MS = DOORS_MS + 320
  * 처음엔 버스를 −86 에서 출발시켰는데 **지도 밖 허공**이었다 — 실측 스크린샷에서
  * 지면이 뚝 끊기고 그 아래로 하늘이 보였다. 세계가 공중에 뜬 섬처럼 보인다.
  *
- * 그래서 접근 거리는 1.5m 뿐이다. 이동만으로는 속도가 안 나온다. 대신 정류장에
+ * 그래서 접근 거리는 1.2m 뿐이다. 이동만으로는 속도가 안 나온다. 대신 정류장에
  * **붙는 마지막 몇 미터**를 그리는 쪽으로 방향을 바꿨다 — 이야기도 "버스가
  * 지하철역에 거의 도착했을 때"이므로 이게 맞는 그림이다. 모자란 속도감은
  * `busShake`(노면 진동)와 `brakeDip`(제동 쏠림), 그리고 창틀 세로살이 만든다.
  */
-const APPROACH_M = 1.5
+const APPROACH_M = 1.2
 
 /**
  * 앉은 자리 — **북측(연석 쪽) 1인석**. 좌석 배열에서 나온 자리다.
@@ -99,11 +109,9 @@ const APPROACH_M = 1.5
  * 자리**다 — 브리프의 순서(좌석 → 착석 → 휴대폰 → 카메라)를 그대로 따랐다.
  * 창(북)이 등 뒤에 오고, 문(−60.3)이 1.8m 동쪽이라 일어나 두 걸음이면 닿는다.
  */
-const SEAT = { x: -61.28, y: 21.22 } as const
-/** 좌면 높이 — `seatUnit` 의 좌판 윗면과 같은 값이어야 엉덩이가 얹힌다 */
-const SEAT_TOP = BUS.floor + 0.42
+const SEAT = { x: -61.28, y: 21.20 } as const
 /** 뒷문 안쪽 */
-const DOORWAY = { x: DOOR_X, y: 21.15 } as const
+const DOORWAY = { x: DOOR_X, y: 21.05 } as const
 /** 연석을 밟고 내려선 자리 — 문 바로 앞 인도 */
 const CURB = { x: DOOR_X + 0.1, y: 22.6 } as const
 
@@ -142,13 +150,13 @@ export const busDx = (t: number): number =>
 /**
  * 노면 진동 — **이동거리로 못 낸 속도를 여기서 낸다.**
  *
- * 1.5m 를 2.9초에 지나는 것만으로는 "달리는 버스"가 안 된다. 그런데 실제로 버스
+ * 1.2m 를 2.55초에 지나는 것만으로는 "달리는 버스"가 안 된다. 그런데 실제로 버스
  * 안에서 속도를 느끼는 경로는 시야의 이동보다 **몸의 흔들림**이다. 두 개의 서로
  * 안 맞는 주파수를 겹쳐 규칙적인 진동이 되지 않게 하고, 제동과 **같은 곡선으로**
  * 잦아들게 한다 — 버스가 서면 흔들림도 같이 그친다. 그 동시성이 "이제 섰다"를
  * 자막 없이 말해 준다.
  */
-const busShake = (t: number): number => {
+export const busShake = (t: number): number => {
   const alive = 1 - easeOutCubic(seg(t, 0, BUS_STOP_MS))
   return (Math.sin(t / 61) * 0.55 + Math.sin(t / 23) * 0.45) * alive
 }
@@ -175,8 +183,10 @@ export type ActorState = Readonly<{
   /** 몸이 향하는 요 */
   facing: number
   clip: ClipHint
-  /** 착석 정도 — 1 앉음 · 0 서 있음. `sit-pose.ts` 가 받는다 */
+  /** 착석 정도 — 1 앉음 · 0 서 있음. `pose.ts` 가 받는다 */
   sit: number
+  /** 휴대폰을 들어 본 정도 — 1 봄 · 0 내림 */
+  phone: number
   /** 3인칭 구간에서만 보인다. 카메라가 머리에 닿으면 사라진다 */
   visible: boolean
 }>
@@ -195,34 +205,42 @@ export const actorAt = (tMs: number): ActorState => {
   const dx = busDx(t)
 
   /**
-   * 일어선다 → 문으로 걷는다 → 내려선다.
-   *
-   * `sit` 이 1 에서 0 으로 가는 동안 엉덩이가 좌면에서 바닥으로 내려온다.
-   * 세 구간이 겹치지 않아야 "앉은 채로 걸어 나가는" 그림이 안 나온다.
+   * 앉음 → 일어섬 → 문으로 → 내려섬 → 질주.
+   * 구간이 겹치지 않아야 "앉은 채로 걸어 나가는" 그림이 안 나온다.
    */
-  const sit = 1 - seg(t, STAND_MS, STAND_MS + 380)
-  const toDoor = easeInOut(seg(t, STAND_MS + 320, 4280))
-  const down = seg(t, 4280, SWAP_MS)
+  const sit = 1 - seg(t, STAND_MS, STAND_MS + 340)
+  const toDoor = easeInOut(seg(t, STAND_MS + 300, 3820))
+  const down = seg(t, 3820, SHOT.door)
+  const run = seg(t, SHOT.door, INTRO_MS)
 
   const inBusX = lerp(SEAT.x, DOORWAY.x, toDoor) + dx
   const inBusY = lerp(SEAT.y, DOORWAY.y, toDoor)
+  const offX = lerp(inBusX, CURB.x, easeInOut(down))
+  const offY = lerp(inBusY, CURB.y, easeInOut(down))
 
   return {
-    x: lerp(inBusX, CURB.x, easeInOut(down)),
-    y: lerp(inBusY, CURB.y, easeInOut(down)),
+    // 내려선 뒤 스폰까지 달린다 — 조작권은 도착하는 순간 넘어간다
+    x: lerp(offX, SPAWN.x, easeIn(run) * 0.3 + easeInOut(run) * 0.7),
+    y: lerp(offY, SPAWN.y, easeInOut(run)),
     /**
-     * 앉아 있는 동안 리그 원점이 `SIT_DROP` 만큼 **내려간다.** 다리를 접는 것만으로는
-     * 골반이 안 내려와 좌석 위에 서 있게 된다(`sit-pose.ts` 참고).
+     * 앉은 동안 리그 원점이 `SIT_DROP` 만큼 **내려간다.** 다리를 접는 것만으로는
+     * 골반이 안 내려와 좌석 위에 서 있게 된다(`pose.ts` 참고).
      */
-    z: lerp(BUS.floor, 0, easeIn(down)) - sit * SIT_DROP,
+    z: lerp(lerp(BUS.floor, 0, easeIn(down)), 0, run) - sit * SIT_DROP,
     /**
      * 앉아서는 진행 방향(동, yaw 0)을 본다 — 좌석이 그쪽을 보고 있으니 당연하다.
-     * 일어나면 문(북)을 향해 돈다.
+     * 일어나면 문(북)으로 돌고, 내린 뒤엔 다시 동쪽(역)으로 튼다.
      */
-    facing: lerp(lerp(0, DOOR_YAW, seg(t, STAND_MS, STAND_MS + 520)), DOOR_YAW, down),
-    clip: down >= 1 ? 'Run' : toDoor > 0 ? 'Walk' : 'Idle',
+    facing: lerp(
+      lerp(0, DOOR_YAW, seg(t, STAND_MS, STAND_MS + 480)),
+      0, easeOutCubic(run / 0.35),
+    ),
+    // 휴대폰은 ② 샷에서만 든다
+    phone: seg(t, SHOT.interior - 180, SHOT.interior + 220)
+      * (1 - seg(t, SHOT.phone - 260, SHOT.phone)),
+    clip: run > 0 ? 'Run' : toDoor > 0 ? 'Walk' : 'Idle',
     sit,
-    visible: t < SWAP_MS,
+    visible: t < INTRO_MS,
   }
 }
 
@@ -240,94 +258,123 @@ export const FINAL_POSE: IntroPose = {
 }
 
 /**
- * 3인칭 카메라의 어깨 오프셋 — 주인공 기준 (동쪽, 북쪽, 위). **둘 다 음수다.**
- *
- * 즉 카메라는 주인공의 **남서쪽**에 있고 북동쪽을 본다. 이 부호가 연출의 핵심이다.
- *
- *  · 창(북측)이 주인공 **뒤에** 놓인다 → 레퍼런스 1번 컷의 구도이고,
- *    지나가는 도심이 인물 뒤로 흐른다.
- *  · 시선이 **동쪽을 향한다** → 지도가 끝나는 서쪽(x −64)이 화면에 안 들어온다.
- *    반대로 동쪽에 두고 서쪽을 보게 했더니 요가 161° 가 나왔다 — 그건 그대로
- *    허공을 정면으로 보는 각이다.
- *
- * 거리 1.9m 는 3등신 SD(키 1.2m)를 리액션이 읽히는 크기로 잡는 선이고,
- * 동시에 버스 폭(y 19.1~21.7) 안에 카메라를 남겨 두는 한계이기도 하다.
+ * ④ 질주 팔로우의 뒤따르는 거리 — 주인공 기준 (동쪽, 북쪽).
+ * 동쪽으로 달리므로 음수 = 뒤.
  */
-const SHOULDER = { e: -0.85, n: -0.56, up: -0.10 } as const
+const FOLLOW = { e: -1.85, n: -0.45 } as const
+
+
 
 /**
- * 겨냥점 높이(m) — 발에서 여기까지.
- *
- * ⚠ 처음엔 0.82 로 잡았다. "3등신 SD 는 키가 1.2m" 라는 `p1-shots.spec.ts` 의 주석을
- *   믿고 가슴 높이를 계산한 값이었는데, **실측하니 1.48m** 였다(`introProbe` 로 잰
- *   바운딩 박스: 발 0.9 · 머리 2.379). 0.82 는 배꼽이라, 머리가 화면 위로 밀리고
- *   아래 절반이 통째로 바닥이 됐다 — 스크린샷에서 접지 그림자가 주인공보다
- *   눈에 띄었던 이유다. 주석의 숫자보다 잰 숫자가 먼저다.
+ * 샷 하나 = **고정된 자리에서 한 점을 본다.** 아주 조금만 민다(dolly).
+ * 두 점을 주고 `u` 로 섞는 것이 곧 그 미는 양이다.
  */
-const AIM_H = 1.15
-/** 앉아 있을 때의 겨냥점 — 좌면 위 몸통 */
-const AIM_H_SIT = 0.72
+const framed = (
+  from: readonly [number, number, number],
+  to: readonly [number, number, number],
+  at: readonly [number, number, number],
+  u: number,
+  dx = 0,
+): IntroPose => {
+  const e = easeInOut(u)
+  const x = lerp(from[0], to[0], e) + dx
+  const y = lerp(from[1], to[1], e)
+  const z = lerp(from[2], to[2], e)
+  const ax = at[0] + dx
+  const d = Math.hypot(ax - x, at[1] - y)
+  return {
+    x, y, eye: z,
+    yaw: Math.atan2(at[1] - y, ax - x),
+    pitch: Math.atan2(at[2] - z, d),
+    fov: FPV.fovDeg,
+  }
+}
 
 export const poseAt = (tMs: number): IntroPose => {
   const t = Math.max(0, Math.min(INTRO_MS, tMs))
+  const a = actorAt(t)
+  const shake = busShake(t)
+  const dx = busDx(t)
 
-  // ── SHOT 4 — 1인칭 질주. 여기만 주인공과 무관하게 움직인다
-  if (t >= SWAP_MS) {
-    const u = seg(t, SWAP_MS, INTRO_MS)
-    /**
-     * 거리는 2.9m 뿐이다. **속도감은 거리가 아니라 화각과 각속도로 만든다** —
-     * 실제로 이 게임의 1인칭도 스프린트에서 화각만 8° 넓혀 속도를 낸다(`FPV.sprintFov`).
-     * 여기서는 그보다 크게 열었다가 마지막에 정확히 기본값으로 닫는다. 닫히지 않으면
-     * 조작권이 넘어온 순간 화각이 한 번 튄다.
-     */
-    const punch = Math.sin(clamp01(u * 1.15) * Math.PI)
-    return {
-      // 첫 0.3초는 몸을 트는 시간이라 거의 안 나간다 → easeIn 으로 출발을 눌러 둔다
-      x: lerp(CURB.x, FINAL_POSE.x, easeIn(u) * 0.35 + easeInOut(u) * 0.65),
-      y: lerp(CURB.y, FINAL_POSE.y, easeInOut(u)),
-      eye: FPV.eyeHeight + Math.sin(u * Math.PI * 5.4) * 0.035 * Math.sin(u * Math.PI),
-      // 문 쪽에서 동쪽(역)으로 몸을 튼다. 회전의 대부분을 앞쪽 40% 에서 끝낸다
-      yaw: lerp(DOOR_YAW, 0, easeOutCubic(u / 0.4)),
-      pitch: 0,
-      fov: FPV.fovDeg + punch * 11,
-    }
+  // ── ① 버스 실내 미디엄. 통로 쪽 3/4 측면 — 창·좌석·통로·봉·주인공이 다 든다
+  if (t < SHOT.interior) {
+    const p = framed(
+      [SEAT.x - 1.52, SEAT.y - 1.06, 1.58],
+      [SEAT.x - 1.36, SEAT.y - 0.98, 1.55],
+      [SEAT.x + 0.05, SEAT.y, 1.16],
+      seg(t, 0, SHOT.interior), dx,
+    )
+    return { ...p, eye: p.eye + shake * 0.02, pitch: p.pitch + shake * 0.005 - brakeDip(t) }
   }
 
-  // ── SHOT 1~3 — 3인칭. 주인공을 따라다니다 **머리로 수렴한다**
-  const a = actorAt(t)
   /**
-   * 어깨 거리가 1 → 0 으로 줄면서 3인칭이 1인칭이 된다.
+   * ── ② 휴대폰 OTS. 오른쪽 어깨 너머다.
    *
-   * 마지막 420ms 에 몰아서 붙인다. 처음부터 천천히 붙이면 "따라가는 카메라"가
-   * 아니라 "계속 다가오는 카메라"가 되어 버스 안 장면 내내 불안하다.
+   * 주인공이 동쪽을 보고 앉아 있으므로 **뒤 = 서쪽 · 오른쪽 = 남쪽**이다.
+   * 클로즈업으로 화면만 꽉 채우지 않는다 — 인물이 남아 있어야 같은 버스 안이라는
+   * 것이 유지된다(브리프 §17).
    */
-  const close = easeInOut(seg(t, SWAP_MS - 420, SWAP_MS))
-  // 휴대폰 구간에서 한 뼘 들어간다 — 리액션을 크게 본다
-  const push = 1 - 0.24 * easeInOut(seg(t, SHOT.bus, SHOT.bus + 500))
-  const k = (1 - close) * push
-
-  const shake = busShake(t)
-  const camX = a.x + SHOULDER.e * k
-  const camY = a.y + SHOULDER.n * k
-  const aimZ = a.z + lerp(AIM_H, SEAT_TOP - BUS.floor + AIM_H_SIT, a.sit)
-  const camZ = lerp(a.z + FPV.eyeHeight, aimZ + SHOULDER.up, k)
+  if (t < SHOT.phone) {
+    const p = framed(
+      [SEAT.x - 0.66, SEAT.y - 0.56, 1.70],
+      [SEAT.x - 0.54, SEAT.y - 0.47, 1.64],
+      [SEAT.x + 0.30, SEAT.y - 0.06, 1.15],
+      seg(t, SHOT.interior, SHOT.phone), dx,
+    )
+    return { ...p, eye: p.eye + shake * 0.015, pitch: p.pitch + shake * 0.004 - brakeDip(t) }
+  }
 
   /**
-   * 어깨에서는 주인공을 바라보고, 머리에 닿으면 **주인공이 보는 방향**을 본다.
-   * 거리가 0 이면 바라볼 방향이 정의되지 않으므로 두 값을 `close` 로 섞는다.
+   * ── ③ 버스 외부 · 문. **기존 버스 외피를 그대로 보여 주는 샷이다.**
+   *
+   * 인도 위, 쉘터(x −60~−56 · y 23.4~25.4) **바깥**에 선다. 거기서 서쪽을 보면
+   * 버스 옆면과 뒷문(−60.3)이 한 화면에 들어오고, 주인공이 그 문에서 나온다.
+   * "아까 그 버스에서 내리는구나"가 이 한 장으로 읽혀야 한다.
+   *
+   * ⚠ 처음엔 쉘터 **동쪽**에 세웠다. 두 번 다 유리 패널이 화면을 덮어 버스가
+   *   회백색 판때기로 보였다 — `__game.pick()` 으로 찍으니 2.5~3m 앞의
+   *   `merged:BLD_GLASS`, 쉘터였다. 눈으로만 보면 "실내가 외피를 뚫었나" 로
+   *   헛짚는다.
+   *
+   *   쉘터는 x −60~−56 · y 23.4~25.4 다. 그 **서쪽**(x −63.2)에서 동남동을 보면
+   *   시선이 문(−60.3)에 닿을 때까지 쉘터 x 범위에 아예 안 들어간다. 덤으로
+   *   버스가 동쪽으로 뻗어 보이는 3/4 구도가 나온다.
    */
-  const dxw = a.x - camX
-  const dyw = a.y - camY
-  const dist = Math.hypot(dxw, dyw)
-  const lookYaw = dist > 1e-4 ? Math.atan2(dyw, dxw) : DOOR_YAW
-  const lookPitch = dist > 0.05 ? Math.atan2(aimZ - camZ, dist) : 0
+  if (t < SHOT.door) {
+    return framed(
+      [-63.1, 23.3, 1.82],
+      [-62.7, 23.05, 1.76],
+      [DOOR_X + 0.15, 22.25, 1.15],
+      seg(t, SHOT.phone, SHOT.door),
+    )
+  }
 
+  /**
+   * ── ④ 질주 팔로우 → 1인칭.
+   *
+   * 뒤에서 따라가다 **머리 속으로 들어가** 그대로 조작권이 된다. 거리가 0 이 되는
+   * 순간이 곧 시점 전환이라 이음매가 없다. 마지막 값은 `FINAL_POSE` 와 같아야 한다.
+   */
+  const u = seg(t, SHOT.door, INTRO_MS)
+  const close = easeInOut(seg(t, INTRO_MS - 520, INTRO_MS))
+  const k = 1 - close
+  const camX = a.x + FOLLOW.e * k
+  const camY = a.y + FOLLOW.n * k
+  const camZ = lerp(FPV.eyeHeight, a.z + 1.30, k)
+  const aimZ = a.z + 0.95
+  const ddx = a.x - camX
+  const ddy = a.y - camY
+  const dist = Math.hypot(ddx, ddy)
+  const lookYaw = dist > 1e-4 ? Math.atan2(ddy, ddx) : 0
+  const lookPitch = dist > 0.05 ? Math.atan2(aimZ - camZ, dist) : 0
+  /** 속도감은 거리가 아니라 화각이 만든다. 끝에서 정확히 기본값으로 닫힌다 */
+  const punch = Math.sin(clamp01(u * 1.2) * Math.PI)
   return {
     x: camX,
     y: camY,
-    eye: camZ + shake * 0.02,
-    yaw: lerp(lookYaw, DOOR_YAW, close),
-    pitch: lerp(lookPitch, 0, close) + shake * 0.005 - brakeDip(t) * (1 - close),
-    fov: FPV.fovDeg,
+    eye: camZ + Math.sin(u * Math.PI * 6) * 0.02 * Math.sin(u * Math.PI),
+    yaw: lerp(lookYaw, 0, close),
+    pitch: lerp(lookPitch, 0, close),
+    fov: FPV.fovDeg + punch * 9,
   }
 }

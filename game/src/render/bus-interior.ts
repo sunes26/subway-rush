@@ -40,8 +40,18 @@ import { toonMat } from './toon'
 export const BUS = {
   xMin: -65.30, xMax: -54.40,
   yMin: 19.07, yMax: 21.73,
-  /** 차체 껍데기 두께 — 실내 면을 이만큼 안으로 들인다 */
-  shell: 0.07,
+  /**
+   * ★ **옆구리 실측값.** AABB 의 y 최대는 21.727 인데 그건 앞뒤 곡면과 휠하우스가
+   *   만든 값이고, 사람이 앉는 구간(x −62~−58)의 **평평한 옆판은 21.58** 이다.
+   *
+   *   처음엔 AABB 를 그대로 믿고 실내 벽을 21.66 에 세웠다. 그랬더니 아이보리
+   *   판넬이 파란 차체를 **뚫고 나와**, 밖에서 보면 버스가 회백색 판때기가 됐다.
+   *   눈으로는 "실내가 외피를 가린다"까지만 보이고 원인이 안 보인다 — 높이별로
+   *   옆판 y 를 다시 재서야 알았다(z 0.5~1.2 구간에서 21.579~21.585로 일정).
+   */
+  skinN: 21.58,
+  /** 남측 옆판 — 중심선 20.4 에 대해 대칭이다 */
+  skinS: 19.22,
   /** 바닥 윗면 z (저상버스) */
   floor: 0.45,
   /** 천장 아랫면 z — 지붕 안쪽 */
@@ -100,13 +110,16 @@ const box = (
 /** 월드 y → three z. 부호를 한 곳에서만 뒤집는다 */
 const tz = (worldY: number): number => -worldY
 
-/** 실내 면의 위치 — 외피에서 껍데기 두께만큼 안으로 */
+/** 실내 면의 위치 — **실측 옆판**에서 5cm 안으로 */
 const IN = {
-  yS: BUS.yMin + BUS.shell,
-  yN: BUS.yMax - BUS.shell,
-  xW: BUS.xMin + BUS.shell,
-  xE: BUS.xMax - BUS.shell,
+  yS: BUS.skinS + 0.05,
+  yN: BUS.skinN - 0.05,
+  xW: BUS.xMin + 0.10,
+  xE: BUS.xMax - 0.10,
 } as const
+
+/** 문짝이 붙는 면 — 옆판 **바로 바깥**. 여기가 뜨면 문이 공중에 뜬다 */
+const SKIN_OUT = BUS.skinN + 0.02
 
 /**
  * 좌석 한 벌 — **좌판 · 등받이 · 다리** 세 부분이 구분된다.
@@ -162,10 +175,10 @@ export const buildBusInterior = (): BusInterior => {
   // ── 바닥 · 천장
   root.add(box(len, 0.06, wid, C.floor, midX, f - 0.03, tz(midY)))
   // 통로 미끄럼 방지대 — 바닥이 한 장 판때기로 보이지 않게 결을 준다
-  root.add(box(len, 0.012, 0.86, C.aisle, midX, f + 0.006, tz(20.45)))
+  root.add(box(len, 0.012, 0.72, C.aisle, midX, f + 0.006, tz(20.49)))
   root.add(box(len, 0.05, wid, C.ceiling, midX, BUS.ceil + 0.025, tz(midY)))
   // 천장 패널 이음선 두 줄
-  for (const y of [20.05, 20.85]) {
+  for (const y of [20.15, 20.85]) {
     root.add(box(len, 0.02, 0.05, C.trim, midX, BUS.ceil - 0.01, tz(y)))
   }
 
@@ -202,7 +215,7 @@ export const buildBusInterior = (): BusInterior => {
   /**
    * ── 좌석 — 남측 2인석 · 북측 1인석 · 가운데 통로.
    *
-   * 실내 폭 2.52m 를 2인석(0.86) + 통로(0.80) + 1인석(0.60)+ 여유 로 나눈다.
+   * 실내 폭 2.26m 를 2인석(0.82) + 통로(0.72) + 1인석(0.62) 로 나눈다.
    * 서울 시내버스의 실제 배분이고, 통로 0.8m 는 사람이 지나갈 수 있는 최소폭이다.
    * 열 간격 0.80m 도 실물과 같다 — 여기를 제각각으로 두면 즉시 조악해 보인다.
    */
@@ -210,10 +223,10 @@ export const buildBusInterior = (): BusInterior => {
   const rows: number[] = []
   for (let x = IN.xW + 0.75; x <= IN.xE - 0.75; x += PITCH) rows.push(x)
   for (const x of rows) {
-    root.add(seatUnit(x, 19.62, 0.86))                       // 남측 2인석
+    root.add(seatUnit(x, 19.72, 0.82))                       // 남측 2인석
     // 북측 1인석 — 문 칸은 비운다. 문 앞에 좌석이 있으면 내릴 수가 없다
     if (x < DOOR.xMin - 0.25 || x > DOOR.xMax + 0.25) {
-      root.add(seatUnit(x, 21.22, 0.60))
+      root.add(seatUnit(x, 21.20, 0.62))
     }
   }
 
@@ -225,56 +238,81 @@ export const buildBusInterior = (): BusInterior => {
    * 손잡이가 공중에 뜬 것으로 안 보인다.
    */
   const railZ = BUS.ceil - 0.14
-  for (const y of [20.05, 20.85]) {
+  for (const y of [20.15, 20.85]) {
     root.add(box(len - 1.2, 0.05, 0.05, C.pole, midX, railZ, tz(y)))
   }
-  for (const x of [-63.6, -61.4, -59.2, -56.9]) {
+  /**
+   * 수직봉 x — 좌석(−61.28)과 문(−61.0~−59.6)을 **피한다.** 처음엔 −61.4 에 세웠는데
+   * 앉은 사람 코앞이었고, 통로에서 그 사람을 보는 카메라의 시선을 정확히 가로막았다.
+   */
+  for (const x of [-63.9, -62.35, -58.5, -56.6]) {
     const p = new Mesh(new CylinderGeometry(0.032, 0.032, railZ - f, 10), toonMat(C.pole))
-    p.position.set(x, f + (railZ - f) / 2, tz(20.85))
+    p.position.set(x, f + (railZ - f) / 2, tz(20.83))
     root.add(p)
   }
-  for (const x of [-64.2, -63.0, -61.8, -60.6, -59.4, -57.0, -55.8]) {
-    root.add(strap(x, 20.05, railZ))
+  for (const x of [-64.2, -63.0, -62.0, -58.9, -57.8, -56.6]) {
+    root.add(strap(x, 20.15, railZ))
     root.add(strap(x, 20.85, railZ))
   }
 
   /**
-   * ── 뒷문.
+   * ── 뒷문 — **바깥쪽에 단다.**
    *
-   * 문틀은 고정, 문짝 두 짝이 좌우로 갈린다. 열리면 문짝이 문틀 **바깥으로**
-   * 빠져 실내에서 안 보인다 — 실제 버스의 미닫이문과 같다.
+   * 외피에는 문이 없다. 그래서 문짝을 차체 표면 **밖**(y 21.75, 외피 21.727 바로
+   * 앞)에 걸어 실제 시내버스의 미닫이문처럼 옆으로 빠지게 한다. 닫혀 있으면
+   * 차체 색과 유리색을 그대로 써서 버스의 일부로 읽히고, 열리면 그 자리에
+   * **어두운 구멍**이 남는다.
    *
-   * 열린 뒤 그 자리에 남는 것은 외피의 유리인데, 단면 재질이라 밖에서 안을 볼 때
-   * 뒷면이 컬링돼 그대로 통과한다. 즉 **문이 열리면 진짜 구멍처럼 보인다.**
+   * 왜 안쪽이 아니라 바깥인가: ③ 샷은 인도에서 버스를 본다. 문짝이 실내에 있으면
+   * 밖에서는 외피 유리만 보여 "열렸다"가 전혀 안 읽힌다. 여닫이는 **보는 쪽에**
+   * 있어야 한다.
+   *
+   * 실루엣은 안 건드린다 — 두께 5cm 판이 차체에 붙는 것이고, 창 분할선
+   * (−61.0 · −59.6) 사이에 정확히 들어가므로 창 배열도 그대로다.
    */
-  const doorH = BUS.winTop - f
-  const doorZ = f + doorH / 2
-  const yDoor = tz(IN.yN) + 0.01
-  // 문틀 — 좌우 기둥 + 상인방
-  root.add(box(0.07, doorH, 0.10, C.trim, DOOR.xMin, doorZ, yDoor))
-  root.add(box(0.07, doorH, 0.10, C.trim, DOOR.xMax, doorZ, yDoor))
-  root.add(box(DOOR.xMax - DOOR.xMin, 0.07, 0.10, C.trim,
-    DOOR_X, f + doorH, yDoor))
-  // 문 손잡이봉 — 내릴 때 잡는 세로봉
-  const grab = new Mesh(new CylinderGeometry(0.028, 0.028, doorH - 0.1, 10), toonMat(C.pole))
-  grab.position.set(DOOR.xMin - 0.18, doorZ, tz(21.05))
+  const doorTop = BUS.winTop
+  const doorH = doorTop - 0.06
+  const yOut = tz(SKIN_OUT)
+  const dw = DOOR.xMax - DOOR.xMin
+
+  // 열렸을 때 드러나는 구멍 — 실내 그늘. 문짝보다 살짝 안쪽이다
+  root.add(box(dw - 0.04, doorH - 0.06, 0.03, 0x14161a, DOOR_X, (doorH + 0.06) / 2, yOut + 0.05))
+  // 문틀
+  root.add(box(0.08, doorH, 0.09, C.trim, DOOR.xMin, doorH / 2 + 0.03, yOut))
+  root.add(box(0.08, doorH, 0.09, C.trim, DOOR.xMax, doorH / 2 + 0.03, yOut))
+  root.add(box(dw + 0.16, 0.08, 0.09, C.trim, DOOR_X, doorTop, yOut))
+  // 내릴 때 잡는 세로봉 — 문 안쪽
+  const grab = new Mesh(new CylinderGeometry(0.028, 0.028, doorH - 0.2, 10), toonMat(C.pole))
+  grab.position.set(DOOR.xMin - 0.20, doorH / 2 + 0.03, tz(21.10))
   root.add(grab)
 
-  const leafW = (DOOR.xMax - DOOR.xMin) / 2 - 0.02
-  const leaf = (dir: -1 | 1): Mesh =>
-    box(leafW, doorH - 0.08, 0.05, C.panel,
-      DOOR_X + dir * leafW / 2, doorZ, yDoor - 0.03)
-  const dL = leaf(-1)
-  const dR = leaf(1)
+  /**
+   * 문짝 — 아래는 차체 색, 위는 유리색. 외피의 허리선(창 하단 1.24)에서 갈린다.
+   * 그래야 닫혀 있을 때 옆 칸 창과 높이가 이어져 한 대의 버스로 보인다.
+   */
+  const leafW = dw / 2 - 0.015
+  const leafOf = (dir: -1 | 1): Group => {
+    const g = new Group()
+    const cx = DOOR_X + dir * leafW / 2
+    const lower = BUS.winBottom - 0.06
+    g.add(box(leafW, lower, 0.05, 0x1c6bc7, cx, 0.06 + lower / 2, yOut))
+    g.add(box(leafW, doorTop - BUS.winBottom, 0.05, 0x171c24, cx,
+      (BUS.winBottom + doorTop) / 2, yOut))
+    // 문짝 가운데 세로 몰딩 — 두 짝이 맞물린 자리
+    g.add(box(0.04, doorH - 0.1, 0.06, C.trim, DOOR_X + dir * 0.02, doorH / 2 + 0.03, yOut - 0.02))
+    return g
+  }
+  const dL = leafOf(-1)
+  const dR = leafOf(1)
   root.add(dL, dR)
 
   return {
     root,
     setDoor(open) {
       const k = Math.max(0, Math.min(1, open))
-      dL.position.x = DOOR_X - leafW / 2 - k * leafW
-      dR.position.x = DOOR_X + leafW / 2 + k * leafW
-      dL.visible = dR.visible = k < 0.99
+      // 옆으로 빠진다 — 실제 시내버스 미닫이문과 같다
+      dL.position.x = -k * (leafW + 0.02)
+      dR.position.x = k * (leafW + 0.02)
     },
     dispose() {
       root.traverse((o) => { if (o instanceof Mesh) o.geometry.dispose() })

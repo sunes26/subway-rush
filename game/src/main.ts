@@ -33,7 +33,8 @@ import { createCollection } from './ui/collection'
 import { createIntro } from './ui/intro'
 import { actorAt, busDx, DOORS_MS, INTRO_MS, poseAt } from './render/intro'
 import { buildBusInterior, type BusInterior } from './render/bus-interior'
-import { makeSitRig, type SitAxis, type SitRig } from './render/sit-pose'
+import { makePoseRig, type PoseRig, type SitAxis } from './render/pose'
+import { buildPhone, type Phone } from './render/phone'
 import { createSettings } from './ui/settings'
 import { RES_SCALES, type Settings } from './core/settings'
 import { createAmbience } from './audio/ambience'
@@ -305,10 +306,12 @@ let freeCamAt: { pos: [number, number, number]; look: [number, number, number] }
  */
 let busIn: BusInterior | null = null
 /**
- * 착석 포즈. 리그가 로드된 뒤 한 번 만든다 — 본을 이름으로 찾는 작업이라
- * 매 프레임 할 일이 아니다.
+ * 포즈(착석 · 휴대폰). 리그가 로드된 뒤 한 번 만든다 — 본을 이름으로 찾는
+ * 작업이라 매 프레임 할 일이 아니다.
  */
-let sitRig: SitRig | null = null
+let poseRig: PoseRig | null = null
+/** 손에 쥔 휴대폰. 팔뚝 본에 매단다 */
+let phone: Phone | null = null
 /** 접히는 축 — 리그마다 다르다. `?sitaxis=z` 로 바꿔 가며 실측한다 */
 let sitAxis: SitAxis = /[?&]sitaxis=z/.test(location.search) ? 'z' : 'x'
 
@@ -317,7 +320,8 @@ const startIntro = (): void => {
   state = { ...state, phase: 'intro' }
   intro.show()
   if (!busIn) { busIn = buildBusInterior(); stage.scene.add(busIn.root) }
-  busIn.root.visible = true
+  // QA — 실내가 외피를 가리는지 A/B 로 가른다
+  busIn.root.visible = !/[?&]nointerior/.test(location.search)
   busIn.setDoor(0)
   player?.setVisible(true)
 }
@@ -331,6 +335,7 @@ const endIntro = (): void => {
   intro.hide()
   introHold = null
   introInBus = false
+  phone?.setVisible(false)
   if (busIn) busIn.root.visible = false
   /**
    * ★ 화각을 **반드시** 되돌린다.
@@ -555,8 +560,17 @@ const frame = (now: number): void => {
          * ★ `sync()` **뒤에** 접는다. `sync` 안의 `mixer.update()` 가 본 회전을
          *   덮어쓰므로, 앞에서 부르면 아무 일도 안 한 것처럼 보인다.
          */
-        if (player && !sitRig) sitRig = makeSitRig(player.root, sitAxis)
-        sitRig?.apply(a.sit)
+        if (player && !poseRig) poseRig = makePoseRig(player.root, sitAxis)
+        poseRig?.apply({ sit: a.sit, phone: a.phone })
+        /**
+         * 휴대폰은 **팔뚝 본의 자식**이다 — 포즈가 팔을 들면 같이 따라 올라간다.
+         * 붙일 대상은 리그가 로드된 뒤에야 존재하므로 여기서 한 번 건다.
+         */
+        if (player && !phone) {
+          const arm = player.root.getObjectByName('LowerArmR')
+          if (arm) { phone = buildPhone(); phone.attachTo(arm) }
+        }
+        phone?.setVisible(a.phone > 0.02)
       }
       if (busIn) {
         busIn.root.position.x = busDx(t)
@@ -798,7 +812,7 @@ declare global {
       /** 인트로 한 프레임의 실측값 — 카메라·주인공이 실제로 어디 있는가 (E2E) */
       introProbe(): {
         cam: [number, number, number]; actor: [number, number, number]
-        dist: number; visible: boolean
+        dist: number; visible: boolean; phone: string
       }
       /** 지금 화면 안에 들어온 게이트 표지 수 (0~6) */
       visibleGates(): number
@@ -896,6 +910,12 @@ window.__game = {
       actor: [a.x, a.y, a.z] as [number, number, number],
       dist: Math.hypot(a.x - c.x, -a.y - c.z),
       visible: player?.root.visible ?? false,
+      phone: (() => {
+        if (!phone) return 'none'
+        const v = new Vector3()
+        phone.root.getWorldPosition(v)
+        return `${phone.root.visible} ${v.x.toFixed(2)},${v.y.toFixed(2)},${v.z.toFixed(2)}`
+      })(),
     }
   },
   freeCam: (pos, look) => {
