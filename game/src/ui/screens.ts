@@ -211,7 +211,7 @@ export const createScreens = (mount: HTMLElement): Screens => {
         </div>
         <div class="goal s2">
           <b>180초 안에 지하철에 타세요.</b>
-          <span>뛰고, 피하고, 필요한 건 챙기세요.</span>
+          <span>서두르되, 아무거나 고르진 마세요.</span>
         </div>
         <div class="keys s3">
           <span class="go"><b>ENTER</b> ${first ? '게임 시작' : '출근 시작'}</span>
@@ -246,15 +246,15 @@ export const createScreens = (mount: HTMLElement): Screens => {
             <span><span class="line2">2</span>2호선 신도림 방면</span>
             <span class="eid">${e.id}</span>
           </div>
-          <div class="name s2">${e.tone === 'hidden' ? '★ ' : ''}${e.title}</div>
+          <div class="title-row s2">
+            <div class="name">${e.tone === 'hidden' ? '★ ' : ''}${e.title}</div>
+            <div class="status">[ ${STATUS[e.tone]} ]</div>
+          </div>
           <div class="what s3">${WHAT_HAPPENED[e.id]}</div>
-          <div class="facts s4">
-            <dl class="status"><dd>${STATUS[e.tone]}</dd></dl>
-            ${facts.map((f) => `
+          ${facts.length === 0 ? '' : `<div class="facts s4">${facts.map((f) => `
             <dl${f.wide ? ' class="wide"' : ''}>
               ${f.label ? `<dt>${f.label}</dt>` : ''}<dd>${f.value}</dd>
-            </dl>`).join('')}
-          </div>
+            </dl>`).join('')}</div>`}
           <div class="say s5">${pickLine(e, s.seed)}</div>
           <div class="keys s6">
             <span><b>R</b> 다시하기</span>
@@ -304,6 +304,14 @@ export const createScreens = (mount: HTMLElement): Screens => {
        *   `filter` 는 이미 합성된 결과를 한 번 처리하는 것이라 가장 싸다.
        * ★ **타이틀에는 안 건다** — 시작 화면의 배경은 살아 있어야 한다.
        */
+      /**
+       * 상태별로 **다른 값**을 쓴다. 하나의 공통 blur 로 돌려쓰면 타이틀은
+       * 세계를 지워 버리고 결과는 어디서 끝났는지 못 알아보게 된다.
+       *   title  거의 선명 — 처음 보는 세계다
+       *   play   손대지 않는다
+       *   ended  약한 blur + dim — 공간감은 남기고 정보 전달만 끊는다
+       */
+      document.body.classList.toggle('at-title', s.phase === 'title')
       document.body.classList.toggle('run-ended', s.phase === 'ended')
       if (s.phase === 'title') {
         el.className = 'on'

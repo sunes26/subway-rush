@@ -28,22 +28,33 @@
 /* 배경 3D 씬은 UI 보다 한 단계 뒤에 있되 **충분히 보여야** 한다.
    반투명 검정으로 덮으면 애써 살린 씬이 사라진다 — 아주 옅게만 누른다. */
 #screen{position:absolute;inset:0;display:none;justify-items:center;align-content:start;
-  pointer-events:auto;background:rgba(6,6,8,.14);animation:fade .3s ease both}
+  pointer-events:auto;background:rgba(6,6,8,.11);animation:fade .3s ease both}
 /*
- * ─── 게임 종료 연출 ───
+ * ─── 화면 상태별 배경 정책 ───
  *
- * 결과 화면에서만 배경 캔버스를 흐리고 낮춘다. 결과만 띄우면 뒤의 3D 가 선명해
- * **아직 플레이 중인 것처럼** 보이고, 시선이 결과가 아니라 배경으로 간다.
+ * **하나의 blur 값으로 돌려쓰지 않는다.** 타이틀에 결과용 blur 를 걸면 처음
+ * 보여 주는 세계가 지워지고, 결과에 타이틀용 값을 걸면 아직 플레이 중처럼 보인다.
  *
- * 캔버스 한 장에만 `filter` 를 건다 — 판(#screen)은 형제라 영향을 안 받으므로
- * 글자가 같이 흐려지지 않는다. `backdrop-filter` 오버레이는 판 뒤를 매 프레임
- * 다시 흐려야 하고, WebGL 포스트프로세싱은 패스가 는다. 이게 가장 싸다.
- * 타이틀에는 걸지 않는다 — 시작 화면의 세계는 살아 있어야 한다.
+ *   title  blur 0 · 밝기·채도만 약간 낮춘다 — 차·버스·도로가 다 보여야 한다
+ *   play   손대지 않는다
+ *   ended  blur 5px + dim + 약한 감채 — **어디서 끝났는지는 알아볼 수 있게**
+ *
+ * 캔버스 한 장에만 건다. 판(#screen)은 형제라 글자가 같이 흐려지지 않는다.
+ * `backdrop-filter` 오버레이는 판 뒤를 매 프레임 다시 흐려야 하고, WebGL
+ * 포스트프로세싱은 셰이더 패스가 는다 — 이게 가장 싸다.
  */
-body.run-ended #gl{filter:blur(11px) saturate(.62) brightness(.62);
-  transition:filter .32s ease-out}
-/* 배경이 이미 눌렸으므로 결과에서는 오버레이를 더 얹지 않는다 */
-#screen.success,#screen.fail,#screen.hidden{background:rgba(6,6,8,.10)}
+body.at-title #gl{filter:saturate(.94) brightness(.90);transition:filter .3s ease-out}
+/* 11px 은 과했다 — 배경이 뭉개진 한 장이 되어 공간감이 사라졌다.
+   강한 blur 하나로 풀지 않고 dim·감채와 나눠 부담한다. */
+body.run-ended #gl{filter:blur(5px) saturate(.90) brightness(.80);
+  transition:filter .34s ease-out}
+
+/* 아주 약한 비네트 — 시선을 가운데로만 모은다. 결과에서만 조금 진해진다 */
+#screen::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 46%,transparent 46%,rgba(4,4,6,.34) 100%);
+  opacity:.5}
+#screen.success::before,#screen.fail::before,#screen.hidden::before{opacity:1}
+
 #screen.on{display:grid}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 /* 타이틀은 위쪽, 엔딩은 **한 단계 아래**다. 결과를 읽는 화면이 상단에 붙어 있으면
@@ -82,11 +93,14 @@ body.run-ended #gl{filter:blur(11px) saturate(.62) brightness(.62);
 #screen .speed i:nth-child(1){width:24px}
 #screen .speed i:nth-child(2){width:36px;opacity:.55}
 #screen .speed i:nth-child(3){width:15px;opacity:.32}
-#screen .logo small{width:100%;font-size:11px;letter-spacing:.34em;color:var(--led-dim)}
+/* 애매하게 작으면 장식으로만 보인다 — 읽히는 크기로 올린다 */
+#screen .logo small{width:100%;font-size:14px;letter-spacing:.2em;color:#8E877C}
 
 /* 우측 행선 정보 — 실물처럼 읽히도록 키웠다. 작아서 안 읽히면 없는 정보다 */
 #screen .arrive{flex:none;min-width:270px;border-left:1px solid #232326;padding-left:24px}
-#screen .dir{display:flex;align-items:center;gap:9px;font-size:17px;color:var(--led-amber);
+/* 행선 정보는 **보조**다 — 제목보다 강하면 무엇이 목표인지 헷갈린다.
+   회색 비중을 높이고 앰버는 핵심 시각에만 남긴다 */
+#screen .dir{display:flex;align-items:center;gap:9px;font-size:16px;color:#9A948A;
   letter-spacing:.06em;margin-bottom:13px}
 #screen .line2{display:grid;place-items:center;width:24px;height:24px;flex:none;
   border-radius:50%;background:var(--line2);color:#04160A;
@@ -94,8 +108,8 @@ body.run-ended #gl{filter:blur(11px) saturate(.62) brightness(.62);
 #screen .arrive dl{display:flex;justify-content:space-between;gap:18px;margin:0 0 7px;
   font-size:16px;letter-spacing:.02em}
 #screen .arrive dt{color:var(--led-dim)}
-#screen .arrive dd{margin:0;color:var(--led-amber)}
-#screen .arrive dd.soon{color:var(--led-white)}
+#screen .arrive dd{margin:0;color:#C9C2B6}
+#screen .arrive dd.soon{color:var(--led-amber)}
 
 /*
  * 2단 — **목표.** 처음 오는 사람이 이 화면에서 규칙을 얻어 가는 유일한 자리다.
@@ -112,37 +126,41 @@ body.run-ended #gl{filter:blur(11px) saturate(.62) brightness(.62);
   letter-spacing:.14em;color:var(--led-dim);border-bottom:1px solid #232326;
   padding-bottom:10px;margin-bottom:16px}
 #screen .head>span{display:inline-flex;align-items:center;gap:9px;white-space:nowrap}
-/* 1초 안에 무슨 엔딩인지 읽혀야 한다 — 제목이 가장 크다 */
-#screen .name{font-family:var(--sans);font-weight:800;font-size:clamp(32px,4.6vw,50px);
-  letter-spacing:-.025em;color:var(--led-white);line-height:1.05}
+/*
+ * 제목이 화면에서 가장 강하다. 상태는 그 **옆에 작게** 붙는 유형 표시다.
+ *
+ * 예전엔 상태를 26px 초록으로 독립된 행에 뒀더니 `SUCCESS` 가 제목보다 먼저
+ * 읽혀 **두 번째 헤드라인**이 됐다. `[ ]` 로 묶어 라벨임을 형태로 못박고
+ * 크기를 20% 줄인다 — 상태는 엔딩의 이름이 아니라 이번 엔딩의 종류다.
+ */
+#screen .title-row{display:flex;align-items:baseline;gap:20px;flex-wrap:wrap}
+#screen .name{flex:1 1 auto;min-width:0;font-family:var(--sans);font-weight:800;
+  font-size:clamp(32px,4.6vw,50px);letter-spacing:-.025em;color:var(--led-white);
+  line-height:1.05}
+#screen .status{flex:none;font-family:var(--mono);font-size:21px;letter-spacing:.14em}
 /* **사실 한 줄** — 농담보다 먼저 온다. 이게 없으면 처음 보는 사람은 자기가
    탄 건지 놓친 건지 모른다 */
-#screen .what{margin-top:9px;font-family:var(--sans);font-size:20px;letter-spacing:-.005em;
+#screen .what{margin-top:11px;font-family:var(--sans);font-size:20px;letter-spacing:-.005em;
   color:var(--led-amber)}
 /* 상태 + 관련 값 최대 2개. 라벨은 작고 값은 크다 */
-#screen .facts{display:flex;gap:38px;margin-top:16px;padding-top:14px;
-  border-top:1px solid #232326;flex-wrap:wrap}
+#screen .facts{display:flex;gap:44px;margin-top:20px;padding-top:17px;
+  border-top:1px solid #1d1d20;flex-wrap:wrap}
 #screen .facts dl{margin:0;display:flex;align-items:baseline;gap:11px}
 #screen .facts dl.wide{flex:1 1 100%}
-#screen .facts dt{font-size:13px;letter-spacing:.14em;color:var(--led-dim)}
+#screen .facts dt{font-size:13px;letter-spacing:.14em;color:var(--led-dim);
+  align-self:baseline}
 #screen .facts dd{margin:0;font-size:23px;color:var(--led-white);letter-spacing:.02em}
 #screen .facts dl.wide dd{font-size:17px;color:var(--led-amber)}
-/*
- * 상태 — `SUCCESS` · `SPECIAL` · `GAME OVER`. 1초 안에 읽혀야 하므로 값 중에
- * 가장 크고, 라벨(`상태`)은 아예 뗀다. 세 단어 자체가 라벨이다.
- */
-#screen .facts .status{margin-right:6px}
-#screen .facts .status dd{font-family:var(--mono);font-weight:700;font-size:26px;
-  letter-spacing:.1em}
+
 /* 속마음 — 마지막에 온다. 짧고 건조하게 */
-#screen .say{margin-top:15px;padding-top:13px;border-top:1px solid #232326;
+#screen .say{margin-top:19px;padding-top:16px;border-top:1px solid #1d1d20;
   font-family:var(--sans);font-size:21px;color:var(--led-white);opacity:.82}
 
 /* 상태색은 **판정어 하나에만** 붙는다. 테두리도 배경도 물들이지 않는다 */
 /* 상태색은 **그 단어 하나에만.** 판도 테두리도 물들이지 않는다 */
-#screen.success .facts .status dd{color:var(--led-green)}
-#screen.fail .facts .status dd{color:var(--led-red)}
-#screen.hidden .facts .status dd{color:var(--warn)}
+#screen.success .status{color:var(--led-green)}
+#screen.fail .status{color:var(--led-red)}
+#screen.hidden .status{color:var(--warn)}
 #screen.hidden .name{color:var(--warn)}
 /* 엔딩 코드는 "아직 못 본 게 더 있다"는 신호다 — 흐릿한 디버그 번호로 두지 않는다 */
 #screen .head .eid{font-size:15px;letter-spacing:.2em;color:var(--led-amber)}
@@ -155,8 +173,8 @@ body.run-ended #gl{filter:blur(11px) saturate(.62) brightness(.62);
  * 새 카드가 되므로, 실물 전광판이 원래 갖고 있는 하단 문구 줄로 넣는다 —
  * 검은 판 위라 대비가 보장되고 새 요소도 안 생긴다.
  */
-#screen .keys{position:relative;display:flex;gap:30px;margin-top:14px;padding-top:12px;
-  border-top:1px solid #232326;font-size:15px;letter-spacing:.1em;color:var(--led-dim)}
+#screen .keys{position:relative;display:flex;gap:40px;margin-top:18px;padding-top:15px;
+  border-top:1px solid #1d1d20;font-size:16px;letter-spacing:.08em;color:#9A948A}
 #screen .keys b{font-weight:400;color:var(--led-amber);margin-right:8px}
 /* 시작만 흰 LED — 같은 행에 있어도 무엇이 주 동작인지 갈린다.
    느린 점멸은 실물 전광판이 하는 정도(1.8s)로만 두고 완전히 끄지 않는다 */
