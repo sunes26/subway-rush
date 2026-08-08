@@ -174,3 +174,27 @@ test('팔·폰 실측 + 좌석 방향', async ({ page }) => {
   await cam(page, [-62.5, 19.9, 1.05], [-59.0, 20.6, 0.95])
   await page.screenshot({ path: `${DIR}/seat-facing.png` })
 })
+
+/** §10 최종 QA — 여섯 장면 + 게임플레이 첫 프레임 */
+test('QA — 여섯 프레임', async ({ page }) => {
+  test.setTimeout(240_000)
+  await boot(page)
+  const marks: [string, number][] = [
+    ['qa-A-seated', 800], ['qa-B-phone', 2150], ['qa-C-door', 3150],
+    ['qa-D-exit', 3860], ['qa-E-run', 5000],
+  ]
+  for (const [name, t] of marks) {
+    await page.evaluate((ms) => window.__game!.seekIntro(ms), t)
+    await page.waitForTimeout(700)
+    await page.screenshot({ path: `${DIR}/${name}.png` })
+  }
+  // F — 인트로를 실제로 끝까지 흘려보내고 게임플레이 첫 프레임
+  await page.evaluate(() => window.__game!.seekIntro(5750))
+  await page.waitForTimeout(300)
+  await page.keyboard.press('Escape')
+  await page.waitForFunction(() => window.__game!.state().phase === 'playing', null,
+    { timeout: 20_000 })
+  await page.waitForTimeout(900)
+  await page.screenshot({ path: `${DIR}/qa-F-gameplay.png` })
+  console.log('F phase', await page.evaluate(() => window.__game!.state().phase))
+})

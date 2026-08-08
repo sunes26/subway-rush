@@ -605,6 +605,18 @@ const frame = (now: number): void => {
           if (arm) { phone = buildPhone(); phone.attachTo(arm) }
         }
         phone?.setVisible(a.phone > 0.02)
+        /**
+         * 자세는 본에서 떼어낸다 — 안 그러면 폰이 전완을 따라 눕는다.
+         * 화면이 향할 곳은 **이번 프레임의 카메라와 얼굴 사이**라, 카메라를 옮기면
+         * 폰도 따라 열린다. 각도를 손으로 맞출 일이 없다.
+         */
+        if (a.phone > 0.02 && phone) {
+          const p2 = poseAt(t)
+          phone.aim(
+            new Vector3(p2.x, p2.eye, -p2.y),
+            new Vector3(a.x, a.z + 1.12, -a.y),
+          )
+        }
       }
       // 버스 안 구간에서만 외피를 숨긴다. ③ 부터는 그 버스를 정면으로 보여줘야 한다
       const inside = t < SHOT.phone

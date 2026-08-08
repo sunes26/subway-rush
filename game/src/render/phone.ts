@@ -24,8 +24,8 @@
  */
 
 import {
-  BoxGeometry, CanvasTexture, Group, LinearFilter, Mesh, MeshBasicMaterial,
-  PlaneGeometry, SRGBColorSpace, type Object3D, type Texture,
+  BoxGeometry, CanvasTexture, Group, LinearFilter, Matrix4, Mesh, MeshBasicMaterial,
+  PlaneGeometry, Quaternion, SRGBColorSpace, Vector3, type Object3D, type Texture,
 } from 'three'
 import { CHAR_SCALE } from './actors'
 import { toonMat } from './toon'
@@ -112,16 +112,29 @@ export type Phone = Readonly<{
   root: Group
   /** 팔뚝 본에 매단다. 이미 붙어 있으면 아무 일도 안 한다 */
   attachTo(bone: Object3D): void
+  /**
+   * **자세를 본에서 떼어낸다.** 위치만 손을 따라가고 방향은 여기서 정한다.
+   *
+   * @param eye   카메라의 월드 위치(three 좌표)
+   * @param face  주인공 얼굴의 월드 위치(three 좌표)
+   */
+  aim(eye: Vector3, face: Vector3): void
   setVisible(on: boolean): void
   dispose(): void
 }>
 
 /**
- * 실물 치수(m). 주인공이 1.48m 인 3등신이라 실제 휴대폰(0.15m)을 그대로 쓰면
- * 손에 비해 작아서 화면이 안 읽힌다. 조금 키워 **읽히는 크기**로 잡는다 —
- * 이 게임의 다른 소품도 같은 이유로 실물보다 크다.
+ * 실물 치수(m) — **평범한 스마트폰.**
+ *
+ * ⚠ 화면이 안 읽힌다고 계속 키우다 0.150 × 0.305 까지 갔는데, 그건 태블릿이다.
+ *   사람이 손에 든 물건이 아니라 **공중에 뜬 전광판**으로 보였다.
+ *   가독성은 크기가 아니라 **카메라 거리**로 푸는 문제다 — 폰은 실물로 돌리고
+ *   OTS 를 폰 가까이 가져간다.
+ *
+ * 실제 스마트폰은 0.071 × 0.147 이다. 3등신 SD 의 손이 크므로 손바닥보다
+ * 조금 큰 선에서 0.082 × 0.168 로 잡는다.
  */
-const SIZE = { w: 0.150, h: 0.305, d: 0.014 } as const
+const SIZE = { w: 0.082, h: 0.168, d: 0.010 } as const
 
 export const buildPhone = (): Phone => {
   const root = new Group()
@@ -185,19 +198,52 @@ export const buildPhone = (): Phone => {
    *
    * 로컬 값은 월드의 1/`CHAR_SCALE` 이다 — 본에 매달리면 그 배율이 곱해진다.
    */
-  root.position.set(0.01, 0.33 / CHAR_SCALE, 0.030)
   /**
-   * 화면을 카메라 쪽으로 조금 더 연다(브리프 §5 가 허용한 cinematic cheat).
-   * 손목 각도 그대로면 화면이 카메라에 지나치게 비스듬해 글자가 안 읽힌다.
-   * 폰이 카메라를 향해 들려 있는 것처럼 보일 만큼 돌리지는 않는다.
+   * 손이 폰의 아래쪽을 쥔다 — 팔뚝 끝(0.21m)에서 폰 높이의 3분의 1 만큼만 더.
+   * 더 내보내면 손과 폰 사이가 뜬다.
    */
-  root.rotation.set(0.52, 0, -0.26)
+  root.position.set(0.008, 0.255 / CHAR_SCALE, 0.022)
   root.visible = false
+
+  const want = new Quaternion()
+  const inv = new Quaternion()
+  const m = new Matrix4()
+  const here = new Vector3()
+  const target = new Vector3()
+  const UP = new Vector3(0, 1, 0)
 
   return {
     root,
     attachTo(bone) {
       if (root.parent !== bone) bone.add(root)
+    },
+    /**
+     * ★ **세로로 세우고, 화면이 읽히는 쪽을 보게 한다.**
+     *
+     * 본의 자식으로 두면 방향까지 물려받는다. 팔뚝의 긴 축이 곧 폰의 긴 축이 되어
+     * 팔을 들면 폰이 **전완을 따라 누운 판때기**가 된다 — 사람은 그렇게 안 든다.
+     * 그래서 위치만 손에서 받고 자세는 여기서 만든다.
+     *
+     * 방향은 **각도를 찍어 맞추지 않는다.** 화면(로컬 −Z)이 향할 목표점을 정하고
+     * 거기서 회전을 역산한다. 목표점은 얼굴과 카메라 사이 65% 지점이다 —
+     *
+     *   · 얼굴 쪽 100% 면 법선이 주인공의 몸통을 향한다. 그 축 위에는 등·어깨·팔이
+     *     있어서 **카메라를 어디에 놓아도 가려진다.** 등받이 뒤·오른쪽 뒤·머리 위를
+     *     차례로 시도했고 전부 막혔다.
+     *   · 카메라 쪽 100% 면 폰을 카메라에 들이대는 꼴이 된다.
+     *
+     * 65% 는 "옆자리 시선을 피해 폰을 살짝 안쪽으로 트는" 실제 각과 겹친다.
+     * 브리프가 허용한 cinematic cheat 는 이 한 번으로 끝난다.
+     */
+    aim(eye, face) {
+      root.getWorldPosition(here)
+      target.copy(face).lerp(eye, 0.65)
+      // `Matrix4.lookAt(eye, target, up)` 은 **+Z 가 target → eye** 를 향하게 만든다.
+      // 즉 −Z 가 here → target 이다. 화면이 −Z 이므로 이대로 맞는다.
+      m.lookAt(here, target, UP)
+      want.setFromRotationMatrix(m)
+      root.parent?.getWorldQuaternion(inv)
+      root.quaternion.copy(inv.invert()).multiply(want)
     },
     setVisible(on) { root.visible = on },
     dispose() {
