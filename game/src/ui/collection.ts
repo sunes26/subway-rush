@@ -11,30 +11,21 @@
 import { ENDINGS } from '../data/endings'
 import { formatClock } from '../core/math'
 import { loadSave, seenCount, type SaveData } from '../core/save'
-import type { EndingId } from '../state/types'
 
 /**
  * 미해금 힌트 — GDD §9.4 의 `"???" — 급할수록 돌아가라던 말, 진짜였을까` 형식.
  * 전부 **행동**을 가리키고 **조건**은 안 가리킨다.
  */
-const TEASER: Readonly<Record<EndingId, string>> = {
-  'E-01': '일단 타 보는 것부터',
-  'E-02': '서두르면 시간이 남는다',
-  'E-03': '가장 앞줄에서 타면 뭐가 다를까',
-  'E-04': '문이 닫히는 그 순간에',
-  'E-05': '역을 다 아는 사람은 무엇이 다를까',
-  'E-06': '못 타도 세상은 안 무너진다',
-  'E-07': '늦은 데다 마음까지 급하면',
-  'E-08': '환승 통로 너머에도 승강장이 있다',
-  'E-09': '열린 문이 곧 공짜 문은 아니다',
-  'E-10': '빠른 길에는 값이 붙는다',
-  'E-11': '우산으로 사람을 밀면',
-  'E-12': '급할수록 돌아가라던 말, 진짜였을까',
-  'E-13': '역에는 화장실도 있다',
-  'E-14': '자판기는 세 대다',
-  'E-15': '할아버지께 뭘 건네 드리면 좋을까',
-  'E-16': '단소는 몇 대까지 들고 다닐 수 있을까',
-}
+/**
+ * 미해금 칸은 **아무것도 알려 주지 않는다.**
+ *
+ * 예전엔 칸마다 행동 힌트를 달았다("자판기는 세 대다", "역에는 화장실도 있다").
+ * 조건을 그대로 적는 것보다는 낫지만, 그것도 결국 **다음 판의 정답**이다.
+ * 이 게임의 재미는 *실패 → 스스로 해석 → 다시 플레이 → 새 결과* 에 있고,
+ * 도감이 그 과정을 대신하면 수집이 아니라 심부름이 된다.
+ *
+ * 남기는 것은 번호뿐이다 — "아직 못 본 게 있다"는 사실만으로 충분하다.
+ */
 
 const TONE_MARK = { success: '○', fail: '✕', hidden: '★' } as const
 
@@ -57,7 +48,6 @@ const cardHtml = (save: SaveData): string => {
         return `<li class="cell locked">
           <b>???</b>
           <i>${e.id}</i>
-          <em>${TEASER[e.id]}</em>
         </li>`
       }
       const best = rec.bestMs > 0 ? `최고 잔여 ${formatClock(rec.bestMs)}` : '열차는 놓쳤다'
