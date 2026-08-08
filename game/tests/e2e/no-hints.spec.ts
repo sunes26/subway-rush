@@ -12,7 +12,7 @@
 import { test, expect } from '@playwright/test'
 /** 결과 화면에 절대 나오면 안 되는 조각들 — 공략·조건·임계값 */
 const BANNED = ['살펴보면','넘으면','알 수 있다','자동으로 낸다','깨닫는다','두 번째로 맞으면',
-  '아이템','무피격','유실물 반납','밀친','양심','세 사람','모든 조건']
+  '아이템','무피격','유실물 반납','밀친','양심','세 사람','모든 조건','남을 도','기분은','괜찮다']
 const CASES: Array<[string, Record<string, unknown>]> = [
   ['e03', { phase:'ended', endingId:'E-03', boarded:true, boardedDoorX:112, timeLeftMs:47_000, elapsedMs:133_000 }],
   ['e04', { phase:'ended', endingId:'E-04', boarded:true, boardedDoorX:null, timeLeftMs:900, elapsedMs:179_100 }],

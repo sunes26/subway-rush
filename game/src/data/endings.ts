@@ -104,7 +104,7 @@ export const ENDINGS: readonly EndingDef[] = [
     priority: 90,
     title: '동전 부자',
     lines: [
-      '오늘 커피값은 벌었다.',
+      '커피값은 건졌다.',
       '주머니가 무겁다.',
       '자판기 위치는 다 안다.',
     ],
@@ -119,11 +119,11 @@ export const ENDINGS: readonly EndingDef[] = [
      */
     id: 'E-12',
     priority: 85,
-    title: '오늘도 평화로운 역',
+    title: '평화로운 역',
     lines: [
-      '늦었는데 기분은 괜찮다.',
-      '급행이 있다고 한다.',
-      '손해 본 사람은 없다.',
+      '나 빼고.',
+      '승강장에 나만 남았다.',
+      '다음 거나 기다린다.',
     ],
     tone: 'hidden',
     when: (s) =>
@@ -156,8 +156,8 @@ export const ENDINGS: readonly EndingDef[] = [
     title: '부정승차 적발',
     lines: [
       '서른 배라고 한다.',
-      '문은 열려 있었는데.',
       '역무실 의자가 딱딱하다.',
+      '이름부터 적으라고 한다.',
     ],
     hint: '비상문은 열려 있어도 요금은 따로다. 잔액이 있으면 자동으로 낸다.',
     tone: 'fail',
@@ -195,7 +195,7 @@ export const ENDINGS: readonly EndingDef[] = [
     priority: 60,
     title: '반대로 간다',
     lines: [
-      '잘 탔는데 방향이 틀렸다.',
+      '잘 탔다. 반대로.',
       '역명이 낯설다.',
       '세 정거장 뒤에 알았다.',
     ],
@@ -224,7 +224,7 @@ export const ENDINGS: readonly EndingDef[] = [
     lines: [
       '가방은 아직 밖이다.',
       '반은 탔다.',
-      '옆 사람이 못 본 척해 줬다.',
+      '탔다. 됐다.',
     ],
     tone: 'success',
     when: (s) => s.boarded && s.timeLeftMs <= 1000,
@@ -236,8 +236,8 @@ export const ENDINGS: readonly EndingDef[] = [
     lines: [
       '한 대 일찍 왔다.',
       '앉지는 못했다.',
-      '숨 고를 시간은 있었다.',
       '오늘은 안 뛰었다.',
+      '숨 고를 시간은 있었다.',
     ],
     tone: 'success',
     when: (s) => s.boarded && s.timeLeftMs >= 30_000,
@@ -247,7 +247,7 @@ export const ENDINGS: readonly EndingDef[] = [
     priority: 10,
     title: '아슬아슬 탑승',
     lines: [
-      '탔다. 그걸로 됐다.',
+      '탔다. 됐다.',
       '숨이 안 쉬어진다.',
       '문이 등을 밀었다.',
     ],
@@ -259,8 +259,8 @@ export const ENDINGS: readonly EndingDef[] = [
     priority: 5,
     title: '지각 확정',
     lines: [
+      '망했다.',
       '이제 뛰어도 똑같다.',
-      '전화를 먼저 해야 한다.',
       '변명은 가면서 생각하자.',
       '시계는 안 봐도 안다.',
     ],
@@ -283,9 +283,9 @@ export const ENDINGS: readonly EndingDef[] = [
     priority: 4,
     title: '이걸 누가 먹어',
     lines: [
-      '그건 안 드시는 거였다.',
       '봉지째 돌아왔다.',
       '표정이 그게 아니었다.',
+      '한참을 들고 계셨다.',
     ],
     hint: '벤치 근처 바닥을 살펴보면 뭘 드셨는지 알 수 있다.',
     tone: 'fail',
@@ -312,9 +312,9 @@ export const ENDINGS: readonly EndingDef[] = [
     title: '다음 열차',
     lines: [
       '봤는데 못 탔다.',
+      '딱 내 앞에서.',
       '4분이나.',
-      '의자에 앉을 시간은 생겼다.',
-      '다음 거 타면 된다.',
+      '문 닫히는 것만 봤다.',
     ],
     tone: 'fail',
     when: () => true,          // fallback — 항상 매치
