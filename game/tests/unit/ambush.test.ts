@@ -7,7 +7,11 @@ import { describe, expect, it } from 'vitest'
 import { ENDINGS } from '../../src/data/endings'
 import type { FlagId, GameState } from '../../src/state/types'
 import { FLOOR } from '../../src/data/world'
-import { AMBUSH_TOTAL_MS, AMBUSH_TRIGGER_X, ambushLineAt } from '../../src/systems/ambush'
+import { AMBUSH_CAM } from '../../src/data/tuning'
+import {
+  AMBUSH_COLLAPSE_MS, AMBUSH_DIALOGUE_MS, AMBUSH_TOTAL_MS, AMBUSH_TRIGGER_X,
+  ambushCamera, ambushCollapseT, ambushLineAt,
+} from '../../src/systems/ambush'
 import { holdFor, put, start, STEP } from './_pilot'
 
 const atTrigger = (flags: readonly FlagId[] = []): GameState =>
@@ -56,7 +60,70 @@ describe('개찰구 매복 (E-17)', () => {
   it('ambushLineAt — 화자가 "??"→붕어빵 아저씨→역무원 순서로 밝혀진다', () => {
     expect(ambushLineAt(0).line.speaker).toBe('??')
     const speakers = new Set<string>()
-    for (let t = 0; t < AMBUSH_TOTAL_MS; t += 50) speakers.add(ambushLineAt(t).line.speaker)
+    for (let t = 0; t < AMBUSH_DIALOGUE_MS; t += 50) speakers.add(ambushLineAt(t).line.speaker)
     expect(speakers).toEqual(new Set(['??', '붕어빵 아저씨', '역무원']))
+  })
+})
+
+/**
+ * 쓰러지는 카메라 — 순수 함수라 **궤적 자체를 잠근다.**
+ *
+ * 화면으로만 확인하면 "그럴듯해 보인다"에서 멈추고, 나중에 튜닝값 하나가 바뀌었을 때
+ * 아무도 모른다. 여기서 잠그는 것은 모양이 아니라 **순서와 단조성**이다:
+ * 대사 중엔 안 움직인다 · 경련 뒤에야 무너진다 · 한 번 기울면 되돌아오지 않는다.
+ */
+describe('쓰러지는 카메라 (E-17)', () => {
+  it('대사 구간에서는 카메라가 전혀 안 움직인다', () => {
+    for (let t = 0; t <= AMBUSH_DIALOGUE_MS; t += 400) {
+      const c = ambushCamera(t)
+      expect(ambushCollapseT(t), `t=${t}`).toBe(0)
+      expect(c.dropM, `t=${t}`).toBe(0)
+      expect(c.rollRad, `t=${t}`).toBe(0)
+      expect(c.pitchRad, `t=${t}`).toBe(0)
+    }
+  })
+
+  it('경련 구간에서는 아직 안 무너진다 — 맞은 순간이 따로 읽혀야 한다', () => {
+    const mid = AMBUSH_DIALOGUE_MS + AMBUSH_CAM.joltMs * 0.5
+    const c = ambushCamera(mid)
+    expect(c.dropM, '아직 서 있다').toBe(0)
+    expect(c.rollRad).toBe(0)
+    expect(c.joltM, '대신 떨고 있다').toBeGreaterThan(0)
+  })
+
+  it('낙하는 단조 증가한다 — 무너지다 되돌아오는 구간이 없다', () => {
+    const from = AMBUSH_DIALOGUE_MS + AMBUSH_CAM.joltMs
+    const to = from + AMBUSH_CAM.fallMs
+    let prev = -1
+    for (let t = from; t <= to; t += 50) {
+      const roll = ambushCamera(t).rollRad
+      expect(roll, `t=${t}`).toBeGreaterThanOrEqual(prev)
+      prev = roll
+    }
+  })
+
+  it('다 무너지면 튜닝값 그대로 눕는다', () => {
+    const landed = AMBUSH_DIALOGUE_MS + AMBUSH_CAM.joltMs + AMBUSH_CAM.fallMs
+    const c = ambushCamera(landed)
+    expect(c.rollRad).toBeCloseTo(AMBUSH_CAM.rollRad, 5)
+    expect(c.pitchRad).toBeCloseTo(AMBUSH_CAM.pitchRad, 5)
+    expect(c.dropM).toBeCloseTo(AMBUSH_CAM.dropM, 5)
+  })
+
+  /**
+   * "수렴한다"를 절대 오차가 아니라 **초기 진폭 대비**로 잰다. 절대값으로 잠그면
+   * `settleAmpM` 을 키우는 순간 의미 없이 빨간불이 되고, 정작 검증하려는 성질
+   * (여운이 잦아드는가)은 그대로인데 테스트만 고치게 된다.
+   */
+  it('착지 여운은 잦아든다 — 끝에서 잔여 진폭이 초기의 15% 미만', () => {
+    const end = AMBUSH_TOTAL_MS - 1
+    const residual = Math.abs(ambushCamera(end).dropM - AMBUSH_CAM.dropM)
+    expect(residual).toBeLessThan(AMBUSH_CAM.settleAmpM * 0.15)
+  })
+
+  it('쓰러짐은 대사가 끝난 뒤에만 있다 — 총 길이가 둘의 합이다', () => {
+    expect(AMBUSH_TOTAL_MS).toBe(AMBUSH_DIALOGUE_MS + AMBUSH_COLLAPSE_MS)
+    expect(ambushCollapseT(AMBUSH_DIALOGUE_MS)).toBe(0)
+    expect(ambushCollapseT(AMBUSH_TOTAL_MS)).toBe(1)
   })
 })

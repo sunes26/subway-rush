@@ -18,6 +18,7 @@ import { setDynamicSolids } from './collision'
 import { disembarkSystem } from './disembark'
 import { gateFlaps, gateKnockback, gatesSystem } from './gates'
 import { interactSystem } from './interact'
+import { knockdownSystem } from './knockdown'
 import { movementSystem } from './movement'
 import { emergencyDoor, emergencySystem } from './emergency'
 import { obstacleSystem } from './obstacles'
@@ -42,7 +43,7 @@ export const lightRemainSec = (s: GameState): number =>
  *
  * 예전에는 여기에 적신호 차단벽(`LIGHT-BLOCK`)이 하나 더 있었다. 지금은 **없다** —
  * 디렉터 지시로 적신호에도 건널 수 있다. 대신 차가 진짜 위험이 됐다:
- * 차체에 닿으면 `RESPAWN` 으로 스폰에 되돌아간다(`main.ts` 의 `roadHazard` 판정).
+ * 차체에 닿으면 즉사(E-18)로 그 자리에서 끝난다(`main.ts` 의 `roadHazard` 판정).
  * 벽으로 막던 것을 규칙이 아니라 **결과**로 바꾼 것이다.
  */
 export const rebuildDynamics = (s: GameState): void => {
@@ -102,6 +103,12 @@ export const tick = (state: GameState, dtMs: number, ctx: TickCtx): GameState =>
 
   /** 개찰구 매복 — x≥57 트리거도 이번 스텝의 최종 위치로 판정해야 한다 */
   s = applyAll(s, ambushSystem(s, { dtMs }))
+
+  /**
+   * 차에 치인 뒤 — 시간만 흘린다. **시작은 `main.ts` 가 낸다**(차는 렌더 쪽에서 굴러간다).
+   * 매복 바로 뒤에 두는 이유는 둘 다 "쓰러지는 동안 다른 판정을 받지 않아야" 하기 때문이다.
+   */
+  s = applyAll(s, knockdownSystem(s, { dtMs }))
 
   /**
    * 인파 — 역류의 밀어내기는 `MOVE` 전량 재발행이라 반드시 이동 **뒤**여야 한다

@@ -15,7 +15,7 @@ export type Phase = 'title' | 'playing' | 'boarding' | 'ended'
 export type EndingId =
   | 'E-01' | 'E-02' | 'E-03' | 'E-04' | 'E-05'
   | 'E-06' | 'E-07' | 'E-08' | 'E-09' | 'E-10' | 'E-11'
-  | 'E-12' | 'E-13' | 'E-14' | 'E-15' | 'E-16' | 'E-17'
+  | 'E-12' | 'E-13' | 'E-14' | 'E-15' | 'E-16' | 'E-17' | 'E-18'
 
 /** P1 예약 — 지금은 선언만 */
 export type ItemId =
@@ -256,6 +256,18 @@ export type AmbushState = Readonly<{
 }>
 
 /**
+ * E-18 차에 치임 — 붕 떴다가 쓰러지는 동안의 상태(`systems/knockdown.ts`).
+ *
+ * `AmbushState` 와 모양이 같지만 **합치지 않는다.** 둘은 동시에 살아 있을 수 없는 게
+ * 아니라(지상에서 치이고 지하에서 매복당한다) 그냥 서로 다른 사건이고, 하나로 묶으면
+ * "무엇 때문에 쓰러졌는가"를 상태에서 못 읽는다 — 카메라 궤적도 엔딩도 다르다.
+ */
+export type KnockdownState = Readonly<{
+  active: boolean
+  phaseMs: number
+}>
+
+/**
  * O-04 역류 (P1). 웨이브 자체는 `surgeAt(elapsedMs, seed)` 로 파생되므로 상태가 없다 —
  * 여기 남는 건 **한 번만 일어나야 하는 일**뿐이다.
  */
@@ -366,6 +378,7 @@ export type GameState = Readonly<{
   scores: Readonly<{ conscience: number; style: number; knowledge: number }>
   chase: ChaseState
   ambush: AmbushState
+  knockdown: KnockdownState
   flags: readonly FlagId[]
 
   // ── P1 신설 ──
@@ -464,6 +477,12 @@ export type Action =
   | { t: 'AMBUSH_START' }
   /** 대사 진행. 총 길이를 넘기면 `systems/ambush.ts`가 곧바로 `END`를 낸다 */
   | { t: 'AMBUSH_TICK'; dtMs: number }
+
+  // ── 차에 치임 (E-18) ──
+  /** 충돌 — 이동이 잠기고 카메라가 떠오르기 시작한다 */
+  | { t: 'KNOCKDOWN_START' }
+  /** 체공·착지 진행. 총 길이를 넘기면 `systems/knockdown.ts`가 `END`를 낸다 */
+  | { t: 'KNOCKDOWN_TICK'; dtMs: number }
 
   // ── P1 인파 (O-04) ──
   | { t: 'SURGE_FALL' }

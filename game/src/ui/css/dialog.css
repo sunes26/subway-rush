@@ -135,6 +135,13 @@
 #ambush .bar i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left;
   background:var(--gold);transition:transform .1s linear}
 
+/* 쓰러지며 의식이 꺼지는 암전 — 매복(E-17) 전용.
+   엔딩 카드로 **툭 끊기지 않게** 마지막 구간을 검게 덮는다. 카메라가 이미 바닥에 누운
+   뒤라 화면에 더 보여 줄 것이 없고, 여기서 끊으면 "쓰러졌다"가 "버그로 화면이 튀었다"로 읽힌다.
+   `opacity` 는 `ui/dialog.ts` 가 쓰러짐 진행도로 직접 넣는다(전환 곡선을 CSS 와 JS 로 쪼개면
+   둘 중 하나만 고쳤을 때 어긋난다). */
+#blackout{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;z-index:50}
+
 /* QTE — 리듬창을 **눈으로 볼 수 있어야** 실력이 성립한다.
    창이 안 보이면 판정은 그냥 운으로 읽힌다 */
 /* 위 `#dlg` 와 같은 이유 — 소지품 패널·양심 게이지 위로 */

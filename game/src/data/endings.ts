@@ -207,10 +207,10 @@ export const ENDINGS: readonly EndingDef[] = [
     when: (s) => !s.boarded && s.scores.conscience < 0,
   },
   /**
-   * 강제 엔딩 3종(E-15·E-16·E-17) — `when` 이 **항상 거짓**이다.
+   * 강제 엔딩 4종(E-15·E-16·E-17·E-18) — `when` 이 **항상 거짓**이다.
    *
    * `resolveEnding` 은 열차 출발 경로에서만 쓰인다(`systems/tick.ts:124-128`).
-   * 셋 다 시스템이 `{ t: 'END', endingId }` 로 직접 발행하므로 조건식이 필요 없다.
+   * 넷 다 시스템이 `{ t: 'END', endingId }` 로 직접 발행하므로 조건식이 필요 없다.
    * 참이 될 수 있으면 열차 출발 시 오검출되므로 거짓으로 고정하고, `priority` 는
    * 선택에 관여하지 않으니 그 값의 유일한 역할은 정렬·유일성 불변식을 지키는 것이다 —
    * 그래서 실제 엔딩과 절대 경합하지 않는 자리, fallback(E-06) 바로 위 최하단에 둔다.
@@ -246,6 +246,21 @@ export const ENDINGS: readonly EndingDef[] = [
     title: '지지직!',
     line: '눈앞이 번쩍였다.',
     hint: '주인 없는 물건은 원래 주인이 나타난다. 신고가 더 안전하다.',
+    tone: 'fail',
+    when: () => false,
+  },
+  /**
+   * 강제 엔딩 4번째 — 차에 치였다(`main.ts` 의 `roadHazard` 판정).
+   * 적신호 차단벽을 걷어낸 뒤로 차선이 진짜 위험이 됐다는 것을 결과로 보여준다
+   * (`data/world.ts` "막는 대신 결과로 막는다"). 위 셋과 같은 이유로 `when` 이 항상 거짓이다:
+   * `main.ts` 가 `carHits` 판정에서 직접 `{ t: 'END', endingId: 'E-18' }` 을 낸다.
+   */
+  {
+    id: 'E-18',
+    priority: 1,
+    title: '쾅!',
+    line: '몸이 붕 떴다가, 그대로 아스팔트에 멈췄다.',
+    hint: '차선 위에 서 있지 마라. 신호는 몸을 지켜주지 않는다.',
     tone: 'fail',
     when: () => false,
   },

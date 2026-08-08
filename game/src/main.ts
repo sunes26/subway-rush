@@ -23,6 +23,8 @@ import { loadStation, type Station } from './render/station'
 import { buildWorld } from './render/world-builder'
 import { applyAll, initialState } from './state/reducer'
 import type { GameState } from './state/types'
+import { ambushCamera, ambushCollapseT } from './systems/ambush'
+import { knockdownCamera, knockdownT } from './systems/knockdown'
 import { carHits } from './systems/roadHazard'
 import { lightIsGreen, lightRemainSec, rebuildDynamics, tick } from './systems/tick'
 import { createDebug } from './ui/debug'
@@ -433,27 +435,28 @@ const frame = (now: number): void => {
     traffic.group.visible = renderPos.z > -3
     traffic.update(dtSec, lightIsGreen(state), lightRemainSec(state))
     /**
-     * 차에 치이면 스폰으로. 적신호 차단벽을 걷어낸 대신 들어온 규칙이다.
+     * 차에 치이면 그 자리에서 끝난다(E-18). 적신호 차단벽을 걷어낸 대신 들어온 규칙이다.
      *
      * 판정을 **렌더 쪽에서** 하는 이유: 차는 열차와 달리 앞차·신호를 보고 매 프레임
      * 적분하는 물건이라 시간의 순수 함수가 아니다. 시뮬로 끌어오려면 차량 전체를
      * 다시 짜야 하고, 그 대가로 얻는 것은 결정성뿐인데 차는 채점에 안 들어간다.
      * 대신 겹침 계산은 `systems/roadHazard` 로 빼 순수 함수로 두고 단위 테스트로 덮었다.
      *
-     * `sinceHit` 쿨다운이 없으면 스폰 직후 같은 프레임 판정이 다시 걸릴 수 있다.
+     * 맞는 즉시 끝내지 않고 `KNOCKDOWN_START` 만 낸다 — 붕 떴다가 떨어져 쓰러지고 나서야
+     * 엔딩이다(`systems/knockdown.ts` 가 그 시간을 재고 `END` 를 낸다).
+     * `knockdown.active` 를 조건에 넣는 이유: 쓰러지는 동안에도 차는 계속 달리므로
+     * 같은 사람을 몇 번이고 다시 치어 연출이 처음부터 다시 시작된다.
      */
     hitCooldownMs = Math.max(0, hitCooldownMs - dt)
     if (
-      state.phase === 'playing' && hitCooldownMs === 0 &&
+      state.phase === 'playing' && hitCooldownMs === 0 && !state.knockdown.active &&
       Math.abs(state.player.pos.z - FLOOR.L0) < 1.2 &&
       carHits(traffic.bodies(), state.player.pos.x, state.player.pos.y, MOVE.radius)
     ) {
       state = applyAll(state, [
-        { t: 'RESPAWN' },
-        { t: 'FX', kind: 'toast', text: '차에 치였다 — 처음 위치로', lifeMs: 2200, value: 0 },
-        { t: 'FX', kind: 'shake', text: '', lifeMs: 420, value: 1 },
+        { t: 'FX', kind: 'shake', text: '', lifeMs: 500, value: 1 },
+        { t: 'KNOCKDOWN_START' },
       ])
-      prevPos = state.player.pos
       hitCooldownMs = HIT_COOLDOWN_MS
     }
   }
@@ -486,6 +489,23 @@ const frame = (now: number): void => {
   }
 
   hud.sync(state, sample.locked && cameraRig.mode() === 'fp')
+  /**
+   * 쓰러지는 동안 HUD 를 **같이 지운다.**
+   *
+   * 카메라만 기울면 소지품·스태미너·미니맵이 수평 그대로 남아 "카메라가 돌아간 화면"이 된다.
+   * 계기판이 사라져야 쓰러진 것이 사람의 일로 읽힌다. 되돌리는 코드는 필요 없다 —
+   * 매복이 끝나면(`ambush.active === false`) 다음 프레임에 1 로 돌아온다.
+   */
+  // `phase` 를 같이 보는 이유는 `ui/dialog.ts` 의 암전과 같다 — 엔딩 뒤에도 HUD 가 안 돌아온다
+  // 매복이든 교통사고든 **쓰러지는 것은 하나**라 같은 페이드를 쓴다(진행도만 다른 데서 온다)
+  const alive = state.phase === 'playing'
+  const collapseT = alive && state.ambush.active ? ambushCollapseT(state.ambush.phaseMs)
+    : alive && state.knockdown.active ? knockdownT(state.knockdown.phaseMs)
+      : 0
+  // 1.7 배속으로 사라진다 — 낙하가 끝나기 전에 이미 비어 있어야 무너지는 그림만 남는다
+  const hudFade = (1 - collapseT * 1.7).toFixed(3)
+  const hudOpacity = collapseT > 0 ? (Number(hudFade) > 0 ? hudFade : '0') : ''
+  if (hud.el.style.opacity !== hudOpacity) hud.el.style.opacity = hudOpacity
   dialog.sync(state)
   /**
    * 마우스로 고르는 대화 3종(할아버지·편의점·붕어빵 아저씨) — **매 프레임** 강제한다.
@@ -509,6 +529,45 @@ const frame = (now: number): void => {
     const k = (shakeUntil - now) / 220
     stage.camera.position.x += (Math.random() - 0.5) * 0.22 * k
     stage.camera.position.y += (Math.random() - 0.5) * 0.22 * k
+  }
+
+  /**
+   * 개찰구 매복(E-17) — **테이저에 맞고 쓰러진다.**
+   *
+   * 리그가 만든 정상 1인칭 시점 **위에** 오프셋을 더한다(`systems/ambush.ts ambushCamera`
+   * 헤더 참고). 세 축이 각자 다른 것을 말한다: 높이는 무너짐, roll 은 기운 지평선,
+   * pitch 는 뒤로 넘어가며 올려다보는 천장.
+   *
+   * ⚠ `rotation.z` 를 **여기서 처음 쓴다.** 카메라 리그는 `set(pitch, yaw, 0)` 으로
+   *   매 프레임 0 을 다시 넣으므로 매복이 끝나면 저절로 원상복구다 — 되돌리는 코드가 필요없다.
+   */
+  if (state.ambush.active) {
+    const cam = ambushCamera(state.ambush.phaseMs)
+    if (cam.dropM > 0 || cam.joltM > 0) {
+      stage.camera.position.y -= cam.dropM
+      stage.camera.rotation.z += cam.rollRad
+      stage.camera.rotation.x += cam.pitchRad
+      // 감전 경련 — 세 축 모두 흔든다(한 축만 흔들면 "떤다"가 아니라 "미끄러진다"로 보인다)
+      if (cam.joltM > 0) {
+        stage.camera.position.x += (Math.random() - 0.5) * cam.joltM
+        stage.camera.position.y += (Math.random() - 0.5) * cam.joltM
+        stage.camera.position.z += (Math.random() - 0.5) * cam.joltM
+      }
+    }
+  }
+
+  /**
+   * 차에 치임(E-18) — **붕 떴다가 떨어져 쓰러진다.**
+   *
+   * 합성 방식은 위 매복과 같고(리그 결과 위에 더한다) 궤적만 다르다:
+   * `liftM` 은 부호가 있어 체공 중엔 눈높이보다 위, 착지 뒤엔 아래다
+   * (`systems/knockdown.ts knockdownCamera` 헤더 참고).
+   */
+  if (state.knockdown.active) {
+    const cam = knockdownCamera(state.knockdown.phaseMs)
+    stage.camera.position.y += cam.liftM
+    stage.camera.rotation.z += cam.rollRad
+    stage.camera.rotation.x += cam.pitchRad
   }
 
   camTrace.push(stage.camera.position.x, now)

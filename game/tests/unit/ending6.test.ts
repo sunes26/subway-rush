@@ -50,11 +50,12 @@ describe('S12-1 엔딩 6종이 각각 재현된다', () => {
     expect(resolveEnding(s).id).toBe('E-14')
   })
 
-  // 선물 퍼즐 2종(E-15·E-16) + 개찰구 매복(E-17) 포함 17종(디렉터 지시로 16→17 확장)
-  it('전부 서로 다른 id·title 을 갖는다 (강제 엔딩 3종 포함 17종)', () => {
-    expect(ENDINGS.length).toBe(17)
-    expect(new Set(ENDINGS.map((e) => e.id)).size).toBe(17)
-    expect(new Set(ENDINGS.map((e) => e.title)).size).toBe(17)
+  // 선물 퍼즐 2종(E-15·E-16) + 개찰구 매복(E-17) + 차에 치임(E-18) 포함 18종
+  // (디렉터 지시로 16→17→18 확장)
+  it('전부 서로 다른 id·title 을 갖는다 (강제 엔딩 4종 포함 18종)', () => {
+    expect(ENDINGS.length).toBe(18)
+    expect(new Set(ENDINGS.map((e) => e.id)).size).toBe(18)
+    expect(new Set(ENDINGS.map((e) => e.title)).size).toBe(18)
   })
 })
 
