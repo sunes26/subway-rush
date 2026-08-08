@@ -27,6 +27,7 @@ import {
   BoxGeometry, CanvasTexture, Group, LinearFilter, Mesh, MeshBasicMaterial,
   PlaneGeometry, SRGBColorSpace, type Object3D, type Texture,
 } from 'three'
+import { CHAR_SCALE } from './actors'
 import { toonMat } from './toon'
 
 /** 화면 픽셀 — 세로가 긴 비율. 너무 키우면 텍스처만 무거워진다 */
@@ -152,13 +153,20 @@ export const buildPhone = (): Phone => {
   root.add(screen)
 
   /**
-   * 팔뚝 본 기준 자리.
+   * ★ **본에 매달면 캐릭터 배율(`CHAR_SCALE` 1.6)을 그대로 먹는다.**
    *
-   * ⚠ 처음엔 −0.30 을 줬는데 **팔뚝 길이를 넘겨서** 휴대폰이 손에서 30cm 떨어져
-   *   몸 옆에 둥둥 떠 있었다. 이 캐릭터(키 1.48m)의 팔뚝은 0.18m 안팎이라
-   *   그만큼만 내려가야 팔 끝 = 손이 된다. 손 본이 없으니 이 값이 곧 손이다.
+   * 이걸 놓쳐서 두 가지가 동시에 틀렸다.
+   *   · 휴대폰이 1.6배로 커졌다 — 세로 0.235m 로 만든 것이 화면에서는 0.376m,
+   *     즉 **37cm 짜리 판때기**였다. 손에 쥔 물건으로 안 보이는 게 당연하다.
+   *   · 위치 오프셋도 1.6배가 됐다 — 로컬 0.179 로 준 것이 월드에서 0.287 이라
+   *     팔뚝(0.235)을 넘겨 **손에서 5cm 떨어져** 떠 있었다.
+   *     (실측: 어깨 −61.266 · 팔꿈치 −61.415 · 폰 −61.135)
+   *
+   * 자식 스케일로 배율을 되돌리고, 오프셋은 팔뚝 길이 안으로 줄인다.
+   * 숫자를 박지 않고 `CHAR_SCALE` 로 나눈다 — 배율이 바뀌면 따라간다.
    */
-  root.position.set(0.01, -0.17, 0.055)
+  root.scale.setScalar(1 / CHAR_SCALE)
+  root.position.set(0.006, -0.128, 0.040)
   root.rotation.set(-0.95, 0, 0)
   root.visible = false
 

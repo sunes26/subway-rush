@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest'
 import { FPV } from '../../src/data/tuning'
 import { SLABS, SPAWN } from '../../src/data/world'
 import { BUS } from '../../src/render/bus-interior'
+import { WEST } from '../../src/render/west-road'
 import { SIT_DROP } from '../../src/render/pose'
 import {
   actorAt, busDx, busShake, BUS_STOP_MS, FINAL_POSE, INTRO_MS, poseAt, SHOT, SWAP_MS,
@@ -67,6 +68,10 @@ describe('인트로 — 이음매', () => {
      * 아니라 떠다니는 것이다. ④ 만 예외로 빠르게 따라간다(주인공이 뛰므로 당연하다).
      * 대신 ④ 는 **가속이 튀지 않는지**를 본다 — 속도가 아니라 덜컹거림이 문제다.
      */
+    /**
+     * ①② 는 **버스와 함께** 달린다 — 그 이동은 카메라가 떠다니는 게 아니라
+     * 차가 가는 것이다. 그래서 `busDx` 를 빼고 **차 안에서의 움직임**만 본다.
+     */
     const still: [number, number][] = [
       [0, SHOT.interior], [SHOT.interior, SHOT.phone], [SHOT.phone, SHOT.door],
     ]
@@ -74,7 +79,8 @@ describe('인트로 — 이음매', () => {
       for (let t = a0 + 20; t < a1 - 20; t += 20) {
         const a = poseAt(t)
         const b = poseAt(t + 20)
-        expect(Math.hypot(b.x - a.x, b.y - a.y), `${t}ms 위치`).toBeLessThan(0.03)
+        const dx = busDx(t + 20) - busDx(t)
+        expect(Math.hypot(b.x - a.x - dx, b.y - a.y), `${t}ms 위치`).toBeLessThan(0.03)
         expect(Math.abs(b.yaw - a.yaw), `${t}ms 시선`).toBeLessThan(0.03)
       }
     }
@@ -98,8 +104,13 @@ describe('인트로 — 이음매', () => {
 
 describe('인트로 — 무대 경계', () => {
   it('카메라가 지면 밖으로 나가지 않는다', () => {
-    // 지면(Z1-ROAD·Z1-WALK)의 서쪽 끝. 여기를 넘으면 세계가 떠 있는 섬이 된다
-    const westEdge = Math.min(...SLABS.filter((s) => s.id.startsWith('Z1-')).map((s) => s.rect[0]))
+    /**
+     * 지면의 서쪽 끝. 여기를 넘으면 세계가 떠 있는 섬이 된다.
+     * 인트로에는 `west-road` 연장(x −96~−64)이 붙으므로 그만큼 더 갈 수 있다 —
+     * 버스가 실제로 달릴 거리를 그 연장이 만든다.
+     */
+    const westEdge = Math.min(
+      ...SLABS.filter((s) => s.id.startsWith('Z1-')).map((s) => s.rect[0]), WEST.xMin)
     everyFrame((t) => {
       expect(poseAt(t).x, `${t}ms 에서 지도 밖이다`).toBeGreaterThanOrEqual(westEdge)
       expect(actorAt(t).x, `${t}ms 에 주인공이 지도 밖이다`).toBeGreaterThanOrEqual(westEdge)

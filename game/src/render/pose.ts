@@ -106,8 +106,13 @@ const ARM_SIGN = typeof location !== 'undefined' && /[?&]armsign=-1/.test(locati
  * 휴대폰은 그 자리에 붙는다(`render/phone.ts`).
  */
 const PHONE: Readonly<Partial<Record<BoneName, number>>> = {
-  UpperArmR: ARM_SIGN * 0.72,
-  LowerArmR: ARM_SIGN * 0.98,
+  /**
+   * 위팔은 조금만 든다. 0.72 를 줬더니 **팔꿈치가 몸 뒤로 빠져** 팔이 꺾인 것처럼
+   * 보였다(실측: 팔꿈치가 어깨보다 서쪽 — 동쪽을 보고 앉았으니 등 뒤다).
+   * 사람은 휴대폰을 볼 때 팔꿈치를 옆구리에 붙이고 아래팔만 든다.
+   */
+  UpperArmR: ARM_SIGN * 0.22,
+  LowerArmR: ARM_SIGN * 1.34,
   // 화면을 내려다본다. 크게 숙이면 얼굴이 안 보인다
   Head: 0.28,
 }

@@ -156,3 +156,14 @@ for (const q of ['', '&nointerior'] as const) {
     }
   })
 }
+
+test('팔·폰 실측 + 좌석 방향', async ({ page }) => {
+  test.setTimeout(180_000)
+  await boot(page)
+  await page.evaluate(() => window.__game!.seekIntro(2100))
+  await page.waitForTimeout(800)
+  console.log('ARMPROBE', JSON.stringify((await page.evaluate(() => window.__game!.introProbe())).arm))
+  // 좌석 두 벌을 정측면에서 — 등받이가 어느 쪽인지 눈으로 본다
+  await cam(page, [-62.5, 19.9, 1.05], [-59.0, 20.6, 0.95])
+  await page.screenshot({ path: `${DIR}/seat-facing.png` })
+})

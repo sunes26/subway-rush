@@ -4,7 +4,7 @@
  * 시뮬은 고정 60Hz, 렌더는 가변. 프레임이 튀어도 물리와 밸런스가 튀지 않는다.
  */
 
-import { Frustum, Matrix4, Raycaster, Vector2, Vector3 } from 'three'
+import { Frustum, Matrix4, type Object3D, Raycaster, Vector2, Vector3 } from 'three'
 import { createSfx } from './audio/sfx'
 import { createInput, EMPTY_INPUT, type InputFrame } from './core/input'
 import { resolveSeed } from './core/rng'
@@ -31,8 +31,9 @@ import { createHud } from './ui/hud'
 import { createScreens } from './ui/screens'
 import { createCollection } from './ui/collection'
 import { createIntro } from './ui/intro'
-import { actorAt, busDx, DOORS_MS, INTRO_MS, poseAt } from './render/intro'
+import { actorAt, busDx, DOORS_MS, INTRO_MS, poseAt, SHOT } from './render/intro'
 import { buildBusInterior, type BusInterior } from './render/bus-interior'
+import { buildWestRoad } from './render/west-road'
 import { makePoseRig, type PoseRig, type SitAxis } from './render/pose'
 import { buildPhone, type Phone } from './render/phone'
 import { createSettings } from './ui/settings'
@@ -305,6 +306,16 @@ let freeCamAt: { pos: [number, number, number]; look: [number, number, number] }
  * 저절로 투명해지므로, 우리가 만들 것은 **안에서 보이는 것들**뿐이다.
  */
 let busIn: BusInterior | null = null
+/** 인트로 전용 서쪽 도로 연장 — 버스가 달릴 거리를 만든다 */
+let westRoad: { root: Object3D; dispose(): void } | null = null
+/**
+ * 버스 외피 네 조각(`merged:BUS_*`). 실내가 24m 서쪽에서 다가오는 동안에는
+ * **숨긴다** — 안 그러면 우리가 탄 버스가 저 앞에 주차된 버스를 향해 달린다.
+ */
+const busExterior = (): Object3D[] =>
+  ['BUS_BODY', 'BUS_GLASS', 'BUS_TRIM', 'BUS_ROOF']
+    .map((m) => station?.root.getObjectByName(`merged:${m}`))
+    .filter((o): o is Object3D => !!o)
 /**
  * 포즈(착석 · 휴대폰). 리그가 로드된 뒤 한 번 만든다 — 본을 이름으로 찾는
  * 작업이라 매 프레임 할 일이 아니다.
@@ -320,6 +331,8 @@ const startIntro = (): void => {
   state = { ...state, phase: 'intro' }
   intro.show()
   if (!busIn) { busIn = buildBusInterior(); stage.scene.add(busIn.root) }
+  if (!westRoad) { westRoad = buildWestRoad(); stage.scene.add(westRoad.root) }
+  westRoad.root.visible = true
   // QA — 실내가 외피를 가리는지 A/B 로 가른다
   busIn.root.visible = !/[?&]nointerior/.test(location.search)
   busIn.setDoor(0)
@@ -336,6 +349,8 @@ const endIntro = (): void => {
   introHold = null
   introInBus = false
   phone?.setVisible(false)
+  if (westRoad) westRoad.root.visible = false
+  for (const o of busExterior()) o.visible = true
   if (busIn) busIn.root.visible = false
   /**
    * ★ 화각을 **반드시** 되돌린다.
@@ -572,6 +587,10 @@ const frame = (now: number): void => {
         }
         phone?.setVisible(a.phone > 0.02)
       }
+      // 버스 안 구간에서만 외피를 숨긴다. ③ 부터는 그 버스를 정면으로 보여줘야 한다
+      const inside = t < SHOT.phone
+      for (const o of busExterior()) o.visible = !inside
+      if (westRoad) westRoad.root.visible = inside
       if (busIn) {
         busIn.root.position.x = busDx(t)
         busIn.setDoor((t - DOORS_MS) / 620)
@@ -813,6 +832,7 @@ declare global {
       introProbe(): {
         cam: [number, number, number]; actor: [number, number, number]
         dist: number; visible: boolean; phone: string
+        arm: Record<string, [number, number, number]>
       }
       /** 지금 화면 안에 들어온 게이트 표지 수 (0~6) */
       visibleGates(): number
@@ -915,6 +935,16 @@ window.__game = {
         const v = new Vector3()
         phone.root.getWorldPosition(v)
         return `${phone.root.visible} ${v.x.toFixed(2)},${v.y.toFixed(2)},${v.z.toFixed(2)}`
+      })(),
+      arm: (() => {
+        const out: Record<string, [number, number, number]> = {}
+        const v = new Vector3()
+        for (const n of ['ShoulderR', 'UpperArmR', 'LowerArmR']) {
+          const o = player?.root.getObjectByName(n)
+          if (o) { o.getWorldPosition(v); out[n] = [+v.x.toFixed(3), +v.y.toFixed(3), +v.z.toFixed(3)] }
+        }
+        if (phone) { phone.root.getWorldPosition(v); out.phone = [+v.x.toFixed(3), +v.y.toFixed(3), +v.z.toFixed(3)] }
+        return out
       })(),
     }
   },
