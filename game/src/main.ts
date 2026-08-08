@@ -37,7 +37,7 @@ import {
   ambienceHzOf, announceOn, heartIntensity, heartbeatIntervalMs, heartbeatOn,
   stepCutoffOf, stepIntervalMs, stepKindOf,
 } from './audio/cues'
-import { loadSave, recordEnding } from './core/save'
+import { recordEnding } from './core/save'
 
 const BASE = import.meta.env.BASE_URL
 
@@ -260,11 +260,6 @@ const recordIfEnded = (s: GameState): void => {
   if (s.phase !== 'ended' || !s.endingId) { return }
   if (recordedEnding === s.endingId) return
   recordedEnding = s.endingId
-  /**
-   * "처음 본 엔딩인가" 는 **기록하기 전에** 읽어야 한다.
-   * `recordEnding` 뒤에 읽으면 방금 쓴 칸이 보여 항상 "이미 본 것"이 된다.
-   */
-  screens.setEndingMeta({ isNew: !loadSave().endings[s.endingId] })
   recordEnding(s.endingId, s.boarded ? Math.max(0, s.timeLeftMs) : 0)
 }
 

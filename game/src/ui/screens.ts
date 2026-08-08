@@ -2,54 +2,110 @@
  * 타이틀 · 로딩 · 엔딩 화면.
  *
  * ★ **두 화면 다 실물 여객 안내 설비다.** 게임 메뉴가 아니다.
- *   · 타이틀 — 천장에 매달린 **행선안내 전광판** 한 장. 화면의 UI 오브젝트는 그것뿐이다.
- *   · 엔딩   — 같은 설비의 **결과 표시**. 판정 램프 색만 톤별로 갈린다.
- *   게임 중 HUD 상단 바가 이미 앰버 LED 언어(`css/hud.css`)라 세 화면이 한 계통이 된다.
+ *   서울 지하철 80% · 게임 UI 20%. 판 밖으로 나가는 카드·박스를 만들지 않는다.
  *
- * 예전 판이 "어느 게임에 붙여도 되는 껍데기"였던 원인은 전부 걷어냈다 —
- * 가운데 정렬 반투명 카드 · 배경 블러 · 방사형 비네팅 · 깜빡이는 앰버 CTA ·
- * 균등 간격 키캡 칩. 남은 깜빡임은 **엔딩의 NEW 배지 하나**뿐이고, 그건 실물
- * 전광판이 원래 깜빡이므로 장식이 아니라 고증이다.
+ * ── 이번 판에서 **덜어 낸** 것 ──
+ *   앞선 판은 방향은 맞았는데 **큰 전광판에 웹 UI 를 넣은 꼴**이었다. 작은 글자가
+ *   너무 많아 어느 것도 안 읽혔다. 그래서 요소를 더하는 대신 지웠다.
+ *     · 타이틀 하단 조작법 한 줄 — 이것 하나가 화면을 개발 데모로 만들었다
+ *     · 타이틀의 SEED · 플레이 횟수 — 결과에 영향을 주지 않는 디버그성 수치
+ *     · 엔딩의 혼잡도·체력·양심·스타일·발견 **동시 노출** — 6개를 다 보여 주면
+ *       무슨 엔딩인지가 안 보인다. 엔딩마다 **관련 있는 값 최대 2개**만 고른다
+ *     · 엔딩 NEW 배지 — 도감을 화면에서 숨긴 이상 혼자서는 뜻이 안 선다
+ *
+ * 기준 하나: **읽을 수 없는 정보는 정보가 아니다.**
  */
 
 import { formatClock } from '../core/math'
-import { pickHint, pickLine, resolveEnding } from '../data/endings'
-import { loadSave } from '../core/save'
+import { pickLine, resolveEnding, type EndingDef } from '../data/endings'
+import { QUEUE_MARKERS } from '../data/world'
 import type { GameState } from '../state/types'
 // 스타일은 `css/screens.css` 가 단일 원천이다 — UI 킷(/uikit.html)이 같은 파일을 읽는다.
 import CSS from './css/screens.css?inline'
-
-/** 엔딩 화면이 판정 밖에서 받아야 하는 값 — 지금은 "처음 본 엔딩인가" 하나다. */
-export type EndingMeta = Readonly<{ isNew: boolean }>
 
 export type Screens = Readonly<{
   sync(s: GameState): void
   hideLoading(): void
   setLoading(text: string): void
-  /**
-   * 엔딩 부가 정보. **`main.ts` 가 기록 전에** 넣어 준다 —
-   * 화면이 직접 세이브를 읽으면 이미 기록된 뒤라 항상 "이미 본 엔딩"이 된다.
-   */
-  setEndingMeta(meta: EndingMeta): void
 }>
 
-/** 5칸 막대. 채워진 칸이 많을수록 값이 크다 */
-const bars = (ratio: number, on = '■', off = '□'): string => {
-  const n = Math.max(0, Math.min(5, Math.round(ratio * 5)))
-  return on.repeat(n) + off.repeat(5 - n)
-}
+/**
+ * 다음 열차까지. **타이틀과 엔딩이 같은 값을 쓴다** — 한쪽만 고치면 같은 역의
+ * 두 안내판이 서로 다른 말을 하게 된다. 시뮬에 없는 값이라 표시 상수로만 둔다
+ * (열차 스케줄은 `systems/train.ts` 가 이번 편성 하나만 다룬다).
+ */
+const NEXT_TRAIN = '4분 30초'
+
+/** 판정 문구 — 상태값에만 색이 붙는다. 판 전체를 물들이지 않는다. */
+const TONE_WORD = { success: '성공', fail: '실패', hidden: '특별' } as const
+
+/** 화면에 띄우는 결과값 한 칸. `wide` 면 두 칸을 합쳐 한 줄로 쓴다. */
+type Fact = Readonly<{ label: string; value: string; wide?: boolean }>
+
+const won = (n: number): string => `${n.toLocaleString('ko-KR')}원`
+
+/** 3-1 승차위치에서 탔는가 — E-03 의 판정과 같은 식(`data/endings.ts`)이다 */
+const atFirstQueue = (s: GameState): boolean =>
+  s.boardedDoorX !== null && Math.abs(s.boardedDoorX - QUEUE_MARKERS[0].x) <= 3
 
 /**
- * 양심은 **숫자를 안 쓴다** (GDD §7.2). 대신 부호와 점 개수로 낸다 —
- * 부호가 없으면 `●●●` 이 좋은 건지 나쁜 건지 화면만 봐서는 알 수 없다.
+ * 이 엔딩에서 **기억에 남는 값**을 고른다 — 최대 2개.
+ *
+ * ★ 여기가 이번 개편의 핵심이다. 예전엔 16종 전부에 같은 6개 수치를 뿌리고
+ *   색만 갈랐다. 그러면 "무슨 일이 있었나"가 아니라 "성적표"가 된다.
+ *   동전 부자에게 필요한 건 동전이지 스타일 점수가 아니고, 단소에 맞아 끝난
+ *   판에 필요한 건 몇 대 맞았나지 시크릿 개수가 아니다.
+ *
+ * 데이터를 새로 만들지 않는다 — 전부 `GameState` 와 `EndingDef` 에 이미 있는 값이다.
+ * 판단만 여기(표현 계층)서 하고 `data/endings.ts` 는 건드리지 않는다.
  */
-const conscience = (c: number): string => {
-  const n = Math.min(5, Math.abs(c))
-  if (n === 0) return '·'
-  return `${c > 0 ? '+' : '−'} ${'●'.repeat(n)}${'○'.repeat(5 - n)}`
-}
+const factsFor = (e: EndingDef, s: GameState): readonly Fact[] => {
+  const left: Fact = { label: '남은 시간', value: formatClock(Math.max(0, s.timeLeftMs)) }
+  const next: Fact = { label: '다음 열차', value: NEXT_TRAIN }
+  // 실패 계열 중 **원인이 곧 교훈**인 것들은 힌트 한 줄이 어떤 수치보다 값지다
+  const hint = (): readonly Fact[] =>
+    e.hint ? [{ label: '', value: e.hint, wide: true }] : [next]
 
-const TONE_WORD = { success: '성공', fail: '실패', hidden: '특별' } as const
+  switch (e.id) {
+    // ── 시간이 곧 이 엔딩인 것들 ──
+    case 'E-01': case 'E-02': case 'E-04':
+      return [left]
+    case 'E-03':
+      // 앉아서 간다 — 승차위치가 조건이다. 그게 이 엔딩이 특별한 이유다
+      return atFirstQueue(s) ? [{ label: '승차위치', value: '3-1' }, left] : [left]
+
+    // ── 열차를 놓친 것들 — 다음 열차가 유일하게 쓸모 있는 정보다 ──
+    case 'E-06':
+      return [next]
+    case 'E-07':
+      return [next]
+
+    // ── 원인이 분명한 실패 — 힌트가 결과값을 대신한다 ──
+    case 'E-08': case 'E-09': case 'E-15': case 'E-16':
+      return hint()
+
+    // ── 값 자체가 사건인 것들 ──
+    case 'E-10':
+      return [{ label: '양심', value: `${s.scores.conscience}` }]
+    case 'E-11':
+      return [{ label: '밀친 횟수', value: `${s.tally.pushes}회` }]
+    case 'E-14':
+      return [{ label: '획득 동전', value: won(s.tally.coinsEarned) }, left]
+
+    // ── 히든 — 왜 이게 떴는지가 곧 보상이다 ──
+    case 'E-05': {
+      const why = e.reason?.(s)
+      return why ? [{ label: '달성', value: why, wide: true }] : [left]
+    }
+    case 'E-12':
+      return [{ label: '', value: '유실물 반납 · 할아버지 · 자리 양보', wide: true }]
+    case 'E-13':
+      return []                    // 문구 하나로 끝나는 엔딩이다. 억지로 채우지 않는다
+
+    default:
+      return s.boarded ? [left] : [next]
+  }
+}
 
 export const createScreens = (mount: HTMLElement): Screens => {
   const style = document.createElement('style')
@@ -66,59 +122,40 @@ export const createScreens = (mount: HTMLElement): Screens => {
   mount.appendChild(el)
 
   let lastKey = ''
-  let meta: EndingMeta = { isNew: false }
 
   /**
-   * 타이틀 — 매달린 안내판 한 장.
+   * 타이틀 — 매달린 안내판 한 장. 화면에서 **가장 먼저 읽혀야 하는 것은 게임 이름**이다.
    *
-   * 정보 배치는 실물을 따른다: 왼쪽이 노선 로고, 오른쪽이 이번/다음 열차,
-   * 맨 아래가 **흐르는 안내 문구**다. 조작법·플레이 횟수·시드는 전부 그 문구 줄이
-   * 받는다 — 카드를 만들지 않으면서 정보를 다 담을 수 있는 자리가 거기뿐이고,
-   * 실물이 원래 그렇게 쓴다.
+   * 그래서 `PRESS ENTER` 를 흰 LED 로 내린다. 앰버로 두면 로고와 같은 밝기라
+   * 시선이 갈린다 — 안내판에서 앰버는 "지금 무슨 열차가 오는가"의 색이지
+   * 버튼의 색이 아니다.
    */
-  const title = (s: GameState): string => {
-    const save = loadSave()
-    // 첫 판에만 조작을 편다. 열두 번째 플레이에 튜토리얼을 다시 읽힐 이유가 없다.
-    const notice = save.plays === 0
-      ? '이동 W A S D · 달리기 SHIFT · 점프 SPACE · 상호작용 E · 관찰 Q · 아이템 1–0 · 시점 V · 설정 ESC'
-      : `플레이 ${save.plays}회 · SEED ${s.seed} · 시점 V · 관찰 Q · 설정 ESC`
-
-    return `
-      <div class="board title">
-        <div class="brackets"><i></i><i></i></div>
-        <div class="face">
-          <div class="row">
-            <div class="logo">
-              <span class="train" aria-hidden="true"></span>
-              <b class="ko"><em>지하철</em> <u>러쉬</u></b>
-              <span class="speed" aria-hidden="true"><i></i><i></i><i></i></span>
-              <small>SUBWAY RUSH</small>
-            </div>
-            <div class="arrive">
-              <div class="dir"><span class="line2">2</span>신도림 방면</div>
-              <dl><dt>이번 열차</dt><dd class="soon">잠시 후 도착</dd></dl>
-              <dl><dt>다음 열차</dt><dd>4분 30초</dd></dl>
-            </div>
+  const title = (): string => `
+    <div class="board title">
+      <div class="brackets"><i></i><i></i></div>
+      <div class="face">
+        <div class="row">
+          <div class="logo">
+            <span class="train" aria-hidden="true"></span>
+            <b class="ko"><em>지하철</em> <u>러쉬</u></b>
+            <span class="speed" aria-hidden="true"><i></i><i></i><i></i></span>
+            <small>SUBWAY RUSH</small>
           </div>
-          <div class="cta">▶ PRESS ENTER ◀</div>
+          <div class="arrive">
+            <div class="dir"><span class="line2">2</span>신도림 방면</div>
+            <dl><dt>이번 열차</dt><dd class="soon">잠시 후 도착</dd></dl>
+            <dl><dt>다음 열차</dt><dd>${NEXT_TRAIN}</dd></dl>
+          </div>
         </div>
-        <div class="ticker"><span>${notice}</span></div>
-      </div>`
-  }
+        <div class="cta"><i>▶</i><b>PRESS ENTER</b><i>◀</i></div>
+        <div class="keys"><span><b>ESC</b> 설정</span></div>
+      </div>
+    </div>`
 
   const ending = (s: GameState): string => {
     const e = resolveEnding(s)
     el.className = `on ${e.tone}`
-
-    // 흐르는 안내 — 성공·히든은 대사, 실패는 힌트. 뒤에 "왜 이 엔딩인가"를 붙인다.
-    // `reason` 은 데이터에 있는데 예전 화면이 읽지 않아 죽어 있던 값이다.
-    const head = e.tone === 'fail' ? (e.hint ?? pickHint(s.seed)) : pickLine(e, s.seed)
-    const why = e.reason?.(s)
-    const notice = why ? `${head} ▶ ${why}` : head
-
-    // 이번 판 — 성적이 아니다. 혼잡도는 판이 얼마나 붐볐나, 체력은 얼마나 몰아붙였나.
-    const crowd = s.elapsedMs > 0 ? s.tally.crowdMs / s.elapsedMs : 0
-    const stam = s.tally.staminaMin / 100
+    const facts = factsFor(e, s)
 
     return `
       <div class="board result">
@@ -128,51 +165,32 @@ export const createScreens = (mount: HTMLElement): Screens => {
             <span><span class="line2">2</span>신도림 방면</span>
             <span>${e.id}</span>
           </div>
-          <div class="body">
+          <div class="title-row">
             <div class="name">${e.tone === 'hidden' ? '★ ' : ''}${e.title}</div>
-            <div class="verdict">
-              <b>${TONE_WORD[e.tone]}</b>
-              <small>${s.boarded ? '탑승 완료' : '열차 출발'}</small>
-            </div>
-            <div class="metrics">
-              <div>
-                <h4>이번 판</h4>
-                <dl><dt>혼잡도</dt><dd>${bars(crowd, '●', '○')}</dd></dl>
-                <dl><dt>체력</dt><dd>${bars(stam)}</dd></dl>
-              </div>
-              <div>
-                <h4>내 성적</h4>
-                <dl><dt>잔여</dt><dd>${formatClock(Math.max(0, s.timeLeftMs))}</dd></dl>
-                <dl><dt>양심</dt><dd>${conscience(s.scores.conscience)}</dd></dl>
-                <dl><dt>스타일</dt><dd>${bars(Math.min(1, s.scores.style / 8))}</dd></dl>
-                <dl><dt>발견</dt><dd>${s.scores.knowledge} / 12</dd></dl>
-              </div>
-            </div>
+            <div class="verdict">${TONE_WORD[e.tone]}</div>
           </div>
+          <div class="say">${pickLine(e, s.seed)}</div>
+          ${facts.length === 0 ? '' : `<div class="facts">${facts.map((f) => `
+            <dl${f.wide ? ' class="wide"' : ''}>
+              ${f.label ? `<dt>${f.label}</dt>` : ''}<dd>${f.value}</dd>
+            </dl>`).join('')}</div>`}
+          <div class="keys"><span><b>R</b> 다시하기</span><span><b>ESC</b> 설정</span></div>
         </div>
-        <div class="ticker">
-          <span>${notice}</span>
-          ${meta.isNew ? '<b class="new">NEW</b>' : ''}
-        </div>
-      </div>
-      <div class="keys">R 다시 · ESC 설정</div>`
+      </div>`
   }
 
   return {
     hideLoading() { loading.style.display = 'none' },
     setLoading(text: string) { loading.textContent = text },
-    setEndingMeta(m) { meta = m; lastKey = '' },
     sync(s) {
-      // 엔딩 화면에 채점 결과를 찍으므로 메모 키에 그 값도 넣는다.
-      // 안 넣으면 첫 렌더 시점의 점수가 굳어 버린다 (phase:endingId:seed 만으로는 못 잡는다)
-      const key = `${s.phase}:${s.endingId ?? ''}:${s.seed}:${meta.isNew}:` +
-        `${s.scores.conscience},${s.scores.style},${s.scores.knowledge},` +
-        `${s.tally.crowdMs},${s.tally.staminaMin},${s.boarded}`
+      // 엔딩 화면이 읽는 값이 바뀌면 다시 그린다. 안 넣으면 첫 렌더 시점 값이 굳는다.
+      const key = `${s.phase}:${s.endingId ?? ''}:${s.seed}:${s.boarded}:` +
+        `${s.timeLeftMs}:${s.scores.conscience},${s.tally.coinsEarned},${s.tally.pushes}`
       if (key === lastKey) return
       lastKey = key
       if (s.phase === 'title') {
         el.className = 'on'
-        el.innerHTML = title(s)
+        el.innerHTML = title()
       } else if (s.phase === 'ended') {
         el.innerHTML = ending(s)
       } else {
