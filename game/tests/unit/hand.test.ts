@@ -52,12 +52,25 @@ describe('슬롯 키 — 쓸 데가 없으면 든다', () => {
     expect(s.hand.item, '손에 들지 않는다').toBeNull()
   })
 
-  it('착용형은 예전 그대로 토글이다 — 손이 아니라 몸에 걸친다', () => {
-    const on = tap(nowhere(['I-06']), { pressSlot: 1 })
-    expect(on.flags).toContain('MASK_ON')
-    expect(on.hand.item, '마스크는 손에 드는 물건이 아니다').toBeNull()
+  it('토글 가능한 착용형(캐리어)은 그대로 토글이다 — 손이 아니라 몸에 걸친다', () => {
+    const on = tap(nowhere(['I-10']), { pressSlot: 1 })
+    expect(on.flags).toContain('CARRIER_ON')
+    expect(on.hand.item, '캐리어는 손에 드는 물건이 아니다').toBeNull()
     const off = tap(on, { pressSlot: 1 })
-    expect(off.flags).not.toContain('MASK_ON')
+    expect(off.flags).not.toContain('CARRIER_ON')
+  })
+
+  it('마스크는 토글이 없어져서 이제 그냥 손에 든다 (디렉터 지시)', () => {
+    const s = tap(nowhere(['I-06']), { pressSlot: 1 })
+    expect(s.flags, '슬롯 키로는 안 켜진다').not.toContain('MASK_ON')
+    expect(s.hand.item, '대신 다른 아이템처럼 손에 든다').toBe('I-06')
+  })
+
+  it('이어폰은 손에도 안 든다 — 귀에 꽂는 물건이지 드는 물건이 아니다 (디렉터 지시)', () => {
+    const s = tap(nowhere(['I-05']), { pressSlot: 1 })
+    expect(s.flags, '슬롯 키로는 안 켜진다').not.toContain('EARBUDS_ON')
+    expect(s.hand.item, '손에도 안 든다').toBeNull()
+    expect(s.act.denyText, '거부도 아니다 — 조용히 아무 일도 안 한다').toBe('')
   })
 })
 

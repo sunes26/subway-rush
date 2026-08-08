@@ -266,7 +266,49 @@ export const STAIRS: Ramp = {
   carryDir: 1,
 }
 
-export const RAMPS: readonly Ramp[] = [ENTRANCE_RAMP_A, ENTRANCE_RAMP_B, ESCALATOR, STAIRS]
+/**
+ * 반대 방면(디렉터 지시) — 게이트9(y24) 동쪽 빈 홀을 뚫어 새 통로를 냈다.
+ * Blender에서 기존 Z4_DESCENT·Z5_PLATFORM·Z5_TRAIN 을 **y만 +40** 미러 복제했다
+ * (회전은 안 줬다 — "반대 방면"은 시각 반전이 아니라 별도 플랫폼·열차로 표현한다).
+ * 그래서 이 아래 값들도 전부 원본에 `Y_OFFSET_OPP` 를 더한 것뿐이다 — x·z는 원본과 동일.
+ */
+export const Y_OFFSET_OPP = 40
+
+export const ESCALATOR_OPP: Ramp = {
+  id: 'OBJ-24-OPP',
+  rect: [95.8, 1.35 + Y_OFFSET_OPP, 120.0, 3.05 + Y_OFFSET_OPP],
+  axis: 'x',
+  zAtMin: FLOOR.B1,
+  zAtMax: FLOOR.B2,
+  kind: 'escalator',
+  carrySpeed: 1.5,
+  carryDir: 1,
+}
+
+export const STAIRS_OPP: Ramp = {
+  id: 'OBJ-25-OPP',
+  rect: [95.8, 4.2 + Y_OFFSET_OPP, 120.0, 9.2 + Y_OFFSET_OPP],
+  axis: 'x',
+  zAtMin: FLOOR.B1,
+  zAtMax: FLOOR.B2,
+  kind: 'stairs',
+  carrySpeed: 0,
+  carryDir: 1,
+}
+
+export const RAMPS: readonly Ramp[] = [
+  ENTRANCE_RAMP_A, ENTRANCE_RAMP_B, ESCALATOR, STAIRS, ESCALATOR_OPP, STAIRS_OPP,
+]
+
+/**
+ * 계단·에스컬레이터·엘리베이터 앞 착지대(B1 쪽) — 디렉터 지시로 열차 도착의
+ * 위치 트리거로 쓴다. STAIRS·ESCALATOR 상단(x 95.8)과 OBJ-26-ELEV(x96~98.4·y9.6~12)를
+ * 아우르는 폭으로 잡았다 — "계단/엘리베이터 위치에 도착했을 때"가 이 셋 중 아무거나
+ * 앞이면 성립해야 하기 때문이다.
+ */
+export const TRAIN_TRIGGER_ZONE: Rect = [95.0, 1.0, 99.5, 12.5]
+export const TRAIN_TRIGGER_ZONE_OPP: Rect =
+  [95.0, 1.0 + Y_OFFSET_OPP, 99.5, 12.5 + Y_OFFSET_OPP]
 
 // ═══════════════════════ Z5 · 승강장 (B2 −20) ═══════════════════════
 // 부록 A: 승강장A y0~12 · 안전문 y12.15 · 선로A y14.0 · x 78~206
@@ -283,6 +325,16 @@ export const PSD_HALF_THICK = 0.12
 export const DOOR_XS: readonly number[] = Array.from({ length: 8 }, (_, k) =>
   [2, 6, 10, 14].map((o) => 78 + 16 * k + o),
 ).flat()
+
+/** 반대 방면 플랫폼 — x·문 배치는 원본과 같고 y만 `Y_OFFSET_OPP` 만큼 밀렸다 */
+export const PLATFORM_OPP = {
+  xMin: PLATFORM.xMin, xMax: PLATFORM.xMax,
+  yMin: PLATFORM.yMin + Y_OFFSET_OPP, yMax: PLATFORM.yMax + Y_OFFSET_OPP,
+} as const
+export const PLATFORM_WALK_YMAX_OPP = PLATFORM_WALK_YMAX + Y_OFFSET_OPP
+export const PSD_Y_OPP = PSD_Y + Y_OFFSET_OPP
+/** 문 x 위치는 원본과 동일 — 두 플랫폼이 나란히 안 놓이고 y로만 갈리기 때문이다 */
+export const DOOR_XS_OPP: readonly number[] = DOOR_XS
 
 /**
  * 승강장 기둥 — Blender `Z5_colr_*` 와 **같은 좌표**에서 나온다.
@@ -372,6 +424,28 @@ export const SLABS: readonly Slab[] = [
 
   // ── Z5 (B2)
   { id: 'Z5', rect: [PLATFORM.xMin, PLATFORM.yMin, PLATFORM.xMax, PLATFORM_WALK_YMAX], z: FLOOR.B2, kind: 'platform' },
+
+  /**
+   * ⚠ 반대 방면(디렉터 지시) — 여기부터가 실제 사고였다. `SOLIDS`(벽)만 미러
+   * 복제했지 **바닥(`SLABS`)은 하나도 안 옮겼다.** `isWalkable`은 `SOLIDS`가 아니라
+   * `SLABS`/`RAMPS`로 발밑을 잰다 — 그래서 벽은 다 있는데 반대 방면 전체가
+   * "밟을 데가 없어서" 실측 스크린샷처럼 안 이어진 것처럼 보였다.
+   * CONN 연결부·Z4-OPP 통로·Z5-OPP 승강장을 전부 원본과 같은 폭으로 y만
+   * `Y_OFFSET_OPP` 만큼 밀어 새로 등록한다.
+   */
+  // ── Z3 연결부 — CONN-W/E(위 SOLIDS) 사이 바닥. y42.2까지 — Z4-COR-S-OPP 북쪽 면에 닿는다.
+  { id: 'Z3-CONN-OPP', rect: [56, 32, 72, 52.4], z: FLOOR.B1, kind: 'paid' },
+  // ── Z4-OPP 상부 (B1) — 반대 방면 운임구역 통로
+  { id: 'Z4-UPPER-OPP', rect: [72, 2 + Y_OFFSET_OPP, 95.8, 12 + Y_OFFSET_OPP], z: FLOOR.B1, kind: 'paid' },
+  // Z4-OPP 하부 착지 (B2) — 램프 하단 ~ 승강장
+  { id: 'Z4-LOWER-OPP', rect: [119.0, 1.0 + Y_OFFSET_OPP, 128, 9.5 + Y_OFFSET_OPP], z: FLOOR.B2, kind: 'platform' },
+  // ── Z5-OPP (B2)
+  {
+    id: 'Z5-OPP',
+    rect: [PLATFORM_OPP.xMin, PLATFORM_OPP.yMin, PLATFORM_OPP.xMax, PLATFORM_WALK_YMAX_OPP],
+    z: FLOOR.B2,
+    kind: 'platform',
+  },
 ]
 
 // ═══════════════════════ 충돌체 (정적) ═══════════════════════
@@ -475,7 +549,14 @@ export const SOLIDS: readonly Solid[] = [
   parapet('Z2-NW-CAP', [0, 30, 2.0, 30.4], FLOOR.B1, 4.0),
   parapet('Z2-W', [-0.4, 0, 0, 30.4], FLOOR.B1, 4.0),
   // Z2 → Z3 진입선 x=56 · 개구부 y 9~19 (부록 A)
-  ...wallWithGaps('Z2-E', 'y', [55.8, 56.2], [0, 30.4], [[9, 19]], FLOOR.B1, 4.0, 'wall', PARAPET_H),
+  /**
+   * ⚠ **원래부터 y30.4에서 멈춰 있었다 — Z3 쪽 방(y0~32) 폭보다 1.6m 짧다.**
+   * 이 틈(x56·y30.4~32)은 예전 `Z3-N`(원본)이 정확히 그 위치에서 이 구멍을 가려서
+   * 안 보였을 뿐, 충돌·시각 둘 다 원래 뚫려 있었다 — `Z3-N`을 반대 방면 연결부로
+   * 대체하면서 노출됐다(실측: 연결부 근처에서 서쪽 위를 보면 Z1 지상 건물이 그대로
+   * 비쳤다). y32까지 늘려 `Z3` 방의 실제 서쪽 경계와 맞춘다.
+   */
+  ...wallWithGaps('Z2-E', 'y', [55.8, 56.2], [0, 32], [[9, 19]], FLOOR.B1, 4.0, 'wall', PARAPET_H),
 
   // ───────────── Z3 (B1) ─────────────
   // OBJ-12 역무실 (부록 A: 실 x56.3~61.5 · y0.2~4.0)
@@ -499,7 +580,49 @@ export const SOLIDS: readonly Solid[] = [
   solid('OBJ-22-INTERCOM', at(58.2, 30, 0.5, 0.5), FLOOR.B1, 1.4, 'prop'),
   // Z3 외벽
   parapet('Z3-S', [56, -0.4, 72, 0], FLOOR.B1, 4.0),
-  parapet('Z3-N', [56, 32, 72, 32.4], FLOOR.B1, 4.0),
+  /**
+   * Z3-N — **디렉터 지시로 뺐다.** 게이트9(y24) 동쪽 이 자리(x56~72·y32)가
+   * 반대 방면 통로로 가는 연결부다. Blender에서도 같은 폭(x56~72)의
+   * `xx_Z3_wall_N` 으로 은퇴시켰다(레포 규약 — 지우지 않고 격리) — 시각·충돌이
+   * 어긋나면 안 보이는데 막히거나, 보이는데 안 막히는 사고가 난다.
+   *
+   * ⚠ **벽에 붙어 있던 광고판·코니스·걸레받이(`Z3wN_hq_*` 25개)는 벽이 아니라 서로
+   * 다른 오브젝트다.** 벽만 은퇴시키고 이것들을 안 건드렸더니, 실측(플레이 스크린샷)에서
+   * "벽처럼 보이는데 통과된다"가 나왔다 — 진짜 벽은 없어졌는데 그 벽에 발라 뒀던
+   * 장식(배경판·프레임·트림)은 y32 그 자리에 그대로 남아 있어서 눈에는 막힌 벽으로
+   * 읽혔다. 벽 하나를 지울 때 **그 벽에 붙은 장식 오브젝트까지 같이** 은퇴시켜야 한다 —
+   * 이름이 이어져 있어도(`Z3wN_hq_*`) 별개 오브젝트라 자동으로 안 따라간다.
+   *
+   * ⚠ **`Z4-COR-S-OPP`(통로 남쪽 벽, x72~95.8·y41.6~42.0)의 서쪽 모서리가 x=72에서
+   * 시작한다 — `CONN-E`류 벽을 세우든 없애든 그 모서리 자체는 그대로다.**
+   * `CONN-E`를 세웠을 때도(모서리 두 개), 없앴을 때도(모서리 한 개) 실제 `tick()`으로
+   * 대각선으로 걸어 재현하면 x=72 언저리에서 걸렸다 — `isWalkable`(바닥 유무)로는
+   * 안 잡히고 `movementSystem`의 원형 충돌로만 드러났다. 원본(`Z4-COR-S`, x72~95.8·
+   * y1.6~2.0)도 **같은 모서리 구조**지만 실전에서 안 걸리는 이유는 `Z3-E`의 좁은 틈
+   * ([2,12], 폭 0.4m)이 x=72 를 넘기 **전에** 플레이어 y를 이미 그 대역 안으로
+   * 강제하기 때문이다 — 틈 자체가 방향을 정렬해 준다. 그래서 여기도 `Z3-E-OPP`
+   * (아래, `Z3-E`와 같은 자리·같은 폭)를 세워 같은 역할을 시킨다. 대신 연결부 바닥
+   * (`Z3-CONN-OPP` 슬랩)과 서쪽 벽(`CONN-W`)도 반대 방면 통로 안쪽까지 넉넉히
+   * 겹쳐서, x=72 를 넘기 전에 이미 통로의 걷는 폭(y42~52) 한가운데 들어와 있게
+   * 만든다 — 그래야 `Z4-COR-S-OPP`(통로 남쪽 벽, y41.6~42.0) 근처를 스치지 않는다.
+   * 실측: `tick()` 시뮬레이션으로 여러 진입 각도에서 걸어 전부 통과 확인.
+   *
+   * ⚠ **처음엔 y46까지만 겹쳤다가 또 뚫렸다.** 통로 안(x>72)은 y42~52 전 구간이
+   * 유효한데, 연결부(x<72)는 y46에서 끝나 있었다 — 그래서 통로 안 y47~52 어디서든
+   * 서서 서쪽(연결부 쪽)을 보면 그 시야가 연결부의 바닥·천장이 없는 구간을 그대로
+   * 지나쳐 허공이 비쳤다(실측: x77.4·y46.7 에서 뒤돌아보면 새까만 사각형).
+   * `isWalkable`도 실측 스크린샷도 이 결함을 못 잡는다 — **통로 반대쪽 끝에서
+   * 되돌아보는 것**까지 확인해야 한다. 통로와 정확히 같은 폭(y32~52.4, `Z4-COR-N-OPP`
+   * 북쪽 벽 두께까지)으로 맞춘다.
+   */
+  parapet('CONN-W', [55.8, 32, 56.2, 52.4], FLOOR.B1, 4.0),
+  ...wallWithGaps('Z3-E-OPP', 'y', [71.8, 72.2], [32, 52.4], [[42, 52]], FLOOR.B1, 4.0, 'wall', PARAPET_H),
+  /**
+   * 연결부 북쪽 마감 — `Z4-COR-N-OPP`(통로 북쪽 벽, y52.0~52.4)와 같은 y 대역으로
+   * 맞춰서 x56~95.8 전체가 한 벽처럼 이어지게 한다. x=72 까지만 막는다 — 그 너머는
+   * 통로 안쪽이라 여기서 막으면 통로 왕래를 가로막는다.
+   */
+  parapet('CONN-N-CAP', [56, 52, 72, 52.4], FLOOR.B1, 4.0),
   // Z3 → Z4 : x=72, 개구부 y 2~12 (부록 A: 통로 (72,2)→(96,12))
   ...wallWithGaps('Z3-E', 'y', [71.8, 72.2], [0, 32.4], [[2, 12]], FLOOR.B1, 4.0, 'wall', PARAPET_H),
 
@@ -539,6 +662,32 @@ export const SOLIDS: readonly Solid[] = [
   ...wallWithGaps(
     'PSD', 'x', [PSD_Y - PSD_HALF_THICK, PSD_Y + PSD_HALF_THICK], [PLATFORM.xMin, PLATFORM.xMax],
     DOOR_XS.map((x) => [x - 0.8, x + 0.8] as const),
+    FLOOR.B2, 2.0, 'psd',
+  ),
+
+  // ═══════════ 반대 방면(디렉터 지시) — 전부 원본 + Y_OFFSET_OPP ═══════════
+  // ───────────── Z4-OPP (B1 → B2) ─────────────
+  parapet('Z4-COR-S-OPP', [72, 1.6 + Y_OFFSET_OPP, 95.8, 2.0 + Y_OFFSET_OPP], FLOOR.B1, 4.0),
+  parapet('Z4-COR-N-OPP', [72, 12.0 + Y_OFFSET_OPP, 95.8, 12.4 + Y_OFFSET_OPP], FLOOR.B1, 4.0),
+  parapet('Z4-DESC-S-OPP', [95.8, 0.95 + Y_OFFSET_OPP, 120.4, 1.35 + Y_OFFSET_OPP], FLOOR.B2, 15.0),
+  {
+    id: 'Z4-DIVIDER-OPP', rect: [95.8, 3.05 + Y_OFFSET_OPP, 120.4, 4.2 + Y_OFFSET_OPP],
+    z0: FLOOR.B2, h: 15.0, look: 'wall', renderH: 0.9,
+  },
+  parapet('Z4-DESC-N-OPP', [95.8, 9.2 + Y_OFFSET_OPP, 120.4, 9.6 + Y_OFFSET_OPP], FLOOR.B2, 15.0),
+  solid('OBJ-26-ELEV-OPP', [96.0, 9.6 + Y_OFFSET_OPP, 98.4, 12.0 + Y_OFFSET_OPP], FLOOR.B1, 3.2, 'glass'),
+  parapet('Z4-COR-CAP-OPP', [95.8, 9.6 + Y_OFFSET_OPP, 96.2, 12.0 + Y_OFFSET_OPP], FLOOR.B1, 4.0),
+
+  // ───────────── Z5-OPP (B2) ─────────────
+  parapet('Z5-END-W-OPP', [77.6, Y_OFFSET_OPP, 78.0, 12 + Y_OFFSET_OPP], FLOOR.B2, 5.0),
+  parapet('Z5-END-E-OPP', [206, Y_OFFSET_OPP, 206.4, 12 + Y_OFFSET_OPP], FLOOR.B2, 5.0),
+  parapet('Z5-S-OPP', [78, -0.4 + Y_OFFSET_OPP, 206, Y_OFFSET_OPP], FLOOR.B2, 5.0),
+  ...Z5_COLUMN_XS.map((x) =>
+    solid(`Z5-COL-OPP-${x}`, at(x, Z5_COLUMN_Y + Y_OFFSET_OPP, 1.1, 1.1), FLOOR.B2, 4.5, 'column')),
+  ...wallWithGaps(
+    'PSD-OPP', 'x', [PSD_Y_OPP - PSD_HALF_THICK, PSD_Y_OPP + PSD_HALF_THICK],
+    [PLATFORM_OPP.xMin, PLATFORM_OPP.xMax],
+    DOOR_XS_OPP.map((x) => [x - 0.8, x + 0.8] as const),
     FLOOR.B2, 2.0, 'psd',
   ),
 ]

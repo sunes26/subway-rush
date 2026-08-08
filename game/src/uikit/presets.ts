@@ -104,17 +104,6 @@ export const PRESETS: readonly Preset[] = [
     }),
   },
   {
-    id: 'ring-story',
-    group: '진행링',
-    label: '대화 15s — 남은 초',
-    note: '3초 이상이면 남은 초를 같이 띄운다. 안 띄우면 멈춘 것처럼 느껴진다',
-    state: (t) => act(base(), {
-      targetId: 'ACT-02-GP', aimed: true,
-      busyId: 'ACT-02-GP', busyKind: 'story',
-      busyTotalMs: 15_000, busyLeftMs: 15_000 * (1 - (t % 8) / 8),
-    }),
-  },
-  {
     id: 'ring-aside',
     group: '진행링',
     label: '"저기요…" 3s',
@@ -130,10 +119,10 @@ export const PRESETS: readonly Preset[] = [
   {
     id: 'deny-need',
     group: '사유',
-    label: '효자손이 필요하다',
+    label: '막대기 같은 게 필요해 보인다',
     note: '조건 미충족. 상태는 아무것도 안 바뀌고 이 한 줄만 뜬다 (GDD §5.1)',
     state: () => act(base(), {
-      targetId: 'OBJ-06', aimed: true, denyText: '효자손이 필요하다', denyMs: 1400,
+      targetId: 'OBJ-06', aimed: true, denyText: '막대기 같은 게 필요해 보인다', denyMs: 1400,
     }),
   },
   {
@@ -180,6 +169,57 @@ export const PRESETS: readonly Preset[] = [
       inventory: inv(['I-12', null, null]),
       flags: ['CHASE_DONE'] as readonly FlagId[],
     }), { dialogId: 'ACT-02-GP' }),
+  },
+
+  // ─────────────── 할아버지 대화(선물주기·말동무) — `#gpstory` ───────────────
+  {
+    id: 'gp-story',
+    group: '할아버지 대화',
+    label: '말동무 10줄 — 자동 진행 3s/줄',
+    note: '클릭 없이 3초마다 넘어간다. 8번째 줄(할아버지)이 정상 게이트 번호를 직접 알려준다',
+    state: (t) => act(base(), {
+      targetId: 'ACT-02-GP', aimed: true,
+      busyId: 'ACT-02-GP', busyKind: 'story',
+      busyTotalMs: 30_000, busyLeftMs: 30_000 * (1 - (t % 32) / 32),
+    }),
+  },
+  {
+    id: 'gp-give-correct',
+    group: '할아버지 대화',
+    label: '선물주기 — 양갱(정답)',
+    note: '플레이어가 먼저 묻고 할아버지가 답례로 효자손을 준다',
+    state: (t) => act(base({ inventory: inv(['I-12', null, null]) }), {
+      targetId: 'ACT-02-GP', aimed: true,
+      busyId: 'ACT-02-GP', busyKind: 'give',
+      busyTotalMs: 1500, busyLeftMs: 1500 * (1 - (t % 1.7) / 1.7),
+    }),
+  },
+  {
+    id: 'gp-give-wrong',
+    group: '할아버지 대화',
+    label: '선물주기 — 새우깡(오답)',
+    note: '완료되는 순간 E-15 로 즉시 실패한다',
+    state: (t) => act(base({ inventory: inv(['I-18', null, null]) }), {
+      targetId: 'ACT-02-GP', aimed: true,
+      busyId: 'ACT-02-GP', busyKind: 'give',
+      busyTotalMs: 1500, busyLeftMs: 1500 * (1 - (t % 1.7) / 1.7),
+    }),
+  },
+
+  // ─────────────── UI-19 편의점 상점 ───────────────
+  {
+    id: 'shop-open',
+    group: '편의점 상점',
+    label: '5종 진열 — 잔액 있음',
+    note: '로직은 `giftBranches` 그대로다 — 정답 하나만 진짜 효과가 있다',
+    state: () => act(base({ cardBalance: 1600 }), { dialogId: 'OBJ-19-GIFT' }),
+  },
+  {
+    id: 'shop-bought',
+    group: '편의점 상점',
+    label: '이미 골랐다 — 잠김',
+    note: '1회 한정. 카드·BUY 를 전부 회색으로 잠근다',
+    state: () => act(base({ flags: ['GIFT_BOUGHT'] as readonly FlagId[] }), { dialogId: 'OBJ-19-GIFT' }),
   },
 
   // ─────────────── QTE ───────────────
@@ -364,7 +404,7 @@ export const PRESETS: readonly Preset[] = [
     label: '잔액 부족 경고 + 사유',
     note: '적색 잔액(미세 진동)과 사유가 같이 뜰 때',
     state: () => act(base({ cardBalance: 900 }), {
-      targetId: 'OBJ-06', aimed: true, denyText: '효자손이 필요하다', denyMs: 1400,
+      targetId: 'OBJ-06', aimed: true, denyText: '막대기 같은 게 필요해 보인다', denyMs: 1400,
     }),
   },
 ]

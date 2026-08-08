@@ -44,7 +44,7 @@ export type Interactable = Readonly<{
   needs?: ItemId
   /** 필요 잔액 (원) */
   cost?: number
-  /** needs 미충족 시 사유 1줄 — GDD §5.1의 `"효자손이 필요하다"` 형식 */
+  /** needs 미충족 시 사유 1줄 — 디렉터 지시로 정확한 아이템명 대신 두루뭉실한 힌트를 준다 */
   needReason?: string
   /** 1회성인가 — 성공하면 `act.consumed`에 들어간다 */
   once: boolean
@@ -146,7 +146,7 @@ export const INTERACTABLES: readonly Interactable[] = [
     x: 13.03, y: 4.15, z: FLOOR.B1,
     label: '자판기 A',
     needs: 'I-01',
-    needReason: '효자손이 필요하다',
+    needReason: '막대기 같은 게 필요해 보인다',
     once: true,
   },
   {
@@ -155,7 +155,7 @@ export const INTERACTABLES: readonly Interactable[] = [
     x: 21.63, y: 4.15, z: FLOOR.B1,
     label: '자판기 B',
     needs: 'I-01',
-    needReason: '효자손이 필요하다',
+    needReason: '막대기 같은 게 필요해 보인다',
     once: true,
   },
   {
@@ -164,7 +164,7 @@ export const INTERACTABLES: readonly Interactable[] = [
     x: 25.93, y: 4.15, z: FLOOR.B1,
     label: '자판기 C',
     needs: 'I-01',
-    needReason: '효자손이 필요하다',
+    needReason: '막대기 같은 게 필요해 보인다',
     once: true,
   },
   {
@@ -359,10 +359,11 @@ export const INTERACTABLES: readonly Interactable[] = [
     once: true,
   },
 
-  // ───────────── 바닥 동전 6개 (I-02) ─────────────
+  // ───────────── 바닥 동전 3개 (I-02) ─────────────
   // 슬롯을 안 먹으므로 **줍는 데 판단이 없다.** 대신 경로에서 살짝 비껴 둔다 —
   // 기둥(x 12/24/36/48 × y 10/20)과 유도선(y 14 축)을 피한 자리들이다.
-  ...([[6, 12], [18, 12], [30, 20], [34, 8], [46, 12], [52, 20]] as const).map(
+  // 원래 6개였다가 디렉터 지시로 절반으로 줄었다 — 지도 전역에 퍼지도록 하나씩 걸렀다.
+  ...([[6, 12], [30, 20], [46, 12]] as const).map(
     ([x, y], i): Interactable => ({
       id: `ITM-02-${i + 1}`,
       kind: 'pickup',
@@ -386,7 +387,7 @@ const hash = (str: string): number => {
 
 /**
  * 동전 1개의 가치. 시드 × 대상 id 로 결정된다 —
- * **6개 합계는 보장하지 않는다.** 잔액 하한 보장은 자판기(`coinPlan`)의 몫이고,
+ * **3개 합계는 보장하지 않는다.** 잔액 하한 보장은 자판기(`coinPlan`)의 몫이고,
  * 동전까지 보장에 넣으면 "동전을 다 주우면 반드시 통과"가 되어 자판기가 무의미해진다.
  */
 export const coinValue = (seed: number, id: string): number => {

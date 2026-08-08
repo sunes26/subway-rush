@@ -171,8 +171,8 @@ export const INTERACT = {
   pickupMs: 800,
   /** 구매 소요(ms) */
   buyMs: 1500,
-  /** 대화 소요(ms) — GDD §5.4 [C] 말 걸기 */
-  talkMs: 15_000,
+  /** 대화 소요(ms) — 디렉터 지시 2026-08-08: 클릭 없이 3초마다 한 줄, 10줄(플레이어 5·할아버지 5) */
+  talkMs: 30_000,
   /** "저기요" 소요(ms) — GDD O-03 −3s */
   asideMs: 3000,
   /** 사유 텍스트 표시 시간(ms) */
@@ -200,8 +200,8 @@ export const SLOTS = 10
  */
 export const SWAP_WINDOW_MS = 900
 
-/** P2 — 바닥 동전 1개의 가치 범위(원). GDD §5.3 ITM-02 */
-export const COIN = { min: 100, max: 300, step: 50 } as const
+/** P2 — 바닥 동전 1개의 가치(원). GDD §5.3 ITM-02, 디렉터 지시로 고정 100원 */
+export const COIN = { min: 100, max: 100, step: 50 } as const
 
 /**
  * P2 비상게이트 (OBJ-21) — `systems/emergency.ts`
@@ -255,17 +255,20 @@ export const OBSTACLE = {
   flyerRangeM: 2.5,
   flyerPenaltyMs: 5000,
   flyerStallMs: 3000,
-  // OBS-07 아주머니
+  // OBS-07 아주머니 — 제자리 대신 소구간을 오간다 (디렉터 지시)
   ajummaRangeM: 3.0,
   ajummaPenaltyMs: 15_000,
   ajummaStallMs: 2000,
+  /** 순찰 왕복 1주기(ms) */
+  ajummaPeriodMs: 10_000,
+  /** 중심에서 좌우로 오가는 반폭(m) */
+  ajummaPatrolM: 4,
   /** 말 거는 계열 공용 — 한 번 붙잡히면 그 사람은 한동안 다시 안 붙는다 */
   talkCooldownMs: 25_000,
   // OBS-08 좀비폰족 — 위치는 시간의 순수 함수다
   zombiePeriodMs: 18_000,
   zombieRangeM: 1.3,
-  zombiePenaltyMs: 4000,
-  zombieStallMs: 600,
+  zombieStallMs: 4000,
   zombieCooldownMs: 6000,
   // OBS-10 공사
   constructionPenaltyMs: 20_000,
@@ -465,6 +468,48 @@ export const TRAIN = {
   /** 차체 y 범위 (MAP 부록 A) */
   bodyYMin: 12.42,
   bodyYMax: 15.58,
+  /**
+   * 위치 트리거(디렉터 지시) — 계단/엘리베이터 앞에 도착하면 `approachStartMs` 를
+   * 그 순간으로 앞당긴다. 안내 방송이 나올 여유(ms) — 이 시간 동안은 그대로 'incoming'.
+   *
+   * **닫힘·출발은 안 앞당긴다.** 트리거는 "오는 시각"만 당기고 "떠나는 시각"은 원래
+   * 3분 예산(`TOTAL_TIME_MS` = `closeStartMs`) 그대로 둔다 — 디렉터 지시.
+   * 자세한 이유는 `systems/train.ts trainClock` 주석 참고.
+   */
+  triggerLeadMs: 2000,
+} as const
+
+// ─────────────────────────────── 하차 인파(디렉터 지시) ───────────────────────────────
+
+/**
+ * 열차가 서면 승강장 문에서 승객이 쏟아져 나와 계단을 올라 개찰구로 빠진다.
+ * 좀비폰족·아주머니와 같은 수법 — **위치가 상태에 없다.** `NPC 순번 × 문이 열린 뒤
+ * 실제 경과(초)` 만으로 매 순간의 자리가 정해진다(`data/crowd.ts disembarkAt`).
+ *
+ * ★ **한 번 걷고 끝이 아니라 문이 열려 있는 내내 파도처럼 반복된다.** 문이 이제
+ *   최대 3분(디렉터 지시로 도착과 출발을 분리) 열려 있을 수 있는데, 승객 40명이
+ *   한 번 걸어서 다 빠지는 데는 20초 안팎이다 — 한 판이면 계단 쪽을 안 보고 있다가
+ *   에스컬레이터로 돌아왔을 때는 이미 아무도 없다(실측 — "에스컬레이터에서 안 보인다"는
+ *   지적의 원인). `cycleSec` 주기로 같은 40명이 다시 문 앞에서 나타나 반복한다.
+ */
+export const DISEMBARK = {
+  count: 40,
+  /** 걷는 속도 m/s — 순찰 역무원(2 m/s)보다 빠른, 서두르는 페이스 */
+  speedMps: 4.5,
+  /** 한 파도 안에서 마지막 승객이 내리기까지 걸리는 스태거(ms) */
+  spawnSpreadMs: 3000,
+  /**
+   * 파도 반복 주기(초) — 가장 빠른 경로(계단 상단까지 약 36~42m)를 완주하고도
+   * 몇 초 빈 시간을 두고 다음 파도가 시작하게 잡았다(계속 꽉 차 보이면 "새로 온
+   * 사람들"이 아니라 "안 없어지는 사람들"처럼 읽힌다).
+   */
+  cycleSec: 26,
+  /** 부딪힘 판정 반경(m) — 플레이어·NPC 몸통 합 */
+  bumpRadiusM: 0.6,
+  /** 전진 중 부딪히면 이 배율만큼만 밀린다 — 조금씩 가로지를 수 있게 */
+  forwardFactor: 0.15,
+  /** 미는 속도 m/s (전진 아닐 때 100%) */
+  pushSpeed: 1.8,
 } as const
 
 // ─────────────────────────────── 카메라 ───────────────────────────────

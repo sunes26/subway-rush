@@ -28,7 +28,7 @@ export type FlagId =
   // 붕어빵 or 대화 완주. **P1에서는 읽는 곳이 없다** — E-12(히든 굿엔딩)의 조건 중
   // 하나이므로 P2에서 소비된다. 지금 지우면 그때 절도/선행 구분을 다시 만들어야 한다.
   | 'GRANDPA_HELPED'
-  | 'HINT_GRANDPA'       // 대화 완주 보상 — 안내 LED가 고장 게이트를 지목한다
+  | 'HINT_GRANDPA'       // 대화 완주 보상 — 안내 LED가 정상 게이트를 지목한다
   | 'MASK_ON'            // 마스크 착용 (O-04 저항 +50%)
   | 'CHASE_DONE'         // 추격이 한 번 끝났다 — 재발동 금지
   | 'WALLET_RETURNED'    // 유실물 지갑 반납 — 비상게이트 개방원 (E-12 조건)
@@ -300,8 +300,23 @@ export type GameState = Readonly<{
    * 맵을 보러 들어온 사람도 열차는 봐야 한다.
    */
   freeplay: boolean
-  /** 시작 후 경과(ms). 열차 스케줄의 단일 입력 */
+  /** 시작 후 경과(ms). 열차 스케줄의 단일 입력 — 위치 트리거 이후엔 `trainTriggerMs` 와 함께 쓴다 */
   elapsedMs: number
+  /**
+   * 열차 위치 트리거(디렉터 지시) — 계단/엘리베이터 앞에 처음 도착한 시각(ms). null이면
+   * 아직 안 밟음. `systems/train.ts trainClock` 이 이 값과 `elapsedMs` 로 열차의 유효
+   * 시각을 계산한다 — 트리거 전엔 원래 스케줄(168~182s) 그대로, 트리거 후엔 그 순간부터
+   * 앞당겨진다. 기존 시간 기반 테스트가 `elapsedMs` 만 조작해도 깨지지 않게, 트리거가
+   * 없으면(null) `trainClock`은 `elapsedMs` 를 그대로 돌려준다.
+   */
+  trainTriggerMs: number | null
+  /**
+   * 반대 방면 열차(디렉터 지시) — 게이트9 동쪽 새 통로 끝 플랫폼. `train`/`trainTriggerMs`
+   * 와 완전히 독립된 두 번째 열차다. 여길 타면 `OPPOSITE_SIDE` 플래그가 서고
+   * 기존 E-08("반대편 탑승") 엔딩이 그대로 집어간다 — 새 엔딩을 안 만들었다.
+   */
+  train2: TrainStatus
+  trainTriggerMs2: number | null
   zone: ZoneId
   player: PlayerState
   cardBalance: number
@@ -311,6 +326,8 @@ export type GameState = Readonly<{
   lightMs: number
   boarded: boolean
   boardedDoorX: number | null
+  /** 탄 게 `train2`(반대 방면)인가 — 출발 판정이 어느 열차를 볼지 이걸로 가른다 */
+  boardedTrain2: boolean
   endingId: EndingId | null
   fx: readonly Fx[]
   nextFxId: number
@@ -364,7 +381,11 @@ export type Action =
   | { t: 'GATE_SET'; state: GateState; timerMs: number }
   | { t: 'GATE_PASSED' }
   | { t: 'TIME_PENALTY'; ms: number; label: string }
-  | { t: 'BOARD'; doorX: number }
+  /** `opp` 면 반대 방면 열차 — `boardedTrain2` 로 기록해서 종료 판정이 어느 열차를 볼지 안다 */
+  | { t: 'BOARD'; doorX: number; opp?: boolean }
+  /** 계단/엘리베이터 위치 트리거 — 한 번만 유효(멱등) */
+  | { t: 'TRAIN_TRIGGER' }
+  | { t: 'TRAIN_TRIGGER2' }
   | { t: 'PHASE'; phase: Phase }
   | { t: 'END'; endingId: EndingId }
   | { t: 'FX'; kind: Fx['kind']; text: string; lifeMs: number; value: number }

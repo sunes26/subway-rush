@@ -117,6 +117,8 @@ export const initialState = (seed: number, freeplay = false, allObstacles = fals
     timeLeftMs: TOTAL_TIME_MS,
     freeplay,
     elapsedMs: 0,
+    trainTriggerMs: null,
+    trainTriggerMs2: null,
     zone: 'Z1',
     player: {
       pos: { x: SPAWN.x, y: SPAWN.y, z: SPAWN.z },
@@ -135,7 +137,9 @@ export const initialState = (seed: number, freeplay = false, allObstacles = fals
       sprinting: false,
       stallMs: 0,
     },
-    cardBalance: roll.cardBalance,
+    // 디렉터 지시 — 실제 시작 잔액은 항상 0원. `roll.cardBalance`(BALANCE_POOL)는
+    // 시드 롤 자체의 성질(분포 등)을 보는 쪽에 남겨 두고 여기서만 무시한다.
+    cardBalance: 0,
     gates: {
       workingIds: roll.workingIds,
       ledHint: roll.ledHint,
@@ -149,9 +153,11 @@ export const initialState = (seed: number, freeplay = false, allObstacles = fals
       attempts: 0,
     },
     train: { state: 'incoming', x: 330, doorProgress: 0 },
+    train2: { state: 'incoming', x: 330, doorProgress: 0 },
     lightMs: 0,
     boarded: false,
     boardedDoorX: null,
+    boardedTrain2: false,
     endingId: null,
     fx: [],
     nextFxId: 1,
@@ -378,7 +384,13 @@ export const reducer = (s: GameState, a: Action): GameState => {
     case 'BOARD':
       return s.boarded
         ? s
-        : { ...s, boarded: true, boardedDoorX: a.doorX, phase: 'boarding' }
+        : { ...s, boarded: true, boardedDoorX: a.doorX, boardedTrain2: !!a.opp, phase: 'boarding' }
+
+    case 'TRAIN_TRIGGER':
+      return s.trainTriggerMs !== null ? s : { ...s, trainTriggerMs: s.elapsedMs }
+
+    case 'TRAIN_TRIGGER2':
+      return s.trainTriggerMs2 !== null ? s : { ...s, trainTriggerMs2: s.elapsedMs }
 
     case 'PHASE':
       return s.phase === a.phase ? s : { ...s, phase: a.phase }

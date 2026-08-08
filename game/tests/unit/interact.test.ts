@@ -148,7 +148,7 @@ describe('S8-7 조건 미충족은 사유만 낸다', () => {
     const yaw = yawTo(s, VEND_A.x, VEND_A.y)
     s = tap(s, { pressInteract: true }, yaw)
 
-    expect(s.act.denyText, 'GDD §5.1의 예시 문구 그대로').toBe('효자손이 필요하다')
+    expect(s.act.denyText, '디렉터 지시로 두루뭉실한 힌트').toBe('막대기 같은 게 필요해 보인다')
     expect(s.act.denyMs).toBeGreaterThan(0)
     expect(s.qte.active, 'QTE는 열리지 않는다').toBe(false)
     expect(s.cardBalance).toBe(before.bal)

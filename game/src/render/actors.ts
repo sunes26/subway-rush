@@ -10,13 +10,14 @@
  */
 
 import { Group } from 'three'
-import { RIDER_SPOTS } from '../data/crowd'
+import { RIDER_SPOTS, disembarkAt, disembarkAtOpp } from '../data/crowd'
 import { CP_IDS, GRANDPA_ID, byId } from '../data/interactables'
-import { OBSTACLE, UMBRELLA } from '../data/tuning'
+import { DISEMBARK, OBSTACLE, UMBRELLA } from '../data/tuning'
 import { ESCALATOR, FLOOR } from '../data/world'
 import type { GameState, ObsId } from '../state/types'
 import { rampZ } from '../systems/collision'
-import { AJUMMA_AT, FLYER_AT, zombieAt } from '../systems/obstacles'
+import { secondsSinceDoorsOpen, secondsSinceDoorsOpenOpp } from '../systems/disembark'
+import { FLYER_AT, ajummaAt, zombieAt } from '../systems/obstacles'
 import { staffAt } from '../systems/staff'
 import { loadNpcRig, type NpcRig } from './npc-rig'
 
@@ -240,10 +241,34 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
   const riderAnchors: readonly Anchor[] = RIDER_SPOTS.map((spot) =>
     ({ x: spot.x, y: spot.y, z: rampZ(ESCALATOR, spot.x, spot.y) ?? FLOOR.B1 }))
 
+  /**
+   * 하차 인파 40명(디렉터 지시) — 열차가 서면 계단을 올라 개찰구로 빠진다.
+   * 자리는 `data/crowd.ts disembarkAt` 이 순수함수로 정한다. 리그는 기존 인파와
+   * 똑같이 `cp_character_rigged.glb` 를 재사용한다 — 디렉터 지시로 **일단 스킨드
+   * 리그 40개 그대로 시도**한다(에스컬레이터 승객 10명이 이미 삼각형 예산의 상당량을
+   * 먹었다는 사실은 `RIDER_SPOTS` 헤더 주석 참고 — 문제가 보이면 그때 렌더 방식을 바꾼다).
+   * 이름은 `npc:esc-rider`/`npc:cp` 와 겹치지 않는 접두어를 쓴다 — 안 그러면
+   * `p1.spec.ts` 의 접두어 매칭 e2e가 엉뚱한 리그의 머리·엉덩이를 잡는다(위 경고 참고).
+   */
+  const disembarkRigs = await Promise.all(
+    Array.from({ length: DISEMBARK.count },
+      (_, i) => loadOr(`${dir}cp_character_rigged.glb`, `DISEMBARK${i}`, YAW_FIX.cp)),
+  )
+  for (const r of disembarkRigs) r.root.name = 'npc:disembark'
+
+  /** 반대 방면 하차 인파 — 같은 리그 풀을 하나 더 띄운다(디렉터 지시: 반대 방면도 인파가 있어야). */
+  const disembarkRigs2 = await Promise.all(
+    Array.from({ length: DISEMBARK.count },
+      (_, i) => loadOr(`${dir}cp_character_rigged.glb`, `DISEMBARK-OPP${i}`, YAW_FIX.cp)),
+  )
+  for (const r of disembarkRigs2) r.root.name = 'npc:disembark-opp'
+
   const root = new Group()
   root.name = 'actors'
   root.add(gp.root, cp0.root, cp1.root, cp2.root, ajp.root, aj.root, zp.root, ss.root, cl.root)
   for (const r of riders) root.add(r.root)
+  for (const r of disembarkRigs) root.add(r.root)
+  for (const r of disembarkRigs2) root.add(r.root)
 
   const gpHome = anchorOf(GRANDPA_ID)
   const cpHomes = CP_IDS.map((id) => anchorOf(id))
@@ -424,7 +449,7 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
     return dx * dx + dy * dy + dz * dz < OBS_CULL_M * OBS_CULL_M
   }
 
-  /** 아주머니·전단지 — 제자리. 플레이어가 반경에 들면 말을 걸고, 이어폰이면 무시당한다 */
+  /** 전단지 — 제자리. 플레이어가 반경에 들면 말을 걸고, 이어폰이면 무시당한다 */
   const syncTalker = (
     s: GameState, rig: NpcRig, id: ObsId, at: { x: number; y: number }, rangeM: number,
     dtSec: number,
@@ -449,6 +474,34 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
     else if (d <= rangeM * 2.2) rig.play('AJ_Spot')
     else rig.play('AJ_Idle')
     rig.update(dtSec)
+  }
+
+  /**
+   * 아주머니 — 좀비폰족과 같은 식으로 순찰하다, 플레이어가 반경(또는 그 2.2배)에 들면
+   * 걸음을 멈춘 것처럼 플레이어를 보고 말을 건다. 이어폰이면 무시당한다
+   */
+  const syncAjumma = (s: GameState, dtSec: number): void => {
+    if (obsOff(s, aj, 'OBS-07')) return
+    const at = ajummaAt(s.elapsedMs)
+    const p = s.player.pos
+    const d = Math.hypot(p.x - at.x, p.y - at.y)
+    const spotted = d <= OBSTACLE.ajummaRangeM * 2.2
+    const prev = ajummaAt(Math.max(0, s.elapsedMs - 120))
+    const walkFacing = Math.atan2(at.y - prev.y, at.x - prev.x)
+    const lookFacing = d > 0.05 ? Math.atan2(p.y - at.y, p.x - at.x) : 0
+    aj.place(at.x, at.y, FLOOR.B1, spotted ? lookFacing : walkFacing)
+
+    const visible = nearObs(s, at.x, at.y, FLOOR.B1)
+    aj.setVisible(visible)
+    if (!visible) return
+
+    const engaged = d <= OBSTACLE.ajummaRangeM
+    const ignored = s.flags.includes('EARBUDS_ON')
+    if (engaged && ignored) aj.play('AJ_Ignored')
+    else if (engaged) aj.play('AJ_Talk')
+    else if (spotted) aj.play('AJ_Spot')
+    else aj.play('AJ_Approach')
+    aj.update(dtSec)
   }
 
   /** 좀비폰족 — 위치가 시간의 순수 함수라 렌더도 **같은 식**을 쓴다 */
@@ -500,6 +553,43 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
     cl.update(dtSec)
   }
 
+  /**
+   * 하차 인파 40명 — 자리는 순수함수(`data/crowd.ts disembarkAt`)가 정한다.
+   * 걷는 클립이 없다(`cp_character_rigged.glb` 는 Idle·MoveAside뿐) — 제자리 자세로
+   * 미끄러지듯 이동한다. 눈에 띄면 그때 걷기 클립을 추가하거나 렌더 방식을 바꾼다
+   * (디렉터 지시로 일단 이대로 진행).
+   */
+  const syncDisembark = (s: GameState, dtSec: number): void => {
+    const t = secondsSinceDoorsOpen(s)
+    for (let i = 0; i < disembarkRigs.length; i++) {
+      const rig = disembarkRigs[i] as NpcRig
+      const spot = t >= 0 ? disembarkAt(i, t, s.gates.workingIds) : null
+      if (!spot) { rig.setVisible(false); continue }
+      rig.place(spot.x, spot.y, spot.z, spot.facing)
+      const visible = nearObs(s, spot.x, spot.y, spot.z)
+      rig.setVisible(visible)
+      if (!visible) continue
+      rig.play('CP_Idle')
+      rig.update(dtSec)
+    }
+  }
+
+  /** 반대 방면 하차 인파 — 게이트 선택이 없어 `disembarkAtOpp` 만 순번으로 돈다 */
+  const syncDisembarkOpp = (s: GameState, dtSec: number): void => {
+    const t = secondsSinceDoorsOpenOpp(s)
+    for (let i = 0; i < disembarkRigs2.length; i++) {
+      const rig = disembarkRigs2[i] as NpcRig
+      const spot = t >= 0 ? disembarkAtOpp(i, t) : null
+      if (!spot) { rig.setVisible(false); continue }
+      rig.place(spot.x, spot.y, spot.z, spot.facing)
+      const visible = nearObs(s, spot.x, spot.y, spot.z)
+      rig.setVisible(visible)
+      if (!visible) continue
+      rig.play('CP_Idle')
+      rig.update(dtSec)
+    }
+  }
+
   return {
     root,
     sync(s, dtSec) {
@@ -507,10 +597,12 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
       syncCarrier(s, dtSec)
       syncRiders(s, dtSec)
       syncTalker(s, ajp, 'OBS-06', FLYER_AT, OBSTACLE.flyerRangeM, dtSec)
-      syncTalker(s, aj, 'OBS-07', AJUMMA_AT, OBSTACLE.ajummaRangeM, dtSec)
+      syncAjumma(s, dtSec)
       syncZombie(s, dtSec)
       syncStaff(s, dtSec)
       syncClerk(s, dtSec)
+      syncDisembark(s, dtSec)
+      syncDisembarkOpp(s, dtSec)
     },
     dispose() {
       gp.dispose()
@@ -518,6 +610,8 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
       for (const r of riders) r.dispose()
       ajp.dispose(); aj.dispose(); zp.dispose(); ss.dispose()
       cl.dispose()
+      for (const r of disembarkRigs) r.dispose()
+      for (const r of disembarkRigs2) r.dispose()
     },
   }
 }

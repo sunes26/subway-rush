@@ -1,0 +1,82 @@
+/*
+ * 편의점 상점 — UI-19. 할아버지 선물 5지 선택(`OBJ-19-GIFT`)의 그림 껍데기다.
+ *
+ * ★ 단일 원천. 게임(`ui/dialog.ts`)과 UI 킷(`/uikit.html`)이 같은 파일을 읽는다.
+ * ★ 로직은 그대로다 — 정답 하나만 진짜 효과가 있고 나머지 넷은 즉시 실패(E-15)로 이어진다.
+ *   이 CSS는 Figma `shop-tab-ui`(node 52:4)를 우리 토큰(`tokens.css`)으로 옮긴 것뿐이다.
+ */
+#shop{position:absolute;inset:0;display:none;place-items:center;z-index:6;
+  background:rgba(5,6,8,.7);backdrop-filter:blur(5px);pointer-events:auto;
+  animation:fade .22s ease both;font-family:var(--sans)}
+#shop.on{display:grid}
+
+#shop .panel{width:min(880px,92vw);height:min(600px,84vh);display:flex;flex-direction:column;
+  background:var(--panel);border:1.5px solid var(--accent);border-radius:var(--r-panel);
+  box-shadow:0 16px 32px rgba(0,0,0,.85),inset 0 0 24px rgba(0,240,255,.16);overflow:hidden}
+
+#shop .head{display:flex;align-items:center;justify-content:space-between;
+  padding:18px 22px 14px;border-bottom:1px solid var(--panel-line);flex:0 0 auto}
+#shop .head .title{display:flex;align-items:center;gap:12px}
+#shop .tag{font-family:var(--mono);font-size:11px;font-weight:800;letter-spacing:.04em;
+  color:var(--accent);background:rgba(0,240,255,.16);border:1px solid var(--accent);
+  border-radius:6px;padding:3px 8px}
+#shop .title b{font-size:21px;font-weight:800;color:#fff}
+#shop .ctrl{display:flex;align-items:center;gap:14px}
+#shop .bal{display:flex;align-items:center;gap:7px;background:var(--chip);
+  border:1px solid var(--gold);border-radius:var(--r-slot);padding:7px 14px}
+#shop .bal i{width:16px;height:16px;border-radius:50%;background:var(--gold);
+  box-shadow:inset 0 0 0 3px rgba(11,12,16,.55)}
+#shop .bal b{font-size:15px;font-weight:800;color:var(--gold);font-variant-numeric:tabular-nums}
+#shop .close{width:34px;height:34px;border-radius:10px;border:none;cursor:pointer;
+  background:rgba(255,59,48,.14);color:#FF6B60;font-size:17px;line-height:1;
+  display:grid;place-items:center;transition:background .12s}
+#shop .close:hover{background:rgba(255,59,48,.26)}
+
+#shop .body{flex:1 1 auto;min-height:0;display:flex;gap:18px;padding:18px}
+
+#shop .list-wrap{width:280px;flex:0 0 auto;display:flex;flex-direction:column;
+  gap:10px;min-height:0}
+#shop .list-head{display:flex;align-items:baseline;justify-content:space-between}
+#shop .list-head span:first-child{font-size:15px;font-weight:700;color:#fff}
+#shop .list-head span:last-child{font-family:var(--mono);font-size:12px;color:var(--muted)}
+#shop .list{flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+
+#shop .card{display:flex;gap:11px;align-items:center;padding:10px;border-radius:10px;
+  border:1.5px solid var(--panel-line);background:rgba(255,255,255,.03);cursor:pointer;
+  text-align:left;font:inherit;color:inherit;transition:border-color .12s,background .12s}
+#shop .card:hover{border-color:rgba(0,240,255,.4)}
+#shop .card.sel{border-color:var(--accent);background:rgba(0,240,255,.08);
+  box-shadow:inset 0 0 8px rgba(0,240,255,.2)}
+#shop .card .thumb{width:60px;height:60px;flex:0 0 auto;border-radius:6px;
+  background:rgba(0,0,0,.35);display:grid;place-items:center;overflow:hidden}
+#shop .card .thumb img{width:100%;height:100%;object-fit:contain}
+#shop .card .info{min-width:0;display:flex;flex-direction:column;gap:5px}
+#shop .card .name{font-size:13px;font-weight:700;color:#fff;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+#shop .card .price{display:flex;align-items:center;gap:4px;font-family:var(--mono);
+  font-size:12px;font-weight:700;color:var(--gold)}
+#shop .card.disabled{opacity:.4;cursor:default}
+#shop .card.disabled:hover{border-color:var(--panel-line)}
+
+#shop .detail{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:14px;
+  padding:18px;border-radius:14px;border:1.5px solid var(--panel-line);background:rgba(18,22,31,.6)}
+#shop .preview{width:100%;height:180px;flex:0 0 auto;border-radius:10px;border:1px solid var(--accent);
+  background:radial-gradient(ellipse at 50% 30%,rgba(0,240,255,.14),rgba(0,0,0,.4));
+  display:grid;place-items:center;overflow:hidden}
+#shop .preview img{max-width:70%;max-height:70%;object-fit:contain;
+  filter:drop-shadow(0 6px 18px rgba(0,240,255,.35))}
+#shop .desc{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:8px}
+#shop .desc .name{font-size:18px;font-weight:800;color:#fff}
+#shop .desc .text{font-size:13px;line-height:1.5;color:var(--muted)}
+#shop .foot{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;
+  padding-top:14px;border-top:1px solid var(--panel-line)}
+#shop .cost{display:flex;flex-direction:column;gap:3px}
+#shop .cost span{font-family:var(--mono);font-size:10px;font-weight:700;
+  letter-spacing:.06em;color:var(--muted)}
+#shop .cost b{font-size:16px;font-weight:800;color:var(--gold)}
+#shop .buy{border:none;border-radius:var(--r-slot);padding:11px 30px;font-size:15px;
+  font-weight:800;color:#050608;background:var(--accent);cursor:pointer;
+  box-shadow:0 4px 8px rgba(0,240,255,.25);transition:filter .12s}
+#shop .buy:hover{filter:brightness(1.08)}
+#shop .buy:disabled{cursor:default;background:rgba(255,255,255,.14);color:var(--muted);
+  box-shadow:none}
