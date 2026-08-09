@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { OBSTACLES, SHUFFLE_POOL, type ObsId } from '../../src/data/obstacles'
+import { ACTIVE_OBSTACLES, OBSTACLES, type ObsId } from '../../src/data/obstacles'
 import { negatorsOf } from '../../src/data/items'
 import { FLOOR } from '../../src/data/world'
 import type { GameState, ItemId } from '../../src/state/types'
@@ -18,13 +18,9 @@ import { holdFor, put, start } from './_pilot'
 const AUNTIE_AT = auntieAt(0)
 const STUDENT_AT = studentAt(0)
 
-const ALL: readonly ObsId[] = [
-  'OBS-01', 'OBS-02', 'OBS-05', 'OBS-07', 'OBS-08', 'OBS-10', 'OBS-11', 'OBS-12',
-]
-
-/** 방해요소를 전부 켠 상태에서 시작한다 — 셔플은 S14 가 검증했다 */
+/** 이제 `start()` 자체가 항상 전부 켠 상태다(S14) — 이름만 남긴다 */
 const armed = (patch: Partial<GameState> = {}): GameState =>
-  start(7, { obstacles: ALL, ...patch })
+  start(7, patch)
 
 const mid = (r: readonly [number, number, number, number]) =>
   ({ x: (r[0] + r[2]) / 2, y: (r[1] + r[3]) / 2 })
@@ -139,9 +135,13 @@ describe('S16-3 표 정합성 — 양방향', () => {
     }
   })
 
-  it('셔플 대상은 전부 판정이 있다 (규칙표 or 역무원)', () => {
-    const covered = new Set<ObsId>([...RULE_IDS, 'OBS-03', 'OBS-04', 'OBS-13'])
-    for (const id of SHUFFLE_POOL) expect(covered.has(id), `${id} 판정 없음`).toBe(true)
+  it('활성 방해요소는 전부 판정이 있다 (규칙표 or 역무원 or 구조적 상시 메커닉)', () => {
+    // OBS-01·02·11·12는 s.obstacles 를 안 본다 — 고장 개찰구·잔액부족·대기줄·스크린도어는
+    // 그 자체가 항상 존재하는 게임 구조라 별도 온/오프 판정이 필요 없다(RULES 에도 없다)
+    const covered = new Set<ObsId>([
+      ...RULE_IDS, 'OBS-03', 'OBS-04', 'OBS-13', 'OBS-01', 'OBS-02', 'OBS-11', 'OBS-12',
+    ])
+    for (const id of ACTIVE_OBSTACLES) expect(covered.has(id), `${id} 판정 없음`).toBe(true)
   })
 })
 
@@ -155,7 +155,7 @@ describe('S16-4 stall 중첩', () => {
   })
 
   it('봉쇄 중에는 이동 입력이 무시된다', () => {
-    const s = put(start(7, { obstacles: ALL }), 20, 14, FLOOR.B1)
+    const s = put(start(7), 20, 14, FLOOR.B1)
     const frozen = { ...s, player: { ...s.player, stallMs: 1500 } }
     const after = holdFor(frozen, { moveY: 1, sprint: true }, 30)
     expect(Math.hypot(after.player.pos.x - 20, after.player.pos.y - 14),

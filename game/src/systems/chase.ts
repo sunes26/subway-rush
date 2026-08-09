@@ -19,6 +19,7 @@ import type { Action, GameState } from '../state/types'
 import { crowdSolids } from './crowd'
 import { gateFlaps } from './gates'
 import { resolveMove, sampleGround, setDynamicSolids } from './collision'
+import { isTalkLocked } from './movement'
 import { psdDoors } from './train'
 
 export type ChaseCtx = Readonly<{ dtMs: number }>
@@ -89,6 +90,13 @@ const step = (
 
 export const chaseSystem = (s: GameState, ctx: ChaseCtx): Action[] => {
   if (s.phase !== 'playing') return []
+  /**
+   * 플레이어가 다른 강제 대화(좀비폰족·아주머니+학생·말동무 등)에 묶여 조작이
+   * 안 먹히는 동안은 추격도 같이 멈춘다 — 위 `isTalkLocked` 주석 참고. 여기서 멈춰도
+   * `remainingMs` 는 리듀서의 `ADVANCE` 가 그대로 깎는다(플레이어에게 유리한 쪽이라
+   * 손볼 이유가 없다 — 타임아웃으로 풀려나는 건 손해가 아니라 이득이다).
+   */
+  if (isTalkLocked(s)) return []
   const c = s.chase
   const p = s.player.pos
 

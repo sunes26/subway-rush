@@ -11,7 +11,7 @@ import { itemDef } from '../data/items'
 import { BALANCE_POOL, CHASE, FARE, GATE, INTERACT, QTE, SLOTS, SURGE, SWAP_WINDOW_MS,
   TOTAL_TIME_MS } from '../data/tuning'
 import { GRANDPA_ID } from '../data/interactables'
-import { rollObstacles, rollQueues, type ObsId } from '../data/obstacles'
+import { ACTIVE_OBSTACLES, rollQueues, type ObsId } from '../data/obstacles'
 import { GATES, SPAWN, TRAFFIC_LIGHT, zoneAt } from '../data/world'
 import type { Action, ActState, AmbushState, ChaseState, Drop, GameState, Fx, HandState, ItemId,
   KnockdownState, PreachState, QteState, SurgeState, SwapState, TallyState,
@@ -126,7 +126,7 @@ export const rollSeed = (seed: number) => {
   return { workingIds, cardBalance, ledHint, ledBrokenId }
 }
 
-export const initialState = (seed: number, freeplay = false, allObstacles = false): GameState => {
+export const initialState = (seed: number, freeplay = false): GameState => {
   const roll = rollSeed(seed)
   return {
     phase: 'title',
@@ -196,7 +196,7 @@ export const initialState = (seed: number, freeplay = false, allObstacles = fals
     hand: EMPTY_HAND,
     knocks: [],
     swap: EMPTY_SWAP,
-    obstacles: rollObstacles(seed, allObstacles),
+    obstacles: ACTIVE_OBSTACLES,
     obsCooldown: {},
     staffAlertMs: 0,
     queues: rollQueues(seed),

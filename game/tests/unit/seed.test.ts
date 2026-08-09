@@ -5,8 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import { SALT, makeRng, resolveSeed, streamFor } from '../../src/core/rng'
 import {
-  ALWAYS_ON, COST_CAP_SEC, OBSTACLES, QUEUE_MAX, QUEUE_MIN, QUEUE_TOTAL,
-  SHUFFLE_PICK, SHUFFLE_POOL, rollObstacles, rollQueues, shuffledCostOf,
+  ACTIVE_OBSTACLES, PLAYER_TRIGGERED, QUEUE_MAX, QUEUE_MIN, QUEUE_TOTAL, rollQueues,
 } from '../../src/data/obstacles'
 import { initialState, rollSeed } from '../../src/state/reducer'
 
@@ -59,38 +58,21 @@ describe('S14-2 파생 스트림 독립', () => {
   })
 })
 
-describe('S14-3 방해요소 셔플', () => {
-  it('시드 200개 전부 8종 활성 · 셔플분 비용합 ≤ 45s', () => {
-    for (const seed of SEEDS) {
-      const active = rollObstacles(seed)
-      expect(active.length).toBe(ALWAYS_ON.length + SHUFFLE_PICK)
-      expect(new Set(active).size).toBe(active.length)      // 중복 없음
-      for (const id of ALWAYS_ON) expect(active).toContain(id)
-      expect(shuffledCostOf(active)).toBeLessThanOrEqual(COST_CAP_SEC)
-    }
-  })
-
-  it('셔플 대상은 SHUFFLE_POOL 안에서만 나온다', () => {
+describe('S14-3 방해요소 — 셔플 없이 항상 전부 켜진다', () => {
+  it('시드와 무관하게 11종이 매번 똑같이 활성화된다', () => {
     for (const seed of SEEDS.slice(0, 40)) {
-      const extra = rollObstacles(seed).filter((id) => !ALWAYS_ON.includes(id))
-      for (const id of extra) expect(SHUFFLE_POOL).toContain(id)
+      expect(initialState(seed).obstacles).toEqual(ACTIVE_OBSTACLES)
     }
   })
 
-  it('시드마다 세트가 달라진다 — 200개에서 유일 조합 10가지 이상', () => {
-    const sets = new Set(SEEDS.map((s) => rollObstacles(s).join(',')))
-    expect(sets.size).toBeGreaterThanOrEqual(10)
+  it('중복 없이 11종이다', () => {
+    expect(new Set(ACTIVE_OBSTACLES).size).toBe(ACTIVE_OBSTACLES.length)
+    expect(ACTIVE_OBSTACLES.length).toBe(11)
   })
 
-  it('OBS-14 단소는 시드 활성 목록에 절대 안 들어간다', () => {
-    for (const seed of SEEDS.slice(0, 60)) expect(rollObstacles(seed)).not.toContain('OBS-14')
-  })
-
-  it('상한이 실효적이다 — pool 상위 4종 합은 상한을 넘는다', () => {
-    const top4 = [...SHUFFLE_POOL]
-      .sort((a, b) => OBSTACLES[b].costSec - OBSTACLES[a].costSec)
-      .slice(0, SHUFFLE_PICK)
-    expect(shuffledCostOf(top4)).toBeGreaterThan(COST_CAP_SEC)
+  it('OBS-14 단소는 상시 목록에 없다 — 플레이어 선택으로만 발동한다', () => {
+    expect(ACTIVE_OBSTACLES).not.toContain('OBS-14')
+    expect(PLAYER_TRIGGERED).toContain('OBS-14')
   })
 })
 

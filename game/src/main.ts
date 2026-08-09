@@ -140,16 +140,9 @@ const debug = createDebug(uiRoot, stage.renderer)
  * 단어 경계를 넣는다는 것이 **백스페이스 문자(0x08)** 로 들어가 한 번도 안 맞았다 —
  * 눈으로는 똑같이 보여서 화면만 보고는 못 잡는다.
  */
-/**
- * `?obs=all` — **방해요소 전량 활성 디버그 스위치.**
- *
- * 시드는 12종 중 8종만 켠다. 그래서 아주머니나 좀비폰족이 **통째로 없는 판**이 정상적으로
- * 존재하는데, 화면만 보면 "구현이 안 됐다"와 구분이 안 된다. 확인할 때 다 세우는 스위치다.
- */
-const ALL_OBS = /[?&]obs=all/.test(location.search)
 const FREEPLAY = ((q) => q.has('freeplay') || q.has('notimer'))(
   new URLSearchParams(location.search))
-let state: GameState = initialState(resolveSeed(location.search), FREEPLAY, ALL_OBS)
+let state: GameState = initialState(resolveSeed(location.search), FREEPLAY)
 let player: PlayerRig | null = null
 let station: Station | null = null
 /** P1 — 습득 프롭 + 골드 아웃라인 */
@@ -199,7 +192,7 @@ const restart = (): void => {
   recordedEnding = null
   collection.close()
   const seed = (state.seed * 1664525 + 1013904223) >>> 0
-  state = initialState(seed, FREEPLAY, ALL_OBS)   // 재시작해도 자유 탐색·디버그 스위치는 유지한다
+  state = initialState(seed, FREEPLAY)   // 재시작해도 자유 탐색 스위치는 유지한다
   prevPos = state.player.pos
   rebuildDynamics(state)
 }

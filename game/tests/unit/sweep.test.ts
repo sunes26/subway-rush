@@ -15,7 +15,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { FARE } from '../../src/data/tuning'
-import { runRoute, summarize, sweep } from './_sweep'
+import { summarize, sweep } from './_sweep'
 
 const SEEDS = Array.from({ length: 24 }, (_, i) => i * 7 + 3)
 
@@ -36,10 +36,11 @@ describe('S12-9 소프트락 0건', () => {
   })
 
   it('잔액 0원 시드(전부)도 체인으로 요금을 만들거나, 실패하면 죽어서다', () => {
-    for (const seed of SEEDS) {
-      const r = runRoute(seed, 'A-steal')
-      expect(r.passed || r.died, `seed ${seed}`).toBe(true)
-      if (r.passed) expect(r.coinsEarned, `seed ${seed} 동전 획득`).toBeGreaterThanOrEqual(FARE)
+    // 위 `rows` 를 재사용한다 — `runRoute` 를 시드마다 새로 돌리면 방해요소 11종이 전부
+    // 상시 활성인 지금은 기본 테스트 타임아웃(5s)을 넘긴다(아래 테스트와 같은 이유)
+    for (const r of rows.filter((x) => x.route === 'A-steal')) {
+      expect(r.passed || r.died, `seed ${r.seed}`).toBe(true)
+      if (r.passed) expect(r.coinsEarned, `seed ${r.seed} 동전 획득`).toBeGreaterThanOrEqual(FARE)
     }
   })
 

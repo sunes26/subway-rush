@@ -5,8 +5,9 @@
  *   데이터와 판정을 갈라 두면 시드 선택 로직이 판정을 임포트하지 않아도 되고,
  *   그래서 이 모듈을 리듀서(`initialState`)가 안전하게 부를 수 있다.
  *
- * 시드는 셔플 풀 7종 중 **4종**을 고른다(항상 켜지는 4종과 합쳐 8종 활성).
- * GDD §11: *"시드당 8~9종만 활성화. 나머지는 다른 회차에 등장 → 리플레이 유인으로 전환."*
+ * ⚠ **예전엔 셔플이었다.** 7종 중 4종만 골라 항상 켜지는 4종과 합쳐 8종 활성 —
+ *   리플레이 유인으로 회차마다 다른 조합을 만드는 설계였다(GDD §11). 디렉터 지시로
+ *   그 무작위성을 없앴다: 이제 OBS-14(플레이어 선택 발동)를 뺀 11종이 매 판 전부 켜진다.
  */
 
 import { streamFor } from '../core/rng'
@@ -20,28 +21,19 @@ export type ObstacleDef = Readonly<{
   id: ObsId
   name: string
   zone: ZoneId
-  /**
-   * 명목 비용(초). **예산 상한 계산에만 쓴다** — 실제 페널티는 판정 쪽 상수다.
-   * OBS-13(역무원)은 시간을 안 깎지만 0으로 두면 "공짜 방해요소"가 되어
-   * 셔플이 매번 집어 온다. 위험 대용치로 8을 매긴다.
-   */
+  /** 명목 비용(초) — 밸런스 분석용 참고치다(`costOf`). 실제 페널티는 판정 쪽 상수다. */
   costSec: number
   /** 무효화 아이템 — `systems/obstacles.ts` 의 표와 **양방향 일치**해야 한다(유닛이 강제) */
   counteredBy: readonly ItemId[]
 }>
 
-/**
- * 항상 켜진다 — 이 4종이 게임의 뼈대다.
- * 고장 개찰구가 없으면 개찰구가 그냥 문이고, 대기줄이 없으면 승강장에 판단이 없다.
- */
-export const ALWAYS_ON: readonly ObsId[] = ['OBS-01', 'OBS-02', 'OBS-11', 'OBS-12']
-
-/** 시드가 이 7종 중 4종을 고른다 */
-export const SHUFFLE_POOL: readonly ObsId[] = [
-  'OBS-03', 'OBS-04', 'OBS-05', 'OBS-07', 'OBS-08', 'OBS-10', 'OBS-13',
+/** OBS-14(플레이어 선택 발동)를 뺀 나머지 11종 — 매 판 전부 켜진다 */
+export const ACTIVE_OBSTACLES: readonly ObsId[] = [
+  'OBS-01', 'OBS-02', 'OBS-03', 'OBS-04', 'OBS-05',
+  'OBS-07', 'OBS-08', 'OBS-10', 'OBS-11', 'OBS-12', 'OBS-13',
 ]
 
-/** OBS-14 단소 추격은 **유일하게 시드 무관** — 플레이어 선택으로만 발동한다 */
+/** OBS-14 단소 추격은 **유일하게 상시가 아니다** — 플레이어 선택으로만 발동한다 */
 export const PLAYER_TRIGGERED: readonly ObsId[] = ['OBS-14']
 
 export const OBSTACLES: Readonly<Record<ObsId, ObstacleDef>> = {
@@ -63,60 +55,9 @@ export const OBSTACLES: Readonly<Record<ObsId, ObstacleDef>> = {
   'OBS-14': { id: 'OBS-14', name: '할아버지 단소 추격', zone: 'Z2', costSec: 12, counteredBy: ['I-12'] },
 }
 
-/** 셔플로 고르는 개수 */
-export const SHUFFLE_PICK = 4
-
-/**
- * 선택된 4종의 명목 비용 합 상한(초).
- *
- * 상한이 필요한 이유: pool 의 비싼 4종을 다 뽑으면 20+26+15+10 = **71초**다.
- * 표준 플레이가 183초에 제한 180초라 의도적 적자가 3초뿐인데(프로젝트 메모),
- * 여기서 70초 가까이 얹히면 그 시드는 시작부터 실패다.
- *
- * ⚠ **45 였다가 50 으로 올렸다.** OBS-07 의 명목 비용이 26(강제 대화 실측)이라,
- *   가장 싼 나머지 3종(6+8+8=22)을 더해도 48 — 옛 상한(45) 아래서는 OBS-07 이 낀
- *   조합이 단 하나도 안 남아 **이 방해요소가 정상 플레이에서 영영 안 뽑혔다**
- *   (실측 — S14-3 다양성 회귀로 잡았다). 50 이면 조합 14/35 가 살아남고 그중 일부에
- *   OBS-07 이 낀다 — 200시드 샘플에서 대략 5분의 1이 이 방해요소를 만난다.
- */
-export const COST_CAP_SEC = 50
-
-const MAX_TRIES = 8
-
-/**
- * 이번 판의 활성 방해요소.
- *
- * 상한을 못 맞추면 **비용 낮은 순 4종**으로 격하한다. 던지지 않는다 —
- * `initialState` 가 부르는 자리라 예외는 곧 검은 화면이다.
- * (격하는 도달 불가가 아니라 *덜 재밌는* 결과다. 게임은 계속 돈다.)
- */
-export const rollObstacles = (seed: number, all = false): readonly ObsId[] => {
-  /**
-   * `?obs=all` — **전량 활성 디버그 스위치.**
-   *
-   * 시드가 12종 중 8종만 켜므로 아주머니나 좀비폰족이 **통째로 없는 판**이 정상적으로 존재한다.
-   * 그건 설계지만(리플레이 유인), 확인할 때는 다 서 있어야 한다 —
-   * "구현이 안 된 것 같다"와 "이번 판에 안 켜졌다"를 눈으로 구분할 수 없기 때문이다.
-   * 밸런스에는 안 쓴다(스윕·테스트는 항상 시드 경로를 탄다).
-   */
-  if (all) return [...ALWAYS_ON, ...SHUFFLE_POOL].sort()
-  const rng = streamFor(seed, 'obstacles')
-  for (let i = 0; i < MAX_TRIES; i++) {
-    const pick = rng.shuffle(SHUFFLE_POOL).slice(0, SHUFFLE_PICK)
-    if (costOf(pick) <= COST_CAP_SEC) return [...ALWAYS_ON, ...pick].sort()
-  }
-  const cheap = [...SHUFFLE_POOL]
-    .sort((a, b) => OBSTACLES[a].costSec - OBSTACLES[b].costSec)
-    .slice(0, SHUFFLE_PICK)
-  return [...ALWAYS_ON, ...cheap].sort()
-}
-
+/** 명목 비용 합(초) — 밸런스 분석용. `ACTIVE_OBSTACLES` 11종을 다 더하면 얼마인지 */
 export const costOf = (ids: readonly ObsId[]): number =>
   ids.reduce((sum, id) => sum + OBSTACLES[id].costSec, 0)
-
-/** 셔플 대상만의 비용 — 항상 켜지는 4종은 예산 상한 밖이다(뼈대라 뺄 수 없다) */
-export const shuffledCostOf = (ids: readonly ObsId[]): number =>
-  costOf(ids.filter((id) => SHUFFLE_POOL.includes(id)))
 
 export const isActive = (active: readonly ObsId[], id: ObsId): boolean => active.includes(id)
 
@@ -132,6 +73,8 @@ export const isActive = (active: readonly ObsId[], id: ObsId): boolean => active
 export const QUEUE_TOTAL = 21
 export const QUEUE_MIN = 3
 export const QUEUE_MAX = 11
+
+const MAX_TRIES = 8
 
 export const rollQueues = (seed: number): readonly number[] => {
   const rng = streamFor(seed, 'queue')

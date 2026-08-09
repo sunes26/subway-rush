@@ -464,8 +464,9 @@ export type GameState = Readonly<{
   /** UI-14 교체 창 — 슬롯이 가득 찬 채로 습득한 직후 0.9초 */
   swap: SwapState
   /**
-   * 이번 판에 켜진 방해요소 8종 (`data/obstacles.ts rollObstacles`).
-   * **판정 시스템은 이 배열에 없는 id 를 무시한다** — 조건을 만족해도 침묵한다.
+   * 이번 판에 켜진 방해요소 — OBS-14(플레이어 선택 발동)를 뺀 11종이 매 판 전부 켜진다
+   * (`data/obstacles.ts ACTIVE_OBSTACLES`). **판정 시스템은 이 배열에 없는 id 를
+   * 무시한다** — 조건을 만족해도 침묵한다.
    */
   obstacles: readonly ObsId[]
   /** 방해요소별 재발동 쿨다운 잔여(ms). 키가 없으면 0 */
