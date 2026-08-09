@@ -72,7 +72,12 @@ test('실내 AABB 는 정차 후 외피 안에 들어간다', async ({ page }) =
 
 const MARKS: readonly [string, number][] = [
   ['1_side_outside', SHOT.phone + 60],
-  ['2_door_shut', DOORS_MS - 150],
+  /**
+   * ★ 문 닫힘은 **컷 직후**에 잡는다. `DOORS_MS − 150` 은 예전 값(3080)에서는 샷 ②
+   *   안이라 카메라가 버스 **안**에 있었고, 그래서 "밖에서 본 닫힌 문"이 한 장도
+   *   없었다. 문 여는 시각을 컷 뒤로 미룬 뒤에는 컷 직후가 곧 닫힌 상태다.
+   */
+  ['2_door_shut', SHOT.phone + 40],
   ['3_door_open', DOORS_MS + 700],
   ['4_after_exit', SHOT.door - 150],
   ['5_run', SHOT.door + 500],
