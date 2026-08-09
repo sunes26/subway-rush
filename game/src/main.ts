@@ -36,7 +36,7 @@ import { createCollection } from './ui/collection'
 import { createIntro } from './ui/intro'
 import { actorAt, busDx, DOORS_MS, INTRO_MS, poseAt, SHOT } from './render/intro'
 import { buildEndingStage, type EndingStage } from './render/ending-stage'
-import { OUTRO_MS, outroAt, outroKindOf, type OutroKind } from './render/outro'
+import { anchorXOf, OUTRO_MS, outroAt, outroKindOf, type OutroKind } from './render/outro'
 import { createOutro } from './ui/outro'
 import { buildBusInterior, type BusInterior } from './render/bus-interior'
 import { buildWestRoad } from './render/west-road'
@@ -677,7 +677,14 @@ const frame = (now: number): void => {
     const t = outroHold ?? now - outroAtMs
     if (t >= OUTRO_MS) { endOutro() } else {
       const yOff = state.boardedTrain2 ? Y_OFFSET_OPP : 0
-      const f = outroAt(outroKind, t, state.player.pos.x, yOff)
+      /**
+       * 컷의 기준은 **탄 문 옆의 창**이다 — 사람이 선 자리가 아니라.
+       * 열차는 출발하며 조금 미끄러진 자리에서 얼고 사람도 밀리므로, 둘을 따로 두면
+       * 카메라가 문틀에 걸린다(`render/outro.ts anchorXOf` 주석 참고).
+       */
+      const boardedTrain = state.boardedTrain2 ? state.train2 : state.train
+      const ax = anchorXOf(state.boardedDoorX ?? state.player.pos.x, boardedTrain.x)
+      const f = outroAt(outroKind, t, ax, yOff)
 
       /**
        * 주인공 — 시뮬은 멈춰 있으므로(`ended`) 리그에 넘길 상태를 만들어 준다.
@@ -685,7 +692,7 @@ const frame = (now: number): void => {
        */
       if (player) {
         // 서는 자리는 컷이 정한다(`outro.ts STAND_Y`) — 문 바로 안쪽이면 카메라를 못 뺀다
-        const at = { ...state.player.pos, y: f.actor.y }
+        const at = { x: f.actor.x, y: f.actor.y, z: state.player.pos.z }
         player.setVisible(true)
         if (f.actor.clip) player.play(f.actor.clip)
         player.sync({
@@ -700,7 +707,7 @@ const frame = (now: number): void => {
       }
 
       endStage?.sync({
-        x: state.player.pos.x,
+        x: ax,
         // 탄 열차가 반대 방면이면 무대도 그쪽으로 — 두 승강장은 y 만 다르다
         yOff,
         tunnel: f.stage.tunnel,

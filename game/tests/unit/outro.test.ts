@@ -15,9 +15,10 @@
 import { describe, expect, it } from 'vitest'
 import { TRAIN } from '../../src/data/tuning'
 import { CABIN_Y1 } from '../../src/data/world'
-import { OUTRO_MS, outroAt, outroKindOf, SHOT, STAND_Y } from '../../src/render/outro'
+import { anchorXOf, OUTRO_MS, outroAt, outroKindOf, SHOT, STAND_Y } from '../../src/render/outro'
 
-const PX = 112
+/** 창 중심 x — 실제로는 `anchorXOf(boardedDoorX, train.x)` 가 낸다 */
+const AX = 114
 
 describe('어떤 엔딩이 어떤 컷을 받는가', () => {
   it('E-04 는 JUST IN TIME, E-08 은 WRONG WAY', () => {
@@ -71,7 +72,7 @@ describe('카메라는 객실 안에 머문다', () => {
   it('세 컷 모두, 전 구간에서 y 가 문과 창 사이다', () => {
     for (const kind of ['success', 'jit', 'wrongway'] as const) {
       for (let t = 0; t <= OUTRO_MS; t += 100) {
-        const { cam } = outroAt(kind, t, PX)
+        const { cam } = outroAt(kind, t, AX)
         expect(cam.y, `${kind} t=${t}`).toBeGreaterThan(12.42)
         expect(cam.y, `${kind} t=${t}`).toBeLessThan(CABIN_Y1)
         expect(cam.ly, `${kind} t=${t}`).toBeGreaterThan(cam.y)
@@ -82,8 +83,8 @@ describe('카메라는 객실 안에 머문다', () => {
   })
 
   it('시간을 벗어난 값도 양끝으로 물린다 — 스킵·되감기에서 튀지 않는다', () => {
-    expect(outroAt('success', -500, PX)).toEqual(outroAt('success', 0, PX))
-    expect(outroAt('success', OUTRO_MS + 9000, PX)).toEqual(outroAt('success', OUTRO_MS, PX))
+    expect(outroAt('success', -500, AX)).toEqual(outroAt('success', 0, AX))
+    expect(outroAt('success', OUTRO_MS + 9000, AX)).toEqual(outroAt('success', OUTRO_MS, AX))
   })
 
   it('주인공은 객실 안쪽에 선다 — 문 앞이면 카메라를 못 뺀다', () => {
@@ -91,6 +92,48 @@ describe('카메라는 객실 안에 머문다', () => {
     expect(STAND_Y).toBeLessThan(CABIN_Y1)
   })
 
+  /**
+   * ★ **카메라도 인물도 창(기준점)에서 1m 안에 있어야 한다.**
+   *
+   * 창은 문 사이 2.4m 구간에만 있다. 기준점에서 1.2m 를 넘어가면 옆 문 개구로
+   * 들어가고, 거기서는 문틀이 화면을 자른다 — JUST IN TIME 컷이 그렇게 깨졌다.
+   */
+  it('카메라와 인물이 창 구간을 안 벗어난다', () => {
+    for (const kind of ['success', 'jit', 'wrongway'] as const) {
+      for (let t = 0; t <= OUTRO_MS; t += 100) {
+        const f = outroAt(kind, t, AX)
+        expect(Math.abs(f.cam.x - AX), `cam ${kind} t=${t}`).toBeLessThan(1.0)
+        expect(Math.abs(f.cam.lx - AX), `look ${kind} t=${t}`).toBeLessThan(1.0)
+        expect(f.actor.x, `actor ${kind} t=${t}`).toBe(AX)
+      }
+    }
+  })
+
+  /**
+   * 기준점은 **열차를 따라간다.** 열차가 미끄러진 만큼 카메라도 같이 가야
+   * 창 앞에 남는다 — 사람 기준으로 두면 그 둘이 어긋난다(`anchorXOf` 주석).
+   */
+  it('기준점을 옮기면 카메라·인물이 통째로 따라간다', () => {
+    const a = outroAt('success', 1000, 100)
+    const b = outroAt('success', 1000, 103.5)
+    expect(b.cam.x - a.cam.x).toBeCloseTo(3.5)
+    expect(b.cam.lx - a.cam.lx).toBeCloseTo(3.5)
+    expect(b.actor.x - a.actor.x).toBeCloseTo(3.5)
+  })
+
+})
+
+describe('기준점 — 창 중심', () => {
+  /**
+   * `boardedDoorX` 는 **명목 좌표**다. 열차가 미끄러진 만큼 더해야 실제 렌더 위치가
+   * 되고, 거기서 2m 옆이 창 중심이다. 이 셈이 틀리면 컷 전체가 문틀을 본다.
+   */
+  it('명목 문 x + 열차 오프셋 + 2m 다', () => {
+    // 열차가 제자리(78)면 문 옆 2m
+    expect(anchorXOf(112, 78)).toBeCloseTo(114)
+    // 0.544m 미끄러졌으면 기준점도 그만큼 따라간다 (실측값)
+    expect(anchorXOf(112, 77.456)).toBeCloseTo(113.456)
+  })
 })
 
 describe('반대 방면 승강장', () => {
@@ -99,8 +142,8 @@ describe('반대 방면 승강장', () => {
    * 자리에 남아 40m 떨어진 빈 곳을 비춘다 — 실측으로 그 그림을 한 번 봤다.
    */
   it('오프셋을 주면 카메라도 인물도 통째로 따라간다', () => {
-    const a = outroAt('wrongway', 1000, PX, 0)
-    const b = outroAt('wrongway', 1000, PX, 40)
+    const a = outroAt('wrongway', 1000, AX, 0)
+    const b = outroAt('wrongway', 1000, AX, 40)
     expect(b.cam.y - a.cam.y).toBeCloseTo(40)
     expect(b.cam.ly - a.cam.ly).toBeCloseTo(40)
     expect(b.actor.y - a.actor.y).toBeCloseTo(40)
@@ -116,15 +159,15 @@ describe('WRONG WAY 전용 효과', () => {
    *   놀란 한 순간(안내판 직후 0.45초)에 몰려 있고, 그 앞뒤로는 정확히 0 이어야 한다.
    */
   it('흔들림은 안내판 직후 0.45초에만 있다', () => {
-    expect(outroAt('wrongway', SHOT.turn - 50, PX).cam.shakeX).toBe(0)
-    expect(Math.abs(outroAt('wrongway', SHOT.turn + 120, PX).cam.shakeX)).toBeGreaterThan(0)
-    expect(outroAt('wrongway', SHOT.turn + 500, PX).cam.shakeX).toBe(0)
-    expect(outroAt('wrongway', OUTRO_MS, PX).cam.shakeX).toBe(0)
+    expect(outroAt('wrongway', SHOT.turn - 50, AX).cam.shakeX).toBe(0)
+    expect(Math.abs(outroAt('wrongway', SHOT.turn + 120, AX).cam.shakeX)).toBeGreaterThan(0)
+    expect(outroAt('wrongway', SHOT.turn + 500, AX).cam.shakeX).toBe(0)
+    expect(outroAt('wrongway', OUTRO_MS, AX).cam.shakeX).toBe(0)
   })
 
   it('진폭이 2cm 를 안 넘는다', () => {
     for (let t = SHOT.turn; t < SHOT.turn + 500; t += 5) {
-      const c = outroAt('wrongway', t, PX).cam
+      const c = outroAt('wrongway', t, AX).cam
       expect(Math.abs(c.shakeX), `t=${t}`).toBeLessThanOrEqual(0.021)
       expect(Math.abs(c.shakeZ), `t=${t}`).toBeLessThanOrEqual(0.015)
     }
@@ -133,32 +176,32 @@ describe('WRONG WAY 전용 효과', () => {
   it('성공 계열은 절대 안 흔들린다', () => {
     for (const kind of ['success', 'jit'] as const) {
       for (let t = 0; t <= OUTRO_MS; t += 100) {
-        expect(outroAt(kind, t, PX).cam.shakeX, `${kind} t=${t}`).toBe(0)
-        expect(outroAt(kind, t, PX).stage.flash, `${kind} t=${t}`).toBe(1)
+        expect(outroAt(kind, t, AX).cam.shakeX, `${kind} t=${t}`).toBe(0)
+        expect(outroAt(kind, t, AX).stage.flash, `${kind} t=${t}`).toBe(1)
       }
     }
   })
 
   /** 번개는 **지옥이 드러난 뒤에** 친다 — 터널에서 번쩍이면 그냥 오류로 보인다 */
   it('번개는 짧고, 지옥이 드러난 뒤에 친다', () => {
-    expect(outroAt('wrongway', SHOT.turn + 100, PX).stage.flash).toBe(1)
-    expect(outroAt('wrongway', SHOT.turn + 720, PX).stage.flash).toBeGreaterThan(2)
-    expect(outroAt('wrongway', SHOT.turn + 900, PX).stage.flash).toBe(1)
+    expect(outroAt('wrongway', SHOT.turn + 100, AX).stage.flash).toBe(1)
+    expect(outroAt('wrongway', SHOT.turn + 720, AX).stage.flash).toBeGreaterThan(2)
+    expect(outroAt('wrongway', SHOT.turn + 900, AX).stage.flash).toBe(1)
   })
 })
 
 describe('컷마다 자기 몫의 몸짓이 있다', () => {
   it('JUST IN TIME 은 무릎을 짚는다 — 그리고 끝까지 다 펴지 않는다', () => {
-    expect(outroAt('jit', 500, PX).actor.brace).toBeGreaterThan(0.9)
-    const last = outroAt('jit', OUTRO_MS, PX).actor.brace
+    expect(outroAt('jit', 500, AX).actor.brace).toBeGreaterThan(0.9)
+    const last = outroAt('jit', OUTRO_MS, AX).actor.brace
     expect(last).toBeGreaterThan(0)      // 5초 만에 숨이 돌아오지는 않는다
     expect(last).toBeLessThan(0.5)
   })
 
   it('WRONG WAY 는 안내판을 읽은 뒤에야 무너진다', () => {
     // 그 전까지는 성공한 사람과 똑같이 서 있어야 뒤집히는 순간이 농담이 된다
-    expect(outroAt('wrongway', SHOT.turn - 100, PX).actor.slump).toBe(0)
-    expect(outroAt('wrongway', OUTRO_MS, PX).actor.slump).toBeGreaterThan(0.9)
+    expect(outroAt('wrongway', SHOT.turn - 100, AX).actor.slump).toBe(0)
+    expect(outroAt('wrongway', OUTRO_MS, AX).actor.slump).toBeGreaterThan(0.9)
   })
 
   /**
@@ -166,11 +209,11 @@ describe('컷마다 자기 몫의 몸짓이 있다', () => {
    *   반대로 두면 그냥 무서운 배경이 지나간 것이 되고, 「신촌」이 원인이 아니게 된다.
    */
   it('WRONG WAY 는 안내판이 먼저, 지옥이 나중이다', () => {
-    const atLed = outroAt('wrongway', SHOT.turn - 200, PX).stage
+    const atLed = outroAt('wrongway', SHOT.turn - 200, AX).stage
     expect(atLed.led, '안내판은 이미 켜져 있다').toBeGreaterThan(0.9)
     expect(atLed.tunnel, '창밖은 아직 터널이다').toBe(1)
 
-    const last = outroAt('wrongway', OUTRO_MS, PX).stage
+    const last = outroAt('wrongway', OUTRO_MS, AX).stage
     expect(last.tunnel, '지옥이 드러났다').toBeLessThan(0.02)
     expect(last.glow, '붉은 빛이 객실로 들어온다').toBeGreaterThan(0.9)
     expect(last.red).toBeGreaterThan(0)
@@ -182,25 +225,25 @@ describe('컷마다 자기 몫의 몸짓이 있다', () => {
    */
   it('세 컷 모두 끝에서 창밖 빛이 들어와 있다', () => {
     for (const kind of ['success', 'jit', 'wrongway'] as const) {
-      expect(outroAt(kind, OUTRO_MS, PX).stage.glow, kind).toBeGreaterThan(0.9)
-      expect(outroAt(kind, 0, PX).stage.glow, kind).toBe(0)
+      expect(outroAt(kind, OUTRO_MS, AX).stage.glow, kind).toBeGreaterThan(0.9)
+      expect(outroAt(kind, 0, AX).stage.glow, kind).toBe(0)
     }
   })
 
   it('성공 계열은 터널이 걷히고 붉은 기가 없다', () => {
     for (const kind of ['success', 'jit'] as const) {
-      expect(outroAt(kind, OUTRO_MS, PX).stage.tunnel, kind).toBeLessThan(0.02)
-      expect(outroAt(kind, OUTRO_MS, PX).stage.red, kind).toBe(0)
+      expect(outroAt(kind, OUTRO_MS, AX).stage.tunnel, kind).toBeLessThan(0.02)
+      expect(outroAt(kind, OUTRO_MS, AX).stage.red, kind).toBe(0)
     }
   })
 
   it('창밖은 멈춰 있다가 붙는다 — 처음부터 최고 속도면 이미 달리던 열차다', () => {
-    const early = outroAt('success', 200, PX).stage.scroll
-    const mid = outroAt('success', 1000, PX).stage.scroll
-    const late = outroAt('success', OUTRO_MS, PX).stage.scroll
+    const early = outroAt('success', 200, AX).stage.scroll
+    const mid = outroAt('success', 1000, AX).stage.scroll
+    const late = outroAt('success', OUTRO_MS, AX).stage.scroll
     expect(early).toBeLessThan(mid)
     expect(mid).toBeLessThan(late)
     // 가속 구간이 실제로 가속인가 — 뒤 1초가 앞 1초보다 많이 흐른다
-    expect(mid - early).toBeLessThan(late - outroAt('success', OUTRO_MS - 800, PX).stage.scroll)
+    expect(mid - early).toBeLessThan(late - outroAt('success', OUTRO_MS - 800, AX).stage.scroll)
   })
 })

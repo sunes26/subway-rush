@@ -81,11 +81,16 @@ export type OutroCam = Readonly<{
  * 인물이 머리와 어깨만 잡혔다). 그래서 인트로가 주인공을 직접 몰아주듯
  * (`render/intro.ts actorAt`) 여기서도 서는 자리를 준다. 시뮬은 이미 끝났고
  * 이 값은 렌더에만 쓰이므로 판정에 아무 영향이 없다.
+ *
+ * x 도 마찬가지로 컷이 정한다 — **창 앞**(`anchorXOf`)이다. 판이 끝난 자리에 그냥
+ * 두면 문 앞이라 뒤가 문틀이고, 인물 뒤에 창이 안 온다.
  */
-export const STAND_Y = 14.45
+export const STAND_Y = 14.90
 
 export type OutroActor = Readonly<{
-  /** 컷 동안 서 있을 y (월드). x 는 판이 끝난 자리를 그대로 쓴다 */
+  /** 컷 동안 서 있을 x (월드) — **창 앞**이다. 판이 끝난 자리를 그대로 쓰지 않는다 */
+  x: number
+  /** 컷 동안 서 있을 y (월드) */
   y: number
   /** 재생할 클립 — 없으면 그대로 둔다 */
   clip: 'Idle' | 'Stumble' | 'Hit' | null
@@ -151,10 +156,14 @@ const shakeAt = (t: number): { x: number; z: number } => {
 }
 
 /**
- * 창의 y. 무대(`ending-stage.ts`)의 창밖 판과 **같은 식으로 구한다** —
- * 여기서 숫자를 따로 적으면 둘이 소리 없이 어긋난다.
+ * 창밖 판이 서는 y — **여기가 단일 출처다.** 무대(`ending-stage.ts`)가 이 값을 읽는다.
+ *
+ * ⚠ 방향이 반대면 안 된다. 무대는 모듈 최상위에서 캔버스를 만드는데(부팅 때 텍스처를
+ *   준비하려고), 이 파일이 무대를 import 하면 **유닛 테스트가 무대까지 끌고 온다** —
+ *   node 에는 `document` 가 없어 수집 단계에서 터진다(실측). 이 파일은 DOM 을
+ *   모르는 순수 함수로 남아야 테스트가 컷을 단정할 수 있다.
  */
-const GLASS_Y = TRAIN.bodyYMax + 0.06
+export const GLASS_Y = 15.38
 
 /**
  * 열차 속도감 — 출발은 **눌러서 시작한다.** 처음부터 최고 속도로 흐르면 이미 달리던
@@ -166,13 +175,38 @@ const scrollAt = (t: number): number => {
   return (ramp / 2 + (t - ramp)) / 1000
 }
 
+/** 문 중심에서 옆 **창 중심**까지(m). 문 간격 4m 의 절반이다 */
+const WINDOW_DX = 2.0
+
+/**
+ * 컷의 기준점 — **차창 하나의 중심.** 카메라·인물·무대가 전부 이 x 에 걸린다.
+ *
+ * ★ **플레이어의 x 를 쓰면 안 된다.** 오래 헤맨 자리라 이유를 남긴다:
+ *
+ *   카메라가 보는 것(창이냐 반대편 문이냐)은 **열차의 것**인데, 카메라를 사람 기준으로
+ *   놓으면 그 둘이 따로 논다. 객차는 양쪽에 문이 있고 문 간격 4m · 개구 1.6m 라
+ *   창은 문 사이 2.4m 구간에만 있다. 그런데
+ *     · 열차는 출발하며 **0.54m 미끄러진 자리**에서 시뮬이 언다(실측 x=77.456)
+ *     · 사람도 걸어 들어가며 **0.24m 밀린다**(실측 px=111.76)
+ *   그래서 사람 기준 카메라가 문틀 가장자리에서 3.6cm 앞에 서는 일이 생겼고,
+ *   어느 컷이 창을 물고 어느 컷이 문틀에 막히는지가 사실상 우연이었다.
+ *
+ *   `boardedDoorX` 는 **명목 좌표**(`DOOR_XS`)라 열차가 밀린 만큼을 더해야 실제
+ *   렌더 위치가 된다 — `render/train-rig.ts` 와 `station.ts` 가 쓰는 그 오프셋이다.
+ *
+ * @param doorX  탄 문의 명목 x (`state.boardedDoorX`)
+ * @param trainX 지금 그 열차의 1량 앞단 x (`state.train.x` 또는 `train2.x`)
+ */
+export const anchorXOf = (doorX: number, trainX: number): number =>
+  doorX + (trainX - TRAIN.firstCarX) + WINDOW_DX
+
 /**
  * @param kind 확정된 결과 — 여기서 다시 판정하지 않는다
  * @param tMs  컷 시작부터의 경과
- * @param px   주인공이 선 x. 카메라·창·안내판이 전부 이 값을 기준으로 놓인다
+ * @param ax   창 중심 x (`anchorXOf`). 카메라·인물·무대가 전부 이 값에 걸린다
  * @param yOff 반대 방면이면 `Y_OFFSET_OPP`. 두 승강장은 y 만 다르므로 전부 여기에 더한다
  */
-export const outroAt = (kind: OutroKind, tMs: number, px: number, yOff = 0): OutroFrame => {
+export const outroAt = (kind: OutroKind, tMs: number, ax: number, yOff = 0): OutroFrame => {
   const t = Math.max(0, Math.min(OUTRO_MS, tMs))
   const z = FLOOR.B2
 
@@ -193,33 +227,44 @@ export const outroAt = (kind: OutroKind, tMs: number, px: number, yOff = 0): Out
    *   거의 정면으로 남는다.
    */
 
-  // ── ① 몸: 살짝 옆에서. 인물 뒤가 창이라 실루엣이 산다
+  /**
+   * ★ 카메라는 **창 앞 빈 공간**에 선다 — 문 개구가 아니라.
+   *
+   * 문 개구(±0.8m) 안에 서면 문틀·칸막이가 화면을 양쪽에서 자른다. 반대로 문 중심을
+   * 정면으로 보면 **맞은편 문**을 마주 본다(둘 다 실측으로 겪었다). 창 중심에서
+   * 0.3~0.6m 만 비켜서면 카메라 뒤는 벽이고 앞은 창이라, 양쪽 다 피한다.
+   *
+   * y 도 12.5 가 아니라 **13.1 이상**이다. 12.5 는 차체 안쪽 면에서 10cm 라
+   * "객실 안"이긴 한데 출입문 칸막이가 바로 그 자리에 서 있다.
+   */
+
+  // ── ① 몸: 창 앞에 선 인물을 살짝 옆에서. 뒤가 창이라 실루엣이 산다
   const bodyA: OutroCam = {
     shakeX: 0, shakeZ: 0,
-    x: px + 0.46, y: 12.52 + yOff, eye: z + EYE,
-    lx: px + 0.40, ly: STAND_Y + yOff, lz: z + 0.92, fov: 51,
+    x: ax - 0.52, y: 13.10 + yOff, eye: z + EYE,
+    lx: ax - 0.06, ly: STAND_Y + yOff, lz: z + 0.92, fov: 51,
   }
   // 컷 안에서 아주 조금 다가간다 — 선 카메라가 숨을 쉬는 정도
-  const bodyB: OutroCam = { ...bodyA, x: px + 0.40, y: 12.68 + yOff, lx: px + 0.36, lz: z + 0.96 }
+  const bodyB: OutroCam = { ...bodyA, x: ax - 0.46, y: 13.26 + yOff, lx: ax - 0.08, lz: z + 0.96 }
 
-  // ── ② 시선: 창으로 올라간다. 주인공은 화면 왼쪽 아래에 남는다
+  // ── ② 시선: 창으로 올라간다. 주인공은 화면 오른쪽 아래에 남는다
   const turnTo: OutroCam = {
     shakeX: 0, shakeZ: 0,
-    x: px + 0.34, y: 12.80 + yOff, eye: z + EYE,
-    lx: px + 0.30, ly: GLASS_Y + yOff, lz: z + 1.50, fov: 52,
+    x: ax - 0.36, y: 13.38 + yOff, eye: z + EYE,
+    lx: ax - 0.14, ly: GLASS_Y + yOff, lz: z + 1.50, fov: 52,
   }
 
   // ── ③ 바깥: 창이 화면을 채운다
   const outsideTo: OutroCam = {
     shakeX: 0, shakeZ: 0,
-    x: px + 0.26, y: 12.76 + yOff, eye: z + EYE + 0.04,
-    lx: px + 0.24, ly: GLASS_Y + yOff, lz: z + 1.52, fov: 55,
+    x: ax - 0.24, y: 13.34 + yOff, eye: z + EYE + 0.04,
+    lx: ax - 0.10, ly: GLASS_Y + yOff, lz: z + 1.52, fov: 55,
   }
   /** WRONG WAY 는 ③ 에서 사람에게 돌아온다 — 바깥이 준 답을 받는 얼굴이 필요하다 */
   const backToBody: OutroCam = {
     shakeX: 0, shakeZ: 0,
-    x: px + 0.52, y: 12.50 + yOff, eye: z + EYE - 0.06,
-    lx: px + 0.34, ly: STAND_Y + yOff, lz: z + 0.94, fov: 50,
+    x: ax - 0.58, y: 13.08 + yOff, eye: z + EYE - 0.06,
+    lx: ax - 0.04, ly: STAND_Y + yOff, lz: z + 0.94, fov: 50,
   }
 
   const base =
@@ -231,7 +276,7 @@ export const outroAt = (kind: OutroKind, tMs: number, px: number, yOff = 0): Out
   const cam: OutroCam = { ...base, shakeX: sh.x, shakeZ: sh.z }
 
   const a = actorAt(kind, t)
-  return { cam, actor: { ...a, y: a.y + yOff }, stage: stageAt(kind, t) }
+  return { cam, actor: { ...a, x: ax, y: a.y + yOff }, stage: stageAt(kind, t) }
 }
 
 /**
@@ -261,7 +306,7 @@ const actorAt = (kind: OutroKind, t: number): OutroActor => {
     const brace = t < 420
       ? seg(t, 120, 420)                                  // 휘청이며 접힌다
       : lerp(1, 0.22, easeInOut(seg(t, 2600, OUTRO_MS)))  // 창을 보며 조금 편다
-    return { y: STAND_Y, clip: t < 420 ? 'Stumble' : 'Idle', brace, slump: 0, facing }
+    return { x: 0, y: STAND_Y, clip: t < 420 ? 'Stumble' : 'Idle', brace, slump: 0, facing }
   }
 
   if (kind === 'wrongway') {
@@ -272,7 +317,7 @@ const actorAt = (kind: OutroKind, t: number): OutroActor => {
      */
     const hit = t >= SHOT.turn && t < SHOT.turn + 260
     const slump = seg(t, SHOT.turn + 120, SHOT.turn + 900)
-    return { y: STAND_Y, clip: hit ? 'Hit' : 'Idle', brace: 0, slump, facing }
+    return { x: 0, y: STAND_Y, clip: hit ? 'Hit' : 'Idle', brace: 0, slump, facing }
   }
 
   /**
@@ -281,7 +326,7 @@ const actorAt = (kind: OutroKind, t: number): OutroActor => {
    * "긴장이 풀렸다"이고, 더 주면 지쳐 쓰러지는 사람이 된다.
    */
   const breathe = Math.sin(seg(t, 200, 1900) * Math.PI) * 0.18
-  return { y: STAND_Y, clip: 'Idle', brace: breathe, slump: 0, facing }
+  return { x: 0, y: STAND_Y, clip: 'Idle', brace: breathe, slump: 0, facing }
 }
 
 const stageAt = (kind: OutroKind, t: number): OutroStage => {
