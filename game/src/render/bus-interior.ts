@@ -414,7 +414,19 @@ export const buildBusInterior = (): BusInterior => {
    * (−61.0 · −59.6) 사이에 정확히 들어가므로 창 배열도 그대로다.
    */
   const doorTop = BUS.winTop
-  const doorH = doorTop - 0.06
+  /**
+   * ★ 문 부품은 **개구부 아래 끝(0.35)에서 시작한다.**
+   *
+   * 예전엔 문틀·몰딩이 z 0.03~0.08 부터 올라왔다. 외피에 구멍이 없던 시절에는
+   * 차체 표면에 얹혀 있으니 어디서 시작해도 "문 모양"으로 읽혔다. 지금은 구멍이
+   * z 0.35 부터라, 그 아래로 내려간 부품이 **스커트 위에 검은 막대로 남는다**
+   * (실측 캡처 t=3800: 몰딩 둘이 개구부 밑으로 0.27m 뻗어 있었다).
+   *
+   * 문짝 아래 판만 0.35 로 올리고 문틀·몰딩을 안 고친 것이 원인이다.
+   * 이제 셋이 같은 값을 쓴다 — 개구부와 정확히 같은 높이 대역이다.
+   */
+  const doorBottom = 0.35
+  const doorH = doorTop - doorBottom
   const yIn = tz(SKIN_IN)
   const dw = DOOR.xMax - DOOR.xMin
 
@@ -426,8 +438,8 @@ export const buildBusInterior = (): BusInterior => {
    * 그 평면은 진짜 함몰 **앞을 가리는** 판이 된다. 없는 것이 맞다.
    */
   // 문틀
-  root.add(box(0.08, doorH, 0.09, C.trim, DOOR.xMin, doorH / 2 + 0.03, yIn))
-  root.add(box(0.08, doorH, 0.09, C.trim, DOOR.xMax, doorH / 2 + 0.03, yIn))
+  root.add(box(0.08, doorH, 0.09, C.trim, DOOR.xMin, doorBottom + doorH / 2, yIn))
+  root.add(box(0.08, doorH, 0.09, C.trim, DOOR.xMax, doorBottom + doorH / 2, yIn))
   root.add(box(dw + 0.16, 0.08, 0.09, C.trim, DOOR_X, doorTop, yIn))
   /**
    * 내릴 때 잡는 세로봉 — 문 **동쪽**.
@@ -462,17 +474,17 @@ export const buildBusInterior = (): BusInterior => {
      *   실물 저상버스의 문도 발판(0.35) 언저리에서 끝난다. 차체 안에 들어가므로
      *   실루엣을 안 깨뜨린다.
      */
-    const bottom = 0.35
-    const lower = BUS.winBottom - bottom
+    const lower = BUS.winBottom - doorBottom
     // 아래 판 — 양면 다 차체 색이라 상자로 둬도 된다
-    g.add(box(leafW, lower, 0.05, 0x1c6bc7, cx, bottom + lower / 2, yIn))
+    g.add(box(leafW, lower, 0.05, 0x1c6bc7, cx, doorBottom + lower / 2, yIn))
     const glass = new Mesh(new PlaneGeometry(leafW - 0.02, doorTop - BUS.winBottom - 0.02),
       toonMat(0x171c24))
     glass.position.set(cx, (BUS.winBottom + doorTop) / 2, yIn - 0.01)
     glass.rotation.y = Math.PI
     g.add(glass)
     // 문짝 가운데 세로 몰딩 — 두 짝이 맞물린 자리
-    g.add(box(0.035, doorH - 0.1, 0.055, C.trim, DOOR_X + dir * 0.018, doorH / 2 + 0.03, yIn - 0.02))
+    g.add(box(0.035, doorH - 0.08, 0.055, C.trim, DOOR_X + dir * 0.018,
+      doorBottom + doorH / 2, yIn - 0.02))
     return g
   }
   const dL = leafOf(-1)
