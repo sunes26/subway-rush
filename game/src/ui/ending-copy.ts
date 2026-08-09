@@ -63,17 +63,17 @@ export const badgeOf = (id: EndingId, tone: EndingTone): string =>
   STATUS_BY_ID[id] ?? STATUS[tone]
 
 /**
- * 도감 슬롯처럼 **좁은 자리**에서 쓰는 짧은 배지.
+ * 도감이 쓰는 **상태 라벨** — 언제나 셋 중 하나다.
  *
- * `GAME OVER`(9자)와 `JUST IN TIME`(12자)이 카드 폭을 밀어낸다. 슬롯에서는
- * 톤만 구분되면 되므로 세 글자로 줄인다 — 상세 영역에는 원래 배지가 그대로 뜬다.
+ * ⚠ 한때 슬롯이 좁다고 `GAME OVER` 를 `OVER` 로 줄여 썼다. 그러면 같은 화면 안에서
+ *   슬롯은 `OVER`, 상세는 `GAME OVER` 라 **같은 상태가 두 이름으로** 보인다.
+ *   줄여야 할 만큼 좁다면 그건 라벨이 아니라 레이아웃 문제다 — 슬롯을 키웠다.
+ *
+ * ⚠ `badgeOf` 와 다르다. 저쪽은 결과 화면용이라 E-04 `JUST IN TIME`,
+ *   E-08 `WRONG WAY` 처럼 **그 판이 어떻게 끝났는지**를 말한다. 도감은 목록이라
+ *   18칸이 같은 축으로 분류돼야 하므로 톤 셋으로만 적는다.
  */
-const SHORT: Readonly<Record<EndingTone, string>> = {
-  success: 'SUCCESS',
-  fail: 'OVER',
-  hidden: 'SPECIAL',
-}
-export const shortBadgeOf = (tone: EndingTone): string => SHORT[tone]
+export const statusOf = (tone: EndingTone): string => STATUS[tone]
 
 /**
  * **무슨 일이 일어났는가** — 엔딩마다 한 줄. 농담보다 먼저 온다.

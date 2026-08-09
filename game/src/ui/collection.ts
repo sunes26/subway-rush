@@ -44,7 +44,7 @@ import { formatClock } from '../core/math'
 import { ENDINGS, type EndingDef } from '../data/endings'
 import { loadSave, seenCount, type EndingRecord, type SaveData } from '../core/save'
 import type { EndingId } from '../state/types'
-import { shortBadgeOf, badgeOf, WHAT_HAPPENED } from './ending-copy'
+import { statusOf, WHAT_HAPPENED } from './ending-copy'
 
 export type Collection = Readonly<{
   el: HTMLElement
@@ -80,21 +80,22 @@ const bestText = (rec: EndingRecord): string =>
 const bestLabel = (rec: EndingRecord): string =>
   rec.bestMs > 0 ? '최고 기록 (잔여)' : '최고 기록'
 
+/**
+ * 슬롯 — **세 줄이 전부다.** 코드 · 상태 · 제목.
+ *
+ * 한때 여기에 한마디까지 넣었다. 정보는 늘었는데 18칸에 네 줄씩 깔리니 글자를
+ * 계속 줄여야 했고, 결국 **아무것도 안 읽히는 화면**이 됐다. 슬롯이 답해야 하는
+ * 질문은 하나뿐이다 — *"이건 뭐고, 깠나 안 깠나."* 나머지는 상세가 말한다.
+ */
 const slotHtml = (e: EndingDef, rec: EndingRecord | undefined, sel: boolean): string => {
   const cls = ['slot', rec ? 'got' : 'locked', e.tone, sel ? 'sel' : ''].filter(Boolean).join(' ')
   const attrs = `class="${cls}" data-id="${e.id}" role="option" aria-selected="${sel}"`
-  if (!rec) {
-    return `<li ${attrs}>
-      <span class="code">${e.id}</span>
-      <span class="lock" aria-hidden="true"></span>
-      <span class="name">???</span>
-    </li>`
-  }
   return `<li ${attrs}>
     <span class="code">${e.id}</span>
-    <span class="badge">${shortBadgeOf(e.tone)}</span>
-    <span class="name">${e.title}</span>
-    <span class="say">${e.line}</span>
+    ${rec
+      ? `<span class="badge">${statusOf(e.tone)}</span>`
+      : '<span class="lock" aria-hidden="true"></span>'}
+    <span class="name">${rec ? e.title : '???'}</span>
   </li>`
 }
 
@@ -106,36 +107,34 @@ const slotHtml = (e: EndingDef, rec: EndingRecord | undefined, sel: boolean): st
  */
 const detailHtml = (e: EndingDef, rec: EndingRecord | undefined): string => {
   if (!rec) {
-    return `<div class="detail locked">
-      <div class="d-code">${e.id}</div>
-      <div class="d-name">???</div>
+    return `<aside class="detail locked">
+      <div class="d-top"><span class="d-code">${e.id}</span></div>
+      <h2 class="d-name">???</h2>
       <p class="d-what">아직 보지 못한 엔딩입니다.</p>
-    </div>`
+    </aside>`
   }
-  return `<div class="detail ${e.tone}">
+  return `<aside class="detail ${e.tone}">
     <div class="d-top">
       <span class="d-code">${e.id}</span>
-      <span class="d-badge">${badgeOf(e.id, e.tone)}</span>
+      <span class="d-badge">${statusOf(e.tone)}</span>
     </div>
-    <div class="d-name">${e.title}</div>
+    <h2 class="d-name">${e.title}</h2>
     <p class="d-what">${WHAT_HAPPENED[e.id]}</p>
     <p class="d-say">${e.line}</p>
     <dl class="d-stats">
       <div><dt>발견 횟수</dt><dd>${rec.seen}<span>회</span></dd></div>
       <div><dt>${bestLabel(rec)}</dt><dd>${bestText(rec)}</dd></div>
     </dl>
-  </div>`
+  </aside>`
 }
 
 const cardHtml = (save: SaveData, selId: EndingId): string => {
   const got = seenCount(save)
   const total = ORDER.length
   const pct = Math.round(got / total * 100)
-  const sel = ORDER.find((e) => e.id === selId) ?? ORDER[0]!
+  const sel = ORDER.find((x) => x.id === selId) ?? ORDER[0]!
 
-  const slots = ORDER
-    .map((e) => slotHtml(e, save.endings[e.id], e.id === selId))
-    .join('')
+  const slots = ORDER.map((x) => slotHtml(x, save.endings[x.id], x.id === selId)).join('')
 
   return `
     <div class="cx">
@@ -145,9 +144,8 @@ const cardHtml = (save: SaveData, selId: EndingId): string => {
           <h1>엔딩 도감</h1>
         </div>
         <div class="cx-prog">
-          <div class="pnum"><b>${got}</b><span>/ ${total} 발견</span></div>
+          <div class="pnum"><b>${String(got).padStart(2, '0')}</b><span>/ ${total} 발견</span></div>
           <div class="pbar"><i style="width:${pct}%"></i></div>
-          <div class="pplays">플레이 ${save.plays}회</div>
         </div>
       </header>
       <div class="cx-body">
@@ -155,8 +153,8 @@ const cardHtml = (save: SaveData, selId: EndingId): string => {
         ${detailHtml(sel, save.endings[sel.id])}
       </div>
       <footer class="cx-foot">
-        <span><b>↑↓←→</b> 이동</span>
-        <span><b>C</b> 또는 <b>ESC</b> 닫기</span>
+        <span><b>↑ ↓ ← →</b> 이동</span>
+        <span><b>C</b> · <b>ESC</b> 닫기</span>
       </footer>
     </div>`
 }

@@ -328,137 +328,156 @@ body.run-ended #gl{filter:blur(5px) saturate(.90) brightness(.80);
 
 /* ─────────────── UI-12 엔딩 도감 (SCN-08) ───────────────
  *
- * ★ **여기도 안내 설비다.** 타이틀·결과와 같은 어휘를 쓴다 — 매트 블랙 프레임,
- *   LED 픽셀 격자, 앰버 기본. 예전 판은 이 시트가 맨 위에서 금지한 것들
- *   (backdrop blur · 방사형 그라디언트 · 떠 있는 둥근 카드)로 만들어져 있었다.
- *   같은 게임 안에서 두 화면이 서로 다른 세계의 물건이면 그게 먼저 눈에 띈다.
+ * ■ ★ **작은 모달이 아니라 하나의 화면이다**
  *
- * ★ 레이어는 `#screen` 보다 하나 위다 — 엔딩 화면 위에서 열려야 방금 딴 칸을
- *   그 자리에서 확인할 수 있다.
+ * 오래 이 화면은 게임 위에 뜬 폭 1120px 짜리 판이었다. 그 안에 18칸과 상세를
+ * 우겨넣으니 글자를 계속 줄여야 했고, 결국 *"검은 작은 창 안에 작은 글씨가 많이
+ * 들어간 화면"* 이 됐다. 판을 키우는 대신 **판을 없앤다** — 도감이 화면 전체를
+ * 쓰고, 뒤의 게임/타이틀은 강하게 눌러 완전히 물러난다.
+ *
+ * ■ 디자인 언어는 잇는다
+ *
+ * 검정 · 흰색 · 서브웨이 오렌지 · 상태 3색(초록/적색/앰버) · 얇은 구분선 ·
+ * 코드(E-XX)는 고정폭. 다만 **본문까지 도트로 찍지 않는다** — 도감은 역에 걸린
+ * 설비가 아니라 플레이어가 열어 보는 목록이라 읽기가 먼저다.
+ *
+ * ■ 대비 — **잠긴 칸도 읽혀야 한다**
+ *
+ * 숨겨야 하는 것은 엔딩 조건이지 UI 가 아니다. 잠긴 칸의 `E-XX` 와 `???` 는
+ * 이차 텍스트보다 어둡되 **읽을 수 있는** 밝기로 둔다.
  */
-#collection{--led-amber:#FF8A1E;--led-white:#F2F0EA;--led-green:#3FD86A;--led-red:#E5484D;
-  --led-dim:#7A746A;--panel:#0B0B0D;--frame:#191919;--edge:#2A2A2C;
-  --px:linear-gradient(rgba(0,0,0,.40) 1px,transparent 1px),
-       linear-gradient(90deg,rgba(0,0,0,.40) 1px,transparent 1px);
-  position:absolute;inset:0;display:none;place-items:center;z-index:5;
-  background:rgba(4,4,6,.90);pointer-events:auto;animation:fade .3s ease both;
-  overflow:auto;padding:4vh 3vw;
-  /*
-   * ★ **도감은 도트로 찍지 않는다.**
-   *
-   * 타이틀·결과판은 역에 걸린 실물 안내 설비라 LED 픽셀 격자가 물성이다.
-   * 도감은 다르다 — 그건 **플레이어가 열어 보는 목록**이지 역 안의 물건이 아니다.
-   * 격자를 그대로 얹었더니 18칸의 제목·한마디가 전부 도트매트릭스로 찍혀
-   * 읽는 화면이 아니라 장식이 됐다. 판의 물성(프레임·패널·앰버)은 남기고
-   * **격자만** 걷는다. 본문도 고정폭 대신 sans 로 — 읽을 글이 많은 화면이다.
-   */
-  font-family:var(--sans)}
-#collection.on{display:grid}
+#collection{--led-amber:#FF8A1E;--led-white:#F5F3ED;--led-green:#4BE07A;--led-red:#F0575C;
+  --ink-2:#B6AFA3;          /* 이차 — 설명·라벨 */
+  --ink-3:#8A8377;          /* 잠금 — 어둡되 읽힌다 */
+  --panel:#0A0A0C;--line:#232327;--line-2:#1A1A1D;
+  position:fixed;inset:0;display:none;z-index:5;background:#050506;
+  pointer-events:auto;animation:fade .22s ease both;font-family:var(--sans);
+  color:var(--led-white)}
+#collection.on{display:grid;grid-template-rows:auto 1fr auto}
 
-/* 판 본체 — `.board` 와 같은 물성 */
-#collection .cx{position:relative;width:min(1120px,94vw);background:var(--frame);
-  border:1px solid var(--edge);border-radius:2px;padding:6px}
-
-/* ── 머리 — 왼쪽 제목, 오른쪽 진행도 ── */
-#collection .cx-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;
-  background:var(--panel);padding:14px 20px 12px;border-bottom:1px solid #1C1C1F}
-/* 코드·수치·라벨만 고정폭 — 자리수가 맞아야 목록이 줄로 읽힌다 */
-#collection .kicker,#collection .slot .code,#collection .slot .badge,
-#collection .pnum,#collection .pplays,#collection .d-code,#collection .d-badge,
-#collection .d-stats dt,#collection .d-stats dd,#collection .cx-foot{font-family:var(--mono)}
-#collection .kicker{font-size:10px;letter-spacing:.42em;color:var(--led-amber)}
-#collection h1{font-family:var(--sans);font-size:26px;margin:4px 0 0;font-weight:800;
-  letter-spacing:-.03em;color:var(--led-white)}
-#collection .cx-prog{text-align:right;min-width:210px}
-/* 진행도는 **숫자가 먼저**다. 막대는 그 숫자를 거드는 것이지 대신하지 않는다 */
-#collection .pnum{display:flex;align-items:baseline;justify-content:flex-end;gap:7px}
-#collection .pnum b{font-size:30px;font-weight:800;color:var(--led-amber);line-height:1}
-#collection .pnum span{font-size:12px;letter-spacing:.1em;color:#8E877C}
-/* 트랙이 안 보이면 채워진 부분이 **떠 있는 선**으로 보인다 — 남은 칸도 칸이다 */
-#collection .pbar{height:5px;background:#2A2A2C;margin-top:9px;overflow:hidden;
-  border:1px solid #1C1C1F}
+/* ── 상단 — 왼쪽 제목, 오른쪽 진행도 ── */
+#collection .cx{display:contents}
+#collection .cx-head{display:flex;align-items:flex-end;justify-content:space-between;gap:40px;
+  padding:26px clamp(24px,4vw,64px) 20px;border-bottom:1px solid var(--line)}
+#collection .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.44em;
+  color:var(--led-amber)}
+#collection h1{font-size:clamp(28px,2.6vw,38px);margin:6px 0 0;font-weight:800;
+  letter-spacing:-.03em;line-height:1}
+#collection .cx-prog{min-width:min(320px,30vw)}
+/* 진행도는 **숫자가 먼저**다. 막대는 거들 뿐 대신하지 않는다 */
+#collection .pnum{display:flex;align-items:baseline;justify-content:flex-end;gap:9px;
+  font-family:var(--mono)}
+#collection .pnum b{font-size:clamp(34px,3.2vw,46px);font-weight:800;color:var(--led-amber);
+  line-height:1;letter-spacing:-.02em}
+#collection .pnum span{font-size:14px;letter-spacing:.1em;color:var(--ink-2)}
+/* 트랙이 안 보이면 채워진 부분이 떠 있는 선으로 보인다 — 남은 칸도 칸이다 */
+#collection .pbar{height:6px;background:#26262A;margin-top:11px;overflow:hidden}
 #collection .pbar i{display:block;height:100%;background:var(--led-amber)}
-#collection .pplays{font-size:10px;letter-spacing:.14em;color:var(--led-dim);margin-top:7px}
 
-/* ── 몸통 — 목록 + 상세 ── */
-#collection .cx-body{display:grid;grid-template-columns:1fr 320px;gap:1px;background:#1C1C1F}
-#collection .slots{list-style:none;margin:0;padding:14px;display:grid;gap:7px;
-  grid-template-columns:repeat(3,1fr);background:var(--panel)}
+/* ── 몸통 — 왼쪽 그리드 70% · 오른쪽 상세 30% ── */
+#collection .cx-body{display:grid;grid-template-columns:70fr 30fr;min-height:0}
+/*
+ * 18칸이 **스크롤 없이** 한 화면에 들어간다. 행 높이를 `1fr` 6개로 나눠
+ * 남는 세로를 칸이 흡수하게 한다 — 고정 높이로 두면 화면마다 아래가 남거나 잘린다.
+ */
+#collection .slots{list-style:none;margin:0;padding:clamp(16px,2vw,26px) clamp(16px,2.2vw,30px);
+  display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(6,1fr);
+  gap:clamp(8px,1vw,13px);min-height:0}
 
 /*
- * 슬롯 — **상태가 테두리와 밝기로 갈린다.**
- * 잠금은 점선 + 어둡게, 해금은 실선, 선택은 앰버 + 왼쪽 굵은 선.
- * 색만으로 구분하지 않는다 — 자물쇠 글리프와 `???` 가 글자로도 말한다.
+ * 슬롯 — 코드/상태는 위 한 줄, 제목은 그 아래 크게.
+ * 상태는 **테두리와 밝기**로도 갈린다. 색만으로 구분하지 않는다.
  */
-#collection .slot{position:relative;padding:8px 10px 9px 12px;cursor:pointer;
-  border:1px solid #232326;background:#0E0E11;min-height:58px;
-  display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;
-  column-gap:8px;row-gap:2px;align-content:start}
-#collection .slot .code{grid-column:1;font-size:10px;letter-spacing:.12em;color:var(--led-dim)}
-#collection .slot .badge{grid-column:2;justify-self:end;font-size:9px;letter-spacing:.14em}
-#collection .slot .name{grid-column:1/-1;font-family:var(--sans);font-size:14px;font-weight:700;
-  letter-spacing:-.01em;color:var(--led-white);line-height:1.25}
-#collection .slot .say{grid-column:1/-1;font-size:11px;color:#8E877C;line-height:1.4;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/*
- * 자물쇠 — **이모지가 아니라 그린다.**
- *
- * `🔒` 를 grayscale 로 눌러 썼더니 회색 뭉치가 됐다. 이모지는 폰트마다 모양이
- * 달라 크기·정렬도 안 맞고, 무엇보다 이 화면이 쓰는 어휘(픽셀 LED 사인)가 아니다.
- * 몸통 사각형 + 위쪽 고리 두 조각이면 8px 에서도 자물쇠로 읽힌다.
- */
-#collection .slot .lock{grid-column:2;justify-self:end;position:relative;
-  width:9px;height:7px;margin-top:3px;background:#4E4A45;border-radius:1px}
-#collection .slot .lock::before{content:'';position:absolute;left:2px;right:2px;bottom:100%;
-  height:4px;border:1.5px solid #4E4A45;border-bottom:0;border-radius:3px 3px 0 0}
+#collection .slot{position:relative;display:grid;
+  grid-template-columns:auto 1fr;grid-template-rows:auto 1fr;
+  /* 코드·상태는 위, 제목은 아래. 넓은 화면에서 칸이 커져도 아래가 안 빈다 */
+  align-content:space-between;column-gap:10px;row-gap:clamp(6px,.9vh,12px);
+  padding:clamp(12px,1.5vh,18px) clamp(14px,1.2vw,20px);
+  border:1px solid var(--line);background:#0C0C0F;cursor:pointer;
+  transition:border-color .12s,background .12s}
+#collection .slot:hover{border-color:#3A3A40;background:#111116}
+#collection .slot .code{font-family:var(--mono);font-size:13px;letter-spacing:.14em;
+  color:var(--ink-2)}
+#collection .slot .badge{grid-column:2;justify-self:end;font-family:var(--mono);
+  font-size:12px;font-weight:700;letter-spacing:.16em}
+#collection .slot .name{grid-column:1/-1;align-self:end;
+  font-size:clamp(18px,1.55vw,22px);font-weight:800;letter-spacing:-.02em;line-height:1.2}
 
 #collection .slot.got.success .badge{color:var(--led-green)}
 #collection .slot.got.fail .badge{color:var(--led-red)}
 #collection .slot.got.hidden .badge{color:var(--led-amber)}
 #collection .slot.got.hidden .name{color:var(--led-amber)}
 
-/* 미해금 — 어둡게 두되 **읽히기는 해야 한다.** 안 보이면 목표가 안 된다 */
-#collection .slot.locked{border-style:dashed;border-color:#202024;background:#0A0A0C}
-#collection .slot.locked .name{color:#4E4A45;font-weight:800;letter-spacing:.08em}
+/* 잠금 — 점선으로 "빈칸"임을 형태로 말한다. **글자는 읽힌다** */
+#collection .slot.locked{border-style:dashed;border-color:#2A2A2E;background:#08080A}
+#collection .slot.locked .code{color:var(--ink-3)}
+#collection .slot.locked .name{color:var(--ink-3);letter-spacing:.14em}
+/* 자물쇠 — 이모지가 아니라 그린다. 폰트마다 모양이 달라지지 않는다 */
+#collection .slot .lock{grid-column:2;justify-self:end;position:relative;
+  width:11px;height:9px;margin-top:5px;background:var(--ink-3);border-radius:1px}
+#collection .slot .lock::before{content:'';position:absolute;left:2px;right:2px;bottom:100%;
+  height:5px;border:2px solid var(--ink-3);border-bottom:0;border-radius:4px 4px 0 0}
 
-/* 선택 — 왼쪽 굵은 선이 "여기"를 가리킨다. 배경은 거의 안 바꾼다 */
-#collection .slot.sel{border-color:var(--led-amber);background:#131114}
-#collection .slot.sel::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;
-  background:var(--led-amber)}
+/*
+ * 선택 — **세 겹으로 말한다.** 얇은 테두리 하나로는 18칸 중 어디인지 안 찾아진다.
+ *   ① 앰버 테두리  ② 배경 한 단 밝게  ③ 왼쪽 LED 바
+ * 글로우는 안 쓴다 — 이 화면의 어휘가 아니다.
+ */
+#collection .slot.sel{border-color:var(--led-amber);background:#17140F}
+#collection .slot.sel::before{content:'';position:absolute;left:-1px;top:-1px;bottom:-1px;
+  width:4px;background:var(--led-amber)}
+#collection .slot.sel .code{color:var(--led-amber)}
 
-/* ── 상세 — 고른 하나만 말한다 ── */
-#collection .detail{background:var(--panel);padding:16px 18px;display:flex;flex-direction:column;gap:9px}
-#collection .d-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
-#collection .d-code{font-size:11px;letter-spacing:.16em;color:var(--led-dim)}
-#collection .d-badge{font-size:11px;letter-spacing:.18em;color:var(--led-white)}
+/* ── 상세 — 고른 하나만, 크게 ── */
+#collection .detail{border-left:1px solid var(--line);background:var(--panel);
+  padding:clamp(22px,2.6vw,40px) clamp(20px,2vw,34px);
+  display:flex;flex-direction:column;gap:clamp(10px,1.4vh,18px);min-height:0;overflow:auto}
+#collection .d-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#collection .d-code{font-family:var(--mono);font-size:14px;letter-spacing:.18em;color:var(--ink-2)}
+#collection .d-badge{font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.18em}
 #collection .detail.success .d-badge{color:var(--led-green)}
 #collection .detail.fail .d-badge{color:var(--led-red)}
 #collection .detail.hidden .d-badge{color:var(--led-amber)}
-#collection .d-name{font-family:var(--sans);font-size:24px;font-weight:800;letter-spacing:-.03em;
-  color:var(--led-white);line-height:1.15}
+/* 이 화면에서 가장 큰 글자 */
+#collection .d-name{margin:2px 0 0;font-size:clamp(30px,2.9vw,42px);font-weight:800;
+  letter-spacing:-.035em;line-height:1.1}
 #collection .detail.hidden .d-name{color:var(--led-amber)}
-#collection .d-what{margin:0;font-size:12px;line-height:1.6;color:#B9B2A6}
-/* 한마디는 **속마음**이다 — 설명과 같은 크기면 둘 다 안 읽힌다 */
-#collection .d-say{margin:2px 0 0;font-family:var(--sans);font-size:14px;line-height:1.5;
-  color:var(--led-white);padding-left:10px;border-left:2px solid #2A2A2C}
-#collection .d-stats{margin:auto 0 0;padding-top:12px;border-top:1px solid #1C1C1F;
-  display:grid;grid-template-columns:1fr 1fr;gap:10px}
-#collection .d-stats dt{font-size:10px;letter-spacing:.12em;color:var(--led-dim);margin-bottom:4px}
-#collection .d-stats dd{margin:0;font-size:20px;font-weight:800;color:var(--led-white);
-  display:flex;align-items:baseline;gap:3px}
-#collection .d-stats dd span{font-size:11px;font-weight:500;color:#8E877C}
-#collection .detail.locked .d-name{color:#4E4A45;letter-spacing:.1em}
-#collection .detail.locked .d-what{color:var(--led-dim)}
+#collection .d-what{margin:4px 0 0;font-size:clamp(16px,1.3vw,19px);line-height:1.6;
+  color:var(--ink-2)}
+/* 한마디는 속마음 — 설명보다 크고 흰색. 왼쪽 선으로 인용임을 형태로 말한다 */
+#collection .d-say{margin:2px 0 0;font-size:clamp(18px,1.6vw,23px);line-height:1.5;
+  padding-left:14px;border-left:2px solid var(--line)}
+#collection .d-stats{margin:auto 0 0;padding-top:clamp(16px,2vh,24px);border-top:1px solid var(--line);
+  display:grid;grid-template-columns:1fr 1fr;gap:16px}
+#collection .d-stats dt{font-family:var(--mono);font-size:12px;letter-spacing:.12em;
+  color:var(--ink-2);margin-bottom:7px}
+#collection .d-stats dd{margin:0;font-family:var(--mono);font-size:clamp(24px,2.1vw,30px);
+  font-weight:800;display:flex;align-items:baseline;gap:4px}
+#collection .d-stats dd span{font-size:13px;font-weight:500;color:var(--ink-2)}
+#collection .detail.locked .d-name{color:var(--ink-3);letter-spacing:.1em}
+#collection .detail.locked .d-what{color:var(--ink-3)}
 
-/* ── 발 — 조작 안내 ── */
-#collection .cx-foot{display:flex;gap:22px;background:var(--panel);padding:10px 20px;
-  border-top:1px solid #1C1C1F;font-size:11px;letter-spacing:.1em;color:#8E877C}
-#collection .cx-foot b{color:var(--led-amber);font-weight:700;margin-right:5px}
+/* ── 하단 — 조작. 읽을 수 있는 밝기로 ── */
+#collection .cx-foot{display:flex;gap:34px;padding:14px clamp(24px,4vw,64px);
+  border-top:1px solid var(--line);font-family:var(--mono);font-size:13px;
+  letter-spacing:.1em;color:var(--ink-2)}
+#collection .cx-foot b{color:var(--led-amber);font-weight:700;margin-right:7px}
 
-/* 좁은 화면 — 상세를 아래로 내리고 슬롯을 2열로 */
-@media (max-width:860px){
-  #collection .cx-body{grid-template-columns:1fr}
-  #collection .slots{grid-template-columns:repeat(2,1fr)}
-  #collection .slot .say{display:none}
+/*
+ * ── 좁은 화면 — **글자를 줄이지 않고 열을 줄인다** ──
+ *
+ * 1280 폭에서 3열은 열당 ≈280px 라 22px 제목이 들어간다(실측). 그보다 좁아지면
+ * 3열을 유지하려고 글자를 줄이는 대신 **2열 × 9행**으로 바꾼다 — 18칸을 억지로
+ * 밀어 넣는 것이 목적이 아니라 읽히는 것이 목적이다.
+ */
+@media (max-width:1180px){
+  #collection .slots{grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(9,1fr)}
+}
+/* 더 좁으면 상세를 아래로 내린다 — 옆에 두면 둘 다 좁아진다 */
+@media (max-width:900px){
+  #collection.on{grid-template-rows:auto 1fr auto}
+  #collection .cx-body{grid-template-columns:1fr;grid-template-rows:1fr auto}
+  #collection .detail{border-left:0;border-top:1px solid var(--line)}
+  #collection .slots{grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(9,auto)}
 }
 

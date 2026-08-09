@@ -43,18 +43,38 @@ test('결과 화면 3종', async ({ page }) => {
   }
   expect(true).toBe(true)
 })
-test('도감', async ({ page }) => {
-  test.setTimeout(300_000)
-  await boot(page)
-  await seed(page)
-  await page.keyboard.press('KeyC')
-  await page.waitForFunction(() => !!document.querySelector('#collection .cx'),
-    null, { timeout: 30_000 })
-  await page.waitForTimeout(250)
-  await page.screenshot({ path: `${DIR}/ui-collection.png` })
-  // 해금된 칸을 골라 상세를 본다
-  await page.click('#collection .slot[data-id="E-05"]')
-  await page.waitForTimeout(250)
-  await page.screenshot({ path: `${DIR}/ui-collection-sel.png` })
-  expect(true).toBe(true)
-})
+for (const [w, h] of [[1920, 1080], [1280, 720]] as const) {
+  test(`도감 ${w}×${h}`, async ({ page }) => {
+    test.setTimeout(300_000)
+    await page.setViewportSize({ width: w, height: h })
+    await boot(page)
+    await seed(page)
+    await page.keyboard.press('KeyC')
+    await page.waitForFunction(() => !!document.querySelector('#collection .slots'),
+      null, { timeout: 30_000 })
+    await page.click('#collection .slot[data-id="E-05"]')
+    await page.waitForTimeout(250)
+    /**
+     * 눈으로 보기 전에 **숫자로 먼저 본다** — 18칸이 스크롤 없이 들어갔는지,
+     * 제목이 몇 px 인지. "작아 보인다"는 판단은 재고 나서 한다.
+     */
+    const m = await page.evaluate(() => {
+      const ul = document.querySelector('#collection .slots') as HTMLElement
+      const s0 = document.querySelector('#collection .slot') as HTMLElement
+      const nm = s0.querySelector('.name') as HTMLElement
+      const dn = document.querySelector('#collection .d-name') as HTMLElement
+      const r = s0.getBoundingClientRect()
+      return {
+        cols: getComputedStyle(ul).gridTemplateColumns.split(' ').length,
+        slot: `${Math.round(r.width)}×${Math.round(r.height)}`,
+        title: getComputedStyle(nm).fontSize,
+        detail: getComputedStyle(dn).fontSize,
+        scroll: ul.scrollHeight > ul.clientHeight + 1,
+        docScroll: document.documentElement.scrollHeight > innerHeight + 1,
+      }
+    })
+    console.log(`VP ${w}×${h}  ${m.cols}열  슬롯 ${m.slot}  제목 ${m.title}  상세제목 ${m.detail}  그리드스크롤 ${m.scroll ? '★YES' : 'no'}  문서스크롤 ${m.docScroll ? '★YES' : 'no'}`)
+    await page.screenshot({ path: `${DIR}/ui-collection-${w}.png` })
+    expect(m.scroll).toBe(false)
+  })
+}
