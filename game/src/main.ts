@@ -818,6 +818,8 @@ const frame = (now: number): void => {
       riders?.setBusDx(busDx(t))
       riders?.update(dtSec)
       if (busIn) {
+        // ★ 밖으로 나가면 실내를 끈다 — 문짝만 남는다(`bus-interior.ts` 의 `setShell`)
+        busIn.setShell(inside)
         busIn.root.position.x = busDx(t)
         busIn.setDoor((t - DOORS_MS) / 620)
       }

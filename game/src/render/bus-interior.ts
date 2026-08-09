@@ -218,6 +218,24 @@ export type BusInterior = Readonly<{
   root: Group
   /** 뒷문을 연다 (0 닫힘 ~ 1 열림) */
   setDoor(open: number): void
+  /**
+   * 문짝을 **뺀** 실내(바닥·천장·벽·좌석·봉…)를 켜고 끈다.
+   *
+   * ■ 왜 필요한가 — 밖으로 나간 뒤에도 실내가 그려지고 있었다
+   *
+   * 하차 컷(3.5s) 이후 외피는 켜고 승객은 껐는데 **실내만 안 껐다.** 밖에서 보는데
+   * 실내가 계속 그려지니 외피 위로 삐져나왔다. 증상 셋이 전부 여기서 나왔다:
+   *   · 천장(0xf0ede6)이 차체 위 **밝은 베이지 덩어리**로
+   *   · 바닥(z 0.45) 위의 주인공이 차체 옆면에 **떠 있는 사람**으로
+   *   · 실내 벽·좌석이 창 너머로 비쳐 차체가 뚫린 것처럼
+   *
+   * ⚠ `pick()` 은 `station.root`·`player.root` 만 훑어서 **이 그룹을 못 본다.**
+   *   그래서 레이는 실내를 통과해 건너편 유리를 맞혔고, 한동안 "외피에 구멍이
+   *   있다"고 잘못 읽었다. 도구가 안 보는 물체가 있다는 것을 같이 기억할 것.
+   *
+   * 문짝은 **남긴다** — 하차 연출의 "문이 열린다"가 그것 하나로 성립한다.
+   */
+  setShell(on: boolean): void
   dispose(): void
 }>
 
@@ -427,9 +445,16 @@ export const buildBusInterior = (): BusInterior => {
   const leafOf = (dir: -1 | 1): Group => {
     const g = new Group()
     const cx = DOOR_X + dir * leafW / 2
-    const lower = BUS.winBottom - 0.06
+    /**
+     * ⚠ 아래 판을 **z 0.06 부터** 세웠더니 차체 밑단보다 낮게 내려와, 밖에서 보면
+     *   버스에 파란 판을 덧대 인도까지 늘어뜨린 그림이 됐다(실측 캡처 t=3500).
+     *   실물 저상버스의 문도 발판(0.35) 언저리에서 끝난다. 차체 안에 들어가므로
+     *   실루엣을 안 깨뜨린다.
+     */
+    const bottom = 0.35
+    const lower = BUS.winBottom - bottom
     // 아래 판 — 양면 다 차체 색이라 상자로 둬도 된다
-    g.add(box(leafW, lower, 0.05, 0x1c6bc7, cx, 0.06 + lower / 2, yOut))
+    g.add(box(leafW, lower, 0.05, 0x1c6bc7, cx, bottom + lower / 2, yOut))
     const glass = new Mesh(new PlaneGeometry(leafW - 0.02, doorTop - BUS.winBottom - 0.02),
       toonMat(0x171c24))
     glass.position.set(cx, (BUS.winBottom + doorTop) / 2, yOut - 0.01)
@@ -443,8 +468,19 @@ export const buildBusInterior = (): BusInterior => {
   const dR = leafOf(1)
   root.add(dL, dR)
 
+  /**
+   * 문짝을 뺀 나머지를 한 그룹으로 묶는다. 만들 때마다 `shell.add` 로 넣는 대신
+   * **다 만든 뒤 옮긴다** — 추가 지점이 서른 곳 가까이라 한 곳만 빠뜨리면
+   * 그것만 밖에서 보인다.
+   */
+  const shell = new Group()
+  shell.name = 'intro-bus-shell'
+  for (const c of [...root.children]) if (c !== dL && c !== dR) shell.add(c)
+  root.add(shell)
+
   return {
     root,
+    setShell(on) { shell.visible = on },
     setDoor(open) {
       const k = Math.max(0, Math.min(1, open))
       // 옆으로 빠진다 — 실제 시내버스 미닫이문과 같다
