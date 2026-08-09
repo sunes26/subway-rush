@@ -24,8 +24,8 @@
  */
 
 import {
-  BoxGeometry, CanvasTexture, CapsuleGeometry, Group, LinearFilter, Matrix4, Mesh,
-  MeshBasicMaterial, PlaneGeometry, Quaternion, SkinnedMesh, SRGBColorSpace, Vector3,
+  BoxGeometry, CanvasTexture, Group, LinearFilter, Matrix4, Mesh,
+  MeshBasicMaterial, PlaneGeometry, Quaternion, SRGBColorSpace, Vector3,
   type Object3D, type Texture,
 } from 'three'
 import { CHAR_SCALE } from './actors'
@@ -188,44 +188,7 @@ export type Phone = Readonly<{
  */
 const SIZE = { w: 0.082, h: 0.168, d: 0.010 } as const
 
-/**
- * ★ **폰을 얹는 손을 폰 그룹에 붙인다.**
- *
- * ■ 왜 팔이 아니라 폰에 붙이는가
- *
- * 이 리그의 팔은 `LowerArmR` 에서 끝난다 — **손 본이 없다.** 그래서 손을 팔에
- * 붙이면 폰과의 관계를 매 프레임 좌표로 맞춰야 하고, 그 방식으로는 자세가 조금
- * 바뀔 때마다 폰이 손에서 떨어진다(그 부류의 버그를 이미 두 번 겪었다).
- *
- * 손을 **폰의 자식**으로 두면 접촉이 좌표 맞추기가 아니라 **부모-자식 관계**로
- * 보장된다. 폰이 어디로 가고 어떻게 돌든 손이 그 아래에 따라간다.
- *
- * ■ ★ 손가락을 만들지 않는다
- *
- * 한때 손가락 셋과 엄지를 폰에 감았다. 모양은 났지만 필요한 것보다 정교했고,
- * 화면 아래쪽을 가리지 않게 높이를 mm 단위로 맞춰야 했다 — 폰 화면 레이아웃이
- * 바뀌면 그 값이 다시 다 틀어지는 구조다. 이 컷이 말해야 하는 것은
- * **"폰이 손 위에 있다"** 하나이고, 그건 손 하나로 충분하다.
- *
- * 그래서 캡슐 하나다. 폰의 아래 모서리가 손 안으로 7mm 들어가 있어 어느
- * 각도에서도 사이가 안 벌어지고, 손이 화면 위로 올라오지 않으므로 글자를
- * 가릴 일이 구조적으로 없다.
- */
-const HAND = {
-  /** 손 반지름 — 3등신 SD 의 손이라 폰 폭(0.082)에 맞먹는다 */
-  r: 0.023,
-  /**
-   * 캡슐의 직선부 길이. 반지름과 합쳐 **폰 폭(0.082)보다 짧아야** 한다 —
-   * 0.040 이면 전체가 0.086 이라 폰 모서리 밖으로 둥근 끝이 튀어나와,
-   * 팔뚝에 안 가리는 쪽에서 **혹처럼** 하나 붙어 보였다.
-   */
-  len: 0.030,
-  /**
-   * 폰 아래 모서리(로컬 y −0.006) 기준으로 손 중심을 얼마나 내릴지.
-   * 손 윗면이 모서리보다 **위**에 오게 잡는다 — 그 겹침이 "얹혀 있다"를 만든다.
-   */
-  drop: 0.014,
-} as const
+
 
 export const buildPhone = (): Phone => {
   const root = new Group()
@@ -282,22 +245,6 @@ export const buildPhone = (): Phone => {
   screen.position.set(0, GRIP_UP, -(SIZE.d / 2 + 0.001))
   screen.rotation.y = Math.PI
   root.add(screen)
-
-  /**
-   * ── 폰을 얹는 손 (`HAND` 주석 참고)
-   *
-   * 색은 **박지 않는다.** 주인공은 GLB 리그이고 피부색은 그 파일의 재질에 있다.
-   * 여기에 색을 적어 두면 캐릭터를 다시 굽는 날 손만 다른 색이 된다 —
-   * `attachTo` 에서 리그의 재질에서 읽어 온다. 기본값은 못 읽었을 때만 쓴다.
-   */
-  const skin = toonMat(0xece7de)
-  const hand = new Mesh(new CapsuleGeometry(HAND.r, HAND.len, 4, 10), skin)
-  hand.name = 'intro-phone-hand'
-  // 캡슐의 긴 축은 +Y 다. 폰 폭 방향(X)으로 눕힌다
-  hand.rotation.z = Math.PI / 2
-  hand.position.set(0, -(SIZE.h / 2 - GRIP_UP) - HAND.drop, 0.001)
-  root.add(hand)
-
   /**
    * ★ **본에 매달면 캐릭터 배율(`CHAR_SCALE` 1.6)을 그대로 먹는다.**
    *
@@ -335,15 +282,40 @@ export const buildPhone = (): Phone => {
    * 팔뚝은 0.21m 이고, 본에 매달리면 `CHAR_SCALE` 이 곱해지므로 나눠 준다.
    */
   /**
-   * `x` 는 손등 기준의 **좌우**다. `+x` 가 손 뒤쪽(카메라 반대편)이라, 0.024 로
-   * 밀었을 때 폰이 손등 뒤로 더 들어가 화면이 거의 안 보였다. 부호를 뒤집어
-   * −0.012 로 두면 폰이 손등 **앞**으로 나온다. 손 폭의 절반(≈0.025) 안이라
-   * 쥐는 점은 여전히 손 안에 있다 — 접촉을 잃지 않고 화면만 열린다.
+   * ★ **손 메시를 따로 붙이지 않는다 — 팔뚝 끝이 손이다.**
+   *
+   * ■ 두 번 만들어 보고 두 번 다 걷어냈다
+   *
+   *   1. 손가락 셋 + 엄지를 폰에 감았다. 모양은 났지만 손가락 높이를 화면 문구
+   *      아래에서 끝내야 해서 mm 단위로 맞춰 뒀고, 문구가 한 줄 늘면 그 값이
+   *      전부 틀어지는 구조였다. 필요한 것보다 정교했다.
+   *   2. 캡슐 하나로 줄였다. 그런데 지름 0.046 인 캡슐이 두께 0.010 인 폰을
+   *      앞뒤·좌우로 넘어서, 팔뚝 실루엣 밖에 **흰 혹**이 하나 붙어 보였다.
+   *      길이를 0.086 → 0.076 → 0.066 으로 줄이고 폰 뒤로 넣어도 안 없어졌다 —
+   *      팔뚝보다 굵은 덩어리를 팔뚝 옆에 두는 한 남는다.
+   *
+   * ■ 그래서 아무것도 안 붙인다
+   *
+   * 이 리그의 팔뚝은 끝이 둥근 low-poly 덩어리이고, 그게 이미 벙어리장갑 낀
+   * 손처럼 읽힌다. 폰의 **아래 모서리를 그 안으로 넣으면** 「손 위에 얹혀 있다」가
+   * 성립하고, 실루엣은 팔에서 손으로 이어지는 하나의 매끈한 형태로 남는다.
+   *
+   * ■ 값은 런타임 스윕으로 찾았다 (`0.180 / 0.196 / 0.212 / 0.228` × `x 0 / −0.012`)
+   *
+   *   0.228   폰 아래 모서리가 팔뚝 **위**에 떠서 사이가 벌어진다
+   *   0.212   모서리가 팔뚝 뒤로 들어가고 화면 세 줄이 다 남는다  ← 이것
+   *   0.196   조금 더 묻힌다. 여기까지도 쓸 수 있다
+   *   0.180   팔뚝이 「20분 26초 후」를 가린다
+   *
+   * 팔뚝 길이(0.235) 안이라 자세가 어떻게 바뀌어도 폰이 팔에서 떨어질 수 없다 —
+   * 접촉은 여전히 **부모-자식 관계**로 보장된다. 본에 매달리면 `CHAR_SCALE` 이
+   * 곱해지므로 나눠 준다.
+   *
+   * `x` 는 좌우다. `+x` 가 팔뚝이 들어오는 쪽이라, 0.024 로 밀었을 때 폰이 팔뚝
+   * 뒤로 들어가 화면이 거의 안 보였다. −0.012 면 팔뚝 앞으로 나온다.
    */
-  root.position.set(-0.012, 0.228 / CHAR_SCALE, 0.020)
+  root.position.set(-0.012, 0.212 / CHAR_SCALE, 0.020)
   root.visible = false
-
-  let skinTaken = false
 
   const want = new Quaternion()
   const inv = new Quaternion()
@@ -356,23 +328,6 @@ export const buildPhone = (): Phone => {
     root,
     attachTo(bone) {
       if (root.parent !== bone) bone.add(root)
-      /**
-       * ★ 손 색을 **리그에서 읽는다.** 본의 최상위 조상까지 올라가 스킨드 메시의
-       *   재질 색을 그대로 가져온다. 캐릭터를 다시 굽거나 색을 바꿔도 손이 따라간다.
-       *   한 번만 하면 되므로 플래그로 막는다.
-       */
-      if (!skinTaken) {
-        let top: Object3D = bone
-        while (top.parent) top = top.parent
-        top.traverse((o) => {
-          if (skinTaken || !(o instanceof SkinnedMesh)) return
-          const mat = Array.isArray(o.material) ? o.material[0] : o.material
-          const col = (mat as { color?: { getHex(): number } }).color
-          if (!col) return
-          skin.color.setHex(col.getHex())
-          skinTaken = true
-        })
-      }
     },
     /**
      * ★ **세로로 세우고, 화면이 읽히는 쪽을 보게 한다.**
