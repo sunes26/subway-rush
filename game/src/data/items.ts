@@ -1,7 +1,8 @@
 /**
- * 아이템 정의 — P2는 15종(슬롯 점유) + 미점유 2종.
+ * 아이템 정의 — 13종(슬롯 점유) + 미점유 2종.
  *
- * ID는 GDD §5.3과 **완전히 같다.** 결번은 I-03 삭제뿐이다. I-15는 이제 정의되어 있다.
+ * ID는 GDD §5.3에서 시작했으나 결번이 셋이다 — I-03(삭제), I-10(캐리어)·I-14(EMP 폭탄)은
+ * 디렉터 지시로 아이템 체계째 지웠다. I-15는 정의되어 있다.
  * I-02 동전·I-04 교통카드는 **슬롯을 쓰지 않으므로** 정의는 있고 `slot: false` 다.
  *
  * P1은 4종이었다. P2가 11종으로 늘리면서 생긴 진짜 변화는 개수가 아니라
@@ -155,21 +156,6 @@ const DEFS: readonly ItemDef[] = [
     noTargetReason: '펼치면 뭔가 막아줄 것 같다',
   },
   {
-    id: 'I-10',
-    name: '캐리어',
-    node: 'ITM10_Luggage',
-    slot: true,
-    consumable: false,
-    use: 'wear',
-    flag: 'CARRIER_ON',
-    negates: ['OBS-03', 'OBS-04'],
-    glyph: '🧳',
-    noTargetReason: '이미 끌고 있다',
-    cost: '끌고 다니면 사람들 사이를 밀고 나갈 수 있을 것 같다',
-    wearOnText: '한쪽 손이 무거워졌다',
-    wearOffText: '손이 가벼워졌다',
-  },
-  {
     id: 'I-11',
     name: '유실물 지갑',
     node: 'ITM11_Wallet',
@@ -247,17 +233,6 @@ const DEFS: readonly ItemDef[] = [
     negates: ['OBS-10', 'OBS-11'],
     glyph: '🗺',
     noTargetReason: '펼쳐 봤다',
-  },
-  {
-    id: 'I-14',
-    name: 'EMP 폭탄',
-    node: 'ITM14_Emp',
-    slot: true,
-    consumable: true,
-    use: 'auto',
-    negates: ['OBS-08'],
-    glyph: '💥',
-    noTargetReason: '들고만 있어도 뭔가 막아줄 것 같다',
   },
 
   // ── 슬롯 미점유 ──

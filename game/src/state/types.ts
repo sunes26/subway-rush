@@ -27,7 +27,7 @@ export type EndingId =
 /** P1 예약 — 지금은 선언만 */
 export type ItemId =
   | 'I-01' | 'I-02' | 'I-04' | 'I-05' | 'I-06' | 'I-07' | 'I-08'
-  | 'I-09' | 'I-10' | 'I-11' | 'I-12' | 'I-13' | 'I-14' | 'I-15'
+  | 'I-09' | 'I-11' | 'I-12' | 'I-13' | 'I-15'
   | 'I-16' | 'I-17' | 'I-18'
 
 export type FlagId =
@@ -50,7 +50,6 @@ export type FlagId =
   | 'SEAT_YIELDED'
   // ── P2 착용 ──
   | 'EARBUDS_ON'         // 이어폰 착용 — 전단지·아주머니 무시. 대가: LED 힌트가 안 들린다
-  | 'CARRIER_ON'         // 캐리어 견인 — 인파 관통. 대가: 이동속도 −20%
   | 'CAFFEINE'           // 커피를 마셨다 — 스태미너 소모 감소
   | 'MAP_OPEN'           // 노선도를 펼쳤다 — 미니맵 확대
   // ── P2 개찰 ──

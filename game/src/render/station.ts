@@ -19,7 +19,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { PALETTE, TRAIN } from '../data/tuning'
-import { DOOR_XS, GATES } from '../data/world'
+import { DOOR_XS, EMERGENCY_GATE, GATES } from '../data/world'
 import type { GameState } from '../state/types'
 import {
   buildContactShadows, mayGround, shadowQuadFrom, type ShadowQuad,
@@ -84,7 +84,7 @@ const USE_LIGHTMAP = false
  * 문이 안 열리는 채로 굳지 않는다.
  */
 const DYNAMIC_NAME =
-  /^(B_)?(Z3_GATE_G\d_[NS]_flap|Z3_sign_G\d_face|Z3_GATE_G\d_floorlamp|Z5_psd_door_\d+|TR_door_|TR_dwin_|Z1_OBJ02_signal)/
+  /^(B_)?(Z3_GATE_G\d_[NS]_flap|Z3_GATE_EMG_[NS]_flap|Z3_sign_G\d_face|Z3_GATE_G\d_floorlamp|Z5_psd_door_\d+|TR_door_|TR_dwin_|Z1_OBJ02_signal)/
 // ⚠ 여기 올린 머티리얼은 **쓰는 오브젝트마다 드로우 콜 1개**가 된다 (병합에서 빠지므로).
 // `SIGN_DARK`가 올라가 있었는데, 그 색으로 칠해진 것 중 실제로 상태에 따라 바뀌는 건
 // 게이트 표지판 **면**(`Z3_sign_G\d_face`)뿐이고 그건 위 이름 규칙이 이미 잡는다.
@@ -471,6 +471,8 @@ const mergeBuckets = (
  * 그래서 여기서 다시 경첩으로 원점을 옮기고 노드 위치로 되돌린다.
  */
 type Flap = { gate: number; node: Object3D; openAngle: number }
+/** 비상게이트 문짝 — 번호가 없다. 번호 게이트의 `gates.activeId`와 무관하게 `EMERGENCY_OPEN` 하나로만 연다. */
+type EmergencyFlap = { node: Object3D; openAngle: number }
 /** 동적 글로우 메시 안에서 이 부품이 차지하는 판 구간 [시작, 개수] */
 type GlowRange = readonly [number, number]
 type SignFace = { gate: number; mat: MeshBasicMaterial; glow: GlowRange }
@@ -515,12 +517,11 @@ const worldZ = (o: Object3D): number => {
  * 좌표계 규약(게임 y → three −z)이 한 번이라도 바뀌면 조용히 뒤집히고,
  * 그러면 문이 하우징 **안쪽**으로 열려 눈앞에서 사라진다.
  */
-const hingeAt = (node: Mesh, gateId: number): number => {
-  const gate = GATES.find((g) => g.id === gateId)
+const hingeAt = (node: Mesh, centerY: number): number => {
   node.geometry.computeBoundingBox()
   const bb = node.geometry.boundingBox
-  if (!gate || !bb) return 0
-  const centerZ = -gate.y
+  if (!bb) return 0
+  const centerZ = -centerY
   const hz = Math.abs(bb.max.z - centerZ) > Math.abs(bb.min.z - centerZ) ? bb.max.z : bb.min.z
   const hx = (bb.min.x + bb.max.x) / 2
   node.geometry.translate(-hx, 0, -hz)
@@ -586,6 +587,7 @@ export const loadStation = async (
   train2Group.name = 'station:train2'
 
   const flaps: Flap[] = []
+  const emergencyFlaps: EmergencyFlap[] = []
   const signs: SignFace[] = []
   const lamps: SignFace[] = []
   // 신호등은 **여러 기**다. 횡단보도 양단에 보행등이 서고 차도에 차량등이 따로 선다.
@@ -706,7 +708,16 @@ export const loadStation = async (
         // 실물 플랩은 반투명 아크릴이라 금속 본체와 확실히 구분된다 — 그 대비만 가져온다.
         node.material = toonMat(0xbfe4ee)
         const gate = Number(flapM[1])
-        flaps.push({ gate, node, openAngle: hingeAt(node, gate) })
+        const gateY = GATES.find((g) => g.id === gate)?.y ?? 0
+        flaps.push({ gate, node, openAngle: hingeAt(node, gateY) })
+        continue
+      }
+      const emgFlapM = /^Z3_GATE_EMG_[NS]_flap$/.exec(m.name)
+      if (emgFlapM) {
+        // 번호 게이트와 같은 대비색 — 인터폰 문도 하우징 없이 문짝만 있으니
+        // 회색으로 두면 눈에 안 띈다.
+        node.material = toonMat(0xbfe4ee)
+        emergencyFlaps.push({ node, openAngle: hingeAt(node, EMERGENCY_GATE.y) })
         continue
       }
       const signM = /^Z3_sign_G(\d)_face$/.exec(m.name)
@@ -926,6 +937,14 @@ export const loadStation = async (
       for (const f of flaps) {
         const open = s.gates.passed || (s.gates.state === 'open' && s.gates.activeId === f.gate)
         const target = open ? f.openAngle : 0
+        f.node.rotation.y += (target - f.node.rotation.y) * (1 - Math.exp(-dtSec / 0.09))
+      }
+
+      // 비상게이트 — 번호 게이트와 완전히 별개 조건(`EMERGENCY_OPEN`)이라
+      // 인터폰으로 이 문을 열어도 다른 게이트는 그대로 닫힌 채다.
+      const emergencyOpen = s.flags.includes('EMERGENCY_OPEN')
+      for (const f of emergencyFlaps) {
+        const target = emergencyOpen ? f.openAngle : 0
         f.node.rotation.y += (target - f.node.rotation.y) * (1 - Math.exp(-dtSec / 0.09))
       }
 

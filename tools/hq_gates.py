@@ -104,6 +104,7 @@ def build():
 
     glyph = Batch("Z3_hq_headglyph", m_signwhite)
     door_panels()
+    emergency_door_panel()
     _gate_cap(rows)
     _recolor_head_signs()
     _side_leds()
@@ -243,6 +244,68 @@ def door_panels():
             made += 1
 
     print(f"  플랩 문 {made}장 — 닫힌 자세 · 한 장이 통로 절반")
+
+
+# 비상게이트(OBJ-21) 위치 — `game/src/data/world.ts EMERGENCY_GATE`(x61·y30·halfW0.7)
+# 와 `GATE_BODY`(xMin60.3·xMax61.7)를 그대로 옮겨 적었다. Python 쪽에서 TS 상수를
+# 못 읽으므로 두 값이 어긋나면(양쪽 다 손으로 고쳐야 하는 자리) 문이 게이트 열
+# 밖에 서거나 통로 폭과 안 맞는다.
+EMG_X0, EMG_X1 = 60.3, 61.7
+EMG_Y, EMG_HALFW = 30.0, 0.7
+
+
+def emergency_door_panel():
+    """비상게이트 문짝 — `Z3_GATE_EMG_{N,S}_flap` 2장.
+
+    번호 게이트(`door_panels()`)와 같은 수법·같은 재질(HQ_GATE_FLAP)로 만들되
+    **본체(housing)는 없다** — 인터폰 문은 좌우 게이트 사이 빈 슬롯에 서는
+    비상용 문이라 실물 개찰기 상판·리더·LED가 없다. 애니메이션은
+    `render/station.ts`에서 `EMERGENCY_OPEN` 플래그로 따로 돈다(번호 게이트의
+    `gates.activeId`와 별개 조건이라 이 문 하나만 열려도 다른 게이트는 안 움직인다).
+    """
+    # 그레이박스 시절 정적 슬래브 — 실측(플레이)으로 걸렸다: 인터폰을 불러 이
+    # 애니메이션 문이 열려도, 같은 자리에 서 있던 이 옛 판이 안 치워져 열린 문
+    # 뒤에(실은 앞에) 그대로 남아 "문이 하나 더 있다"로 보였다. `door_panels()`가
+    # 번호 게이트의 옛 `Z3_hq_gateflap`을 지운 것과 같은 이유·같은 처리다.
+    # 프레임 기둥(`Z3_EMG_post_N/S`)은 놔둔다 — 저건 문틀이라 계속 필요하다.
+    stale_door = bpy.data.objects.get("Z3_EMG_door")
+    if stale_door is not None:
+        bpy.data.objects.remove(stale_door, do_unlink=True)
+        print("  정적 슬래브 Z3_EMG_door 제거 (애니메이션 문과 중복)")
+
+    m_door = mat("HQ_GATE_FLAP", (0.68, 0.82, 0.88), roughness=0.2)
+    coll = zone_collection("Z3_GATES")
+
+    ny0 = EMG_Y + EMG_HALFW
+    sy1 = EMG_Y - EMG_HALFW
+    half = (ny0 - sy1) / 2 - DOOR_GAP
+    dx = EMG_X0 + (EMG_X1 - EMG_X0) * DOOR_AT
+
+    made = 0
+    for side, hinge, toward in (("N", ny0, -1), ("S", sy1, +1)):
+        name = f"Z3_GATE_EMG_{side}_flap"
+        b = Batch(name, m_door)
+        y_a, y_b = hinge, hinge + toward * half
+        y_edge = y_b - toward * DOOR_EDGE
+        z0, z1 = FLOOR + DOOR_Z0, FLOOR + DOOR_Z1
+        z_rail = z1 - DOOR_RAIL
+
+        b.box(dx - DOOR_T / 2, y_a, z0, dx + DOOR_T / 2, y_edge, z_rail)
+        b.box(dx - DOOR_T / 2, y_a, z_rail, dx + DOOR_T / 2, y_edge, z1)
+        b.box(dx - DOOR_ET / 2, y_edge, z0, dx + DOOR_ET / 2, y_b, z1)
+
+        ob = b.build(coll)
+        ob.parent = None
+        ob.location = (0.0, 0.0, 0.0)
+        ob.rotation_euler = (0.0, 0.0, 0.0)
+        ob.scale = (1.0, 1.0, 1.0)
+        if ob.name not in coll.objects:
+            for c in list(ob.users_collection):
+                c.objects.unlink(ob)
+            coll.objects.link(ob)
+        made += 1
+
+    print(f"  비상게이트 문짝 {made}장 — 인터폰 전용, 닫힌 자세")
 
 
 def _gate_cap(rows):
@@ -453,8 +516,14 @@ def _sign_text(x, sgn, cy, wid, cz, body):
 
 
 def _wall_map(sb, mp, sw):
-    """역 구내 안내도. 개찰구 밖 벽에 붙는 큰 판이다."""
-    for x, y, axis in ((56.10, 6.0, "x"), (56.10, 26.0, "x")):
+    """역 구내 안내도. 개찰구 밖 벽에 붙는 큰 판이다.
+
+    ⚠ y26 자리는 뺐다 — `Z2-E` 개구부(x56, y9~29.7, 디렉터 지시)를 넓히면서
+    그 판이 걸리는 벽 자체가 없어졌다. 벽 없는 자리에 안내판만 뜬 채 남아
+    "개구부에 전광판이 걸려 있다"고 지적받았다(`FX_Z2_56_22` 조명·초록 벽띠와
+    같은 문제, 같은 이유로 뺐다). y6 자리는 그대로 벽이 있으니 남긴다.
+    """
+    for x, y, axis in ((56.10, 6.0, "x"),):
         sb.box(x - 0.02, y - 1.30, FLOOR + 0.95, x + 0.10, y + 1.30, FLOOR + 2.85)
         mp.box(x + 0.10, y - 1.20, FLOOR + 1.05, x + 0.13, y + 1.20, FLOOR + 2.62)
         sw.box(x + 0.13, y - 1.20, FLOOR + 2.62, x + 0.15, y + 1.20, FLOOR + 2.80)

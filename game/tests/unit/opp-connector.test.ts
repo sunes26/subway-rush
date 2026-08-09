@@ -6,6 +6,10 @@
  * (바닥 유무)로는 안 잡히고 **실제 `tick()`으로 원형 충돌까지 돌려야** 드러났다.
  * 최종형: `CONN-W`를 통로 걷는 폭(y46)까지 겹치게 늘리고, `Z3-E-OPP`(원본 `Z3-E`와
  * 같은 자리·같은 수법)로 x=72 진입 전에 플레이어 y를 미리 정렬시킨다.
+ *
+ * ⚠ Z3-N은 개찰구 서쪽(x56~61)에 벽이 서 있다 — 연결부(x61~72)만 열려 있다.
+ *   그래서 출발 x는 **x61 동쪽만** 잰다. 서쪽에서 출발해 직선으로 걸으면 벽에
+ *   막히는 게 지금은 정상이다(개찰구를 거치지 않고 옆으로 새는 걸 막는 벽이다).
  */
 
 import { describe, expect, it } from 'vitest'
@@ -37,9 +41,9 @@ const walk = (s: GameState, x: number, y: number, r: number, maxSec: number) => 
 }
 
 describe('반대 방면 연결부 통행성', () => {
-  it('개찰구를 지난 어느 x에서 출발해도 반대 방면 통로 안까지 도달한다', () => {
+  it('연결부가 열린 x61~72 구간 어디서 출발해도 반대 방면 통로 안까지 도달한다', () => {
     const base = initialState(1)
-    const starts = [57, 58, 60, 63, 65, 66, 68, 69, 71]
+    const starts = [61.5, 63, 65, 66, 68, 69, 71]
     const failures: string[] = []
     for (const startX of starts) {
       const s0: GameState = {

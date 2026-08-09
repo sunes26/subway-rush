@@ -284,20 +284,14 @@ export const INTERACTABLES: readonly Interactable[] = [
     once: true,
   },
   {
-    // 유실물센터 `OBJ-13-LOST` at(50, 23.6, 3.0, 1.2) → 남쪽 면 y 23.0. 그 앞에 놓인 캐리어.
-    // 창구(아래 OBJ-13-RETURN)와 **1.8m 떨어뜨린다** — 붙여 두면 조준이 둘 사이에서 흔들린다
-    id: 'OBJ-13-BAG',
-    kind: 'pickup',
-    x: 48.4, y: 22.6, z: FLOOR.B1,
-    label: '주인 없는 캐리어',
-    gives: 'I-10',
-    once: true,
-  },
-  {
+    // 유실물센터 `OBJ-13-LOST` at(51.84, 27.5, 1.68, 2.6). 뒷면을 다목적 화장실
+    // 옆 `WC-E` 벽(x51.0)에 붙이며 남향 → 동향으로 90도 돌았다(디렉터 지시) —
+    // 창구는 정면(동쪽, x52.7 바깥)에 세운다. 아이템(캐리어, `OBJ-13-BAG`)은
+    // 디렉터 지시로 아이템 체계째 지웠다 — 창구만 남는다.
     // 유실물센터 창구 — 지갑을 맡기면 비상게이트가 열린다 (GDD 부록 A 시크릿 3)
     id: 'OBJ-13-RETURN',
     kind: 'return',
-    x: 51.2, y: 22.9, z: FLOOR.B1 + 1.0,
+    x: 53.0, y: 28.4, z: FLOOR.B1 + 1.0,
     label: '유실물센터 창구',
     needs: 'I-11',
     needReason: '맡길 유실물이 없다',
@@ -363,15 +357,7 @@ export const INTERACTABLES: readonly Interactable[] = [
   },
 
   // ───────────── Z4 (B1→B2) ─────────────
-  {
-    // 계단 `OBJ-25` rect[95.8, 4.2, 120, 9.2] 의 중간참. x=108 에서 z 는 선형 보간으로 −13.06
-    id: 'OBJ-25-EMP',
-    kind: 'pickup',
-    x: 108, y: 6.7, z: -12.9,
-    label: 'EMP 폭탄',
-    gives: 'I-14',
-    once: true,
-  },
+  // EMP 폭탄(`OBJ-25-EMP`, I-14)은 디렉터 지시로 아이템 체계째 지웠다.
 
   // ───────────── Z5 (B2) ─────────────
   {

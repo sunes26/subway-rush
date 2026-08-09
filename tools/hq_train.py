@@ -56,7 +56,8 @@ import sys
 
 import bpy
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))
+                if "__file__" in dir() else r"C:\Users\User\Documents\HACKERTON\tools")
 
 from hq_lib import Batch, mat, zone_collection  # noqa: E402
 

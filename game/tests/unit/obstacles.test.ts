@@ -113,17 +113,7 @@ describe('S16-2 짝 아이템이 무효화한다', () => {
     expect(s.tally.itemsUsed).toContain('I-08')
   })
 
-  it('EMP — 좀비폰족을 막고 소모된다', () => {
-    let s = armed({ inventory: ['I-14', null, null] })
-    for (let i = 0; i < 900; i++) {
-      const z = zombieAt(s.elapsedMs)
-      s = holdFor(put(s, z.x, z.y, FLOOR.B1), {}, 1)
-      if (s.inventory[0] === null) break
-    }
-    expect(s.inventory[0]).toBeNull()
-    expect(s.player.stallMs).toBe(0)
-    expect(s.zombieTalk.active, '무효화됐으면 대화도 안 뜬다').toBe(false)
-  })
+  // EMP(I-14)는 디렉터 지시로 아이템 체계째 지웠다 — OBS-08은 이제 무효화 불가
 })
 
 describe('S16-3 표 정합성 — 양방향', () => {

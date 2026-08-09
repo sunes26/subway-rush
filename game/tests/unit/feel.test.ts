@@ -51,11 +51,7 @@ describe('S20-4 관찰 모드 Q', () => {
 })
 
 describe('P2 착용의 대가', () => {
-  it('캐리어를 끌면 −20%', () => {
-    const bare = run3s(open())
-    const carried = run3s(open({ flags: ['CARRIER_ON'] as FlagId[] }))
-    expect(carried / bare).toBeCloseTo(0.8, 1)
-  })
+  // 캐리어(CARRIER_ON) −20% 이동 배수는 디렉터 지시로 아이템 체계째 지웠다
 
   it('커피(카페인)는 스태미너 소모를 줄인다', () => {
     const plain = holdFor(open(), { moveY: 1, sprint: true }, 120)
@@ -74,10 +70,6 @@ describe('P2 착용의 대가', () => {
     expect(drained(['MASK_ON'])).toBeLessThan(drained([]))
   })
 
-  it('대가가 쌓여도 이동이 0 이 되지는 않는다', () => {
-    const both = run3s(open({ flags: ['CARRIER_ON'] as FlagId[] }), { observe: true })
-    expect(both).toBeGreaterThan(SPEED.walk * 3 * 0.4)
-  })
 })
 
 describe('S21-1 지면별 마찰', () => {

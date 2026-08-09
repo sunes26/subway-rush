@@ -39,15 +39,17 @@ export const PLAYER_TRIGGERED: readonly ObsId[] = ['OBS-14']
 export const OBSTACLES: Readonly<Record<ObsId, ObstacleDef>> = {
   'OBS-01': { id: 'OBS-01', name: '고장난 개찰구', zone: 'Z3', costSec: 8, counteredBy: ['I-11'] },
   'OBS-02': { id: 'OBS-02', name: '교통카드 잔액부족', zone: 'Z3', costSec: 6, counteredBy: ['I-01', 'I-02'] },
-  'OBS-03': { id: 'OBS-03', name: '에스컬레이터 인파벽', zone: 'Z4', costSec: 15, counteredBy: ['I-09', 'I-10'] },
-  'OBS-04': { id: 'OBS-04', name: '하차 인파 역류', zone: 'Z5', costSec: 10, counteredBy: ['I-06', 'I-10'] },
+  // I-10(캐리어)은 디렉터 지시로 아이템 체계째 지웠다 — 남은 카운터로만 막는다
+  'OBS-03': { id: 'OBS-03', name: '에스컬레이터 인파벽', zone: 'Z4', costSec: 15, counteredBy: ['I-09'] },
+  'OBS-04': { id: 'OBS-04', name: '하차 인파 역류', zone: 'Z5', costSec: 10, counteredBy: ['I-06'] },
   'OBS-05': { id: 'OBS-05', name: '물청소 구역', zone: 'Z4', costSec: 6, counteredBy: ['I-08'] },
   // 실제 비용은 강제 대화 25.6초(`systems/preach.ts` PREACH_TOTAL_MS) — 예산 상한 계산용 명목치도 맞춘다.
   // 원래 학생 역할이던 유닛이 한때 "전단지 배포원"(구 OBS-06)으로 떨어져 나갔다가 다시
   // 이 방해요소로 합쳐졌다 — 아주머니·학생 둘 다 Z1 지상에서 순찰하며 아무나 걸리면 발동한다
   'OBS-07': { id: 'OBS-07', name: '"도 아세요" 아주머니+학생', zone: 'Z1', costSec: 26, counteredBy: ['I-05'] },
-  // 실제 비용은 강제 대화 8초(`systems/zombieTalk.ts` zombieTalkTotalMs) — 예산 상한 계산용 명목치도 맞춘다
-  'OBS-08': { id: 'OBS-08', name: '좀비폰족', zone: 'Z2', costSec: 8, counteredBy: ['I-14'] },
+  // 실제 비용은 강제 대화 8초(`systems/zombieTalk.ts` zombieTalkTotalMs) — 예산 상한 계산용 명목치도 맞춘다.
+  // 카운터(I-14 EMP)는 디렉터 지시로 아이템 체계째 지웠다 — 이제 못 막는다(디렉터 지시).
+  'OBS-08': { id: 'OBS-08', name: '좀비폰족', zone: 'Z2', costSec: 8, counteredBy: [] },
   'OBS-10': { id: 'OBS-10', name: '공사중 출구 안내', zone: 'Z2', costSec: 20, counteredBy: ['I-13'] },
   'OBS-11': { id: 'OBS-11', name: '승차 대기줄 오선택', zone: 'Z5', costSec: 12, counteredBy: ['I-13'] },
   'OBS-12': { id: 'OBS-12', name: '스크린도어 닫힘', zone: 'Z5', costSec: 0, counteredBy: [] },
