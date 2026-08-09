@@ -84,8 +84,13 @@ export type OutroCam = Readonly<{
  *
  * x 도 마찬가지로 컷이 정한다 — **창 앞**(`anchorXOf`)이다. 판이 끝난 자리에 그냥
  * 두면 문 앞이라 뒤가 문틀이고, 인물 뒤에 창이 안 온다.
+ *
+ * ★ 14.90 → 14.35 로 **앞으로 당겼다.** 14.90 은 좌석(y 15.0~15.45)과 창(15.38)에
+ *   너무 붙어서, 몸통 반경(약 0.35m)이 좌석에 파묻히고 팔이 벽에 끼어 보였다.
+ *   14.35 면 뒤로 0.3m 여유가 생겨 어떤 포즈에서도 안 겹친다 —
+ *   `SLUMP`(머리 감싸기)처럼 팔이 벌어지는 자세가 가장 빠듯했다.
  */
-export const STAND_Y = 14.90
+export const STAND_Y = 14.35
 
 export type OutroActor = Readonly<{
   /** 컷 동안 서 있을 x (월드) — **창 앞**이다. 판이 끝난 자리를 그대로 쓰지 않는다 */
@@ -245,30 +250,33 @@ export const outroAt = (kind: OutroKind, tMs: number, ax: number, yOff = 0): Out
    * 정면으로 보면 **맞은편 문**을 마주 본다(둘 다 실측으로 겪었다). 창 중심에서
    * 0.3~0.6m 만 비켜서면 카메라 뒤는 벽이고 앞은 창이라, 양쪽 다 피한다.
    *
-   * y 도 12.5 가 아니라 **13.1 이상**이다. 12.5 는 차체 안쪽 면에서 10cm 라
-   * "객실 안"이긴 한데 출입문 칸막이가 바로 그 자리에 서 있다.
+   * ★ y 를 **12.5 대로 되돌렸다.** 한때 13.1 이상이어야 했다 — 12.5 자리에 출입문
+   *   칸막이가 서 있어서 카메라가 그 사이에 끼었기 때문이다. 그런데 이제 컷이
+   *   문과 차체 셸을 통째로 숨기므로(`main.ts CUT_HIDDEN`) **그 칸막이가 없다.**
+   *   덕분에 카메라를 0.55m 뒤로 뺄 수 있고, 인물을 좌석에서 떼어 놓고도
+   *   거리(1.6~1.8m)는 그대로 유지된다. 전경을 치운 것이 구도까지 풀어 줬다.
    */
 
   // ── ① 몸: 창 앞에 선 인물을 살짝 옆에서. 뒤가 창이라 실루엣이 산다
   const bodyA: OutroCam = {
     shakeX: 0, shakeZ: 0,
-    x: ax - 0.52, y: 13.10 + yOff, eye: z + EYE,
+    x: ax - 0.52, y: 12.55 + yOff, eye: z + EYE,
     lx: ax - 0.06, ly: STAND_Y + yOff, lz: z + 0.92, fov: 51,
   }
   // 컷 안에서 아주 조금 다가간다 — 선 카메라가 숨을 쉬는 정도
-  const bodyB: OutroCam = { ...bodyA, x: ax - 0.46, y: 13.26 + yOff, lx: ax - 0.08, lz: z + 0.96 }
+  const bodyB: OutroCam = { ...bodyA, x: ax - 0.46, y: 12.70 + yOff, lx: ax - 0.08, lz: z + 0.96 }
 
   // ── ② 시선: 창으로 올라간다. 주인공은 화면 오른쪽 아래에 남는다
   const turnTo: OutroCam = {
     shakeX: 0, shakeZ: 0,
-    x: ax - 0.36, y: 13.38 + yOff, eye: z + EYE,
+    x: ax - 0.36, y: 12.85 + yOff, eye: z + EYE,
     lx: ax - 0.14, ly: GLASS_Y + yOff, lz: z + 1.50, fov: 52,
   }
 
   // ── ③ 바깥: 창이 화면을 채운다
   const outsideTo: OutroCam = {
     shakeX: 0, shakeZ: 0,
-    x: ax - 0.24, y: 13.34 + yOff, eye: z + EYE + 0.04,
+    x: ax - 0.24, y: 12.80 + yOff, eye: z + EYE + 0.04,
     lx: ax - 0.10, ly: GLASS_Y + yOff, lz: z + 1.52, fov: 55,
   }
   /**
@@ -281,7 +289,7 @@ export const outroAt = (kind: OutroKind, tMs: number, ax: number, yOff = 0): Out
    */
   const backToBody: OutroCam = {
     shakeX: 0, shakeZ: 0,
-    x: ax - 0.58, y: 13.08 + yOff, eye: z + EYE - 0.06,
+    x: ax - 0.58, y: 12.52 + yOff, eye: z + EYE - 0.06,
     lx: ax - 0.04, ly: STAND_Y + yOff, lz: z + 1.20, fov: 54,
   }
 
