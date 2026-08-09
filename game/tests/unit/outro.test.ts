@@ -90,6 +90,7 @@ describe('카메라는 객실 안에 머문다', () => {
     expect(STAND_Y).toBeGreaterThan(13.5)
     expect(STAND_Y).toBeLessThan(CABIN_Y1)
   })
+
 })
 
 describe('반대 방면 승강장', () => {

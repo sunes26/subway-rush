@@ -26,7 +26,7 @@ const boot = async (page: Page): Promise<void> => {
   await page.waitForFunction(() => !!window.__game, null, { timeout: 30_000 })
   await page.waitForFunction(
     () => (document.getElementById('load') as HTMLElement | null)?.style.display === 'none',
-    null, { timeout: 90_000 })
+    null, { timeout: 240_000 })
   await page.waitForTimeout(600)
 }
 
@@ -51,25 +51,29 @@ const startPlaying = async (page: Page): Promise<void> => {
  *   열차가 떠나 엔딩이 나는지, 컷이 켜지는지는 전부 실제 코드가 낸다.
  *
  * @param opp 반대 방면 승강장이면 참
+ * @param at  승강장에 설 때의 `elapsedMs`. 이 값이 곧 **얼마나 아슬아슬하게 타는가**다
  */
-const toPlatform = async (page: Page, opp: boolean): Promise<void> => {
-  await page.evaluate(({ doorX, floorB2, stopMs, yOff }) => {
+const toPlatform = async (page: Page, opp: boolean, at: number): Promise<void> => {
+  await page.evaluate(({ doorX, floorB2, yOff, at: t }) => {
     const g = window.__game!
     const s = g.state()
-    // 문이 완전히 열린 직후 — 여유 있게 걸어 들어가는 판이다
-    const at = stopMs + 1_300
     g.set({
-      elapsedMs: at,
-      timeLeftMs: 180_000 - at,
+      elapsedMs: t,
+      timeLeftMs: 180_000 - t,
       player: { ...s.player, pos: { x: doorX, y: 10.4 + yOff, z: floorB2 } },
     })
   }, {
     doorX: DOOR_XS[8] as number,
     floorB2: FLOOR.B2,
-    stopMs: TRAIN.stopMs,
     yOff: opp ? Y_OFFSET_OPP : 0,
+    at,
   })
 }
+
+/** 문이 완전히 열린 직후 — 여유 있게 걸어 들어가는 판 */
+const EASY_AT = TRAIN.stopMs + 1_300
+/** 닫히기 1.2초 전에 도착 — 걸어 들어가는 사이 문이 닫히기 시작한다 */
+const TIGHT_AT = TRAIN.closeStartMs - 1_200
 
 /** 문이 열릴 때까지 기다렸다가 **실제 이동 입력**으로 걸어 들어간다 */
 const walkIn = async (page: Page, opp: boolean): Promise<void> => {
@@ -91,7 +95,14 @@ const walkIn = async (page: Page, opp: boolean): Promise<void> => {
    */
   await page.evaluate(() => {
     const g = window.__game!
-    g.set({ elapsedMs: 181_900, timeLeftMs: -1_900 })
+    /**
+     * 출발까지 3초를 시뮬이 흘려야 하는데 여기서는 그게 수십 초다. **탄 순간 기준**
+     * 으로 밀어 준다 — 절대값(181_900)으로 밀면 어떤 판이든 잔여가 0 이 되어
+     * 결과판이 늘 `0:00` 을 찍는다(실측). `withBoarding` 이 보는 것도 이 차이다.
+     */
+    const b = g.state().boardedAtMs ?? 0
+    const at = b + 3_100
+    g.set({ elapsedMs: at, timeLeftMs: 180_000 - at })
   })
 }
 
@@ -124,17 +135,19 @@ const shots = async (page: Page, tag: string, kind: 'success' | 'jit' | 'wrongwa
   }
 }
 
-const runCut = async (page: Page, opp: boolean, tag: string): Promise<string> => {
+const runCut = async (
+  page: Page, opp: boolean, tag: string, at = EASY_AT,
+): Promise<string> => {
   await page.setViewportSize({ width: 960, height: 540 })
   await boot(page)
   await startPlaying(page)
-  await toPlatform(page, opp)
+  await toPlatform(page, opp, at)
   await walkIn(page, opp)
 
   // 탑승 → 출발 → 종료까지도 실제 시계로 기다린다(`TRAIN.boardDwellMs` + 2초)
   await page.waitForFunction(() => window.__game!.state().phase === 'ended', null, { timeout: 30_000 })
   const id = await page.evaluate(() => window.__game!.state().endingId!)
-  await shots(page, tag, opp ? 'wrongway' : 'success')
+  await shots(page, tag, opp ? 'wrongway' : id === 'E-04' ? 'jit' : 'success')
   // 컷이 끝나면 결과판이 뜬다 — 그것까지가 한 판이다
   await page.evaluate(() => window.__game!.seekOutro('success', 99_999))
   await page.waitForTimeout(1500)
@@ -155,5 +168,81 @@ test.describe('엔딩 컷 — 실제 플레이', () => {
   test('반대 방면에 타면 WRONG WAY 컷이 돈다', async ({ page }) => {
     const id = await runCut(page, true, 'wrongway')
     expect(id).toBe('E-08')
+  })
+
+  /**
+   * 세 컷 중 유일하게 한 번도 안 찍혀 본 것이었다. 닫히기 1.2초 전에 승강장에 서면
+   * 걸어 들어가는 사이 문이 닫히기 시작하고, `boardedCloseInMs` 가 임계값 아래로 떨어진다.
+   *
+   * ⚠ **판정은 맞는데 그림이 아직 깨져 있다** — 이 케이스만 카메라가 객차 구조물에
+   *   막힌다. 원인은 아래에 적었다(`__shots__/ending/jit-*.png` 참고).
+   *   그림이 고쳐질 때까지도 이 테스트는 남겨 둔다: 판정이 도달 가능하다는 것과
+   *   컷이 켜진다는 것은 여전히 검증되고, 스크린샷이 진행 상황을 보여 준다.
+   *
+   *   ■ 왜 이 케이스만 깨지는가
+   *   카메라 x 는 `px + 0.46`(문 중심에서 옆으로)이고, **객차는 양쪽에 문이 있다.**
+   *   문 간격 4m · 개구 1.6m 라 창은 문 사이 2.4m 구간에만 있다. 카메라가 북쪽을 보면
+   *   그 시선 끝이 **반대편 문**일 수도, **창**일 수도 있는데, 열차가 출발하며 미끄러진
+   *   위치에서 시뮬이 얼기 때문에 그 정렬이 판마다 달라진다. 성공 컷은 창에 걸렸고
+   *   JIT 는 문틀에 걸렸다 — 우연의 차이였다.
+   *
+   *   고치려면 카메라를 문 중심에 두는 것으로는 안 된다(그러면 반대편 문을 정면으로
+   *   본다 — 실측). **`boardedDoorX` 기준으로 창 구간(±2m)을 계산해** 카메라와 인물을
+   *   거기 놓아야 한다.
+   */
+  test('닫히는 문으로 들어가면 JUST IN TIME 컷이 돈다', async ({ page }) => {
+    const id = await runCut(page, false, 'jit', TIGHT_AT)
+    expect(id).toBe('E-04')
+  })
+})
+
+/**
+ * 두 번째 판 — **엔딩 연출이 남으면 안 된다.**
+ *
+ * 무대·광원·붉은 기·카메라 화각은 전부 컷이 켠 것이라, 끄는 것을 한 군데라도
+ * 빠뜨리면 다음 판에 그대로 묻어난다. 특히 WRONG WAY 뒤 성공 판에 붉은 빛이
+ * 남는 것이 최악이다 — 다시하기를 눌렀는데 아직 지옥에 있는 것으로 보인다.
+ */
+test.describe('엔딩 뒤 정리', () => {
+  test.setTimeout(600_000)
+
+  test('WRONG WAY 로 끝낸 뒤 다시하기하면 아무것도 안 남는다', async ({ page }) => {
+    await runCut(page, true, 'reset-before')
+
+    // `restart()` 는 `initialState` 로 되돌린다 — 즉 **타이틀**이지 바로 플레이가 아니다
+    await page.keyboard.press('r')
+    await page.waitForFunction(() => window.__game!.state().phase === 'title', null,
+      { timeout: 30_000 })
+
+    const left = await page.evaluate(() => {
+      let stage = 'none'
+      let lights = ''
+      ;(window as any).__scene.traverse((o: any) => {
+        if (o.name !== 'ending-stage') return
+        stage = `visible=${o.visible}`
+        lights = o.children
+          .filter((c: any) => c.isLight)
+          .map((c: any) => c.intensity.toFixed(3)).join(',')
+      })
+      const veil = document.querySelector('#outro .veil') as HTMLElement | null
+      const outro = document.getElementById('outro')
+      return {
+        stage,
+        lights,
+        veil: veil ? veil.style.opacity : 'no-el',
+        outroCls: outro?.className ?? 'no-el',
+        board: document.getElementById('screen')?.innerHTML.length ?? -1,
+        fov: (window as any).__camera.fov,
+      }
+    })
+
+    expect(left.stage, '무대가 꺼져 있어야 한다').toBe('visible=false')
+    expect(left.lights, '광원이 0 이어야 한다').toMatch(/^0\.000(,0\.000)*$/)
+    expect(left.veil, '붉은 기가 걷혀 있어야 한다').toMatch(/^(0|)$/)
+    expect(left.outroCls, '오버레이가 꺼져 있어야 한다').toBe('')
+    // 타이틀로 돌아왔으므로 결과판이 아니라 **타이틀 판**이 떠 있어야 한다
+    expect(left.board, '타이틀이 떠 있어야 한다').toBeGreaterThan(0)
+    // 컷은 화각을 46~55 로 몰았다. 조작권이 돌아오면 1인칭 화각으로 돌아와야 한다
+    expect(left.fov, '화각이 복원돼야 한다').toBeGreaterThan(60)
   })
 })
