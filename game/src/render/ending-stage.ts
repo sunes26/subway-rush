@@ -26,7 +26,8 @@
  */
 
 import {
-  CanvasTexture, Color, DirectionalLight, DoubleSide, Group, LinearFilter, Mesh,
+  CanvasTexture, Color, DirectionalLight, DoubleSide, Group, LinearFilter,
+  LinearMipmapLinearFilter, Mesh,
   MeshBasicMaterial, PlaneGeometry, PointLight, RepeatWrapping, SRGBColorSpace,
   TextureLoader, type Texture,
 } from 'three'
@@ -112,13 +113,31 @@ const canvas = (w: number, h: number): [HTMLCanvasElement, CanvasRenderingContex
   return [c, c.getContext('2d')!]
 }
 
+/**
+ * 이방성 필터링 배율. three 가 기기 최대치로 알아서 물리므로(`WebGLTextures` 가
+ * `Math.min(anisotropy, getMaxAnisotropy())`) 높게 적어 두면 된다.
+ */
+const ANISO = 16
+
 const texOf = (c: HTMLCanvasElement, repeatX = 1): Texture => {
   const t = new CanvasTexture(c)
   t.wrapS = RepeatWrapping
   t.wrapT = RepeatWrapping
   t.repeat.set(repeatX, 1)
-  t.minFilter = LinearFilter
+  /**
+   * ★ **밉맵과 이방성을 켠다.**
+   *
+   * `minFilter` 가 `LinearFilter` 면 three 는 밉맵을 **아예 안 만든다**(밉맵 계열
+   * 필터일 때만 만든다). 창은 축소돼 그려지는 데다 카메라가 10~15° 비스듬해서,
+   * 밉맵 없이 2탭 선형 보간만 하면 가장자리가 깜빡이고 가로로 뭉갠다.
+   *
+   * 이방성은 **비스듬한 각도 전용**이다. 밉맵만 켜면 비스듬한 면이 오히려 더
+   * 흐려지는데(가장 흐린 밉을 고르므로), 이방성이 그 손해를 되돌린다. 둘은 짝이다.
+   */
+  t.minFilter = LinearMipmapLinearFilter
   t.magFilter = LinearFilter
+  t.generateMipmaps = true
+  t.anisotropy = ANISO
   /**
    * ★ **색 공간을 반드시 밝힌다.** 캔버스에 적은 `#e79a63` 같은 값은 sRGB 인데,
    *   three 는 지정이 없으면 선형으로 읽는다. 그러면 렌더러가 출력에서 한 번 더
@@ -150,47 +169,63 @@ const loadOrDraw = (
   name: string, draw: () => HTMLCanvasElement, repeatX: number, band: number,
 ): Texture => {
   const tex = texOf(draw(), repeatX)
-  new TextureLoader().load(
-    `${import.meta.env.BASE_URL}textures/${name}.webp`,
-    (img) => {
-      img.wrapS = RepeatWrapping
-      img.wrapT = RepeatWrapping
-      img.colorSpace = SRGBColorSpace
+  /**
+   * 확장자를 **순서대로 시도한다.** 배포용은 WebP 지만, 원본을 PNG 로 떨궈 두는 일이
+   * 실제로 있었고(그때 로더가 `.webp` 만 찾아서 조용히 폴백으로 돌아갔다) 화면만
+   * 보고는 원인을 알 수 없었다. 둘 다 받으면 그 실패가 안 난다.
+   */
+  const tryLoad = (exts: readonly string[]): void => {
+    const [ext, ...rest] = exts
+    if (ext === undefined) return
+    new TextureLoader().load(
+      `${import.meta.env.BASE_URL}textures/${name}.${ext}`,
+      (img) => {
+        img.wrapS = RepeatWrapping
+        img.wrapT = RepeatWrapping
+        img.colorSpace = SRGBColorSpace
+        // 캔버스 폴백과 **같은 필터**를 건다 — 안 그러면 그림이 도착하는 순간 흐려진다
+        img.minFilter = LinearMipmapLinearFilter
+        img.magFilter = LinearFilter
+        img.generateMipmaps = true
+        img.anisotropy = ANISO
 
-      /**
-       * ★ **가로 띠를 잘라 쓴다 — 그래서 아무 가로 이미지나 넣어도 된다.**
-       *
-       * 창은 12m × 1.6m 라 **7.5:1** 이다. 여기 16:9 그림을 그대로 붙이면 가로로
-       * 4배 늘어나 건물이 옆으로 퍼진다. 그렇다고 그림을 7.5:1 로 만들어 오라고
-       * 요구하면 쓸 수 있는 그림이 거의 없다.
-       *
-       * 대신 세로를 **잘라서** 비율을 맞춘다: 원본에서 높이의 `h` 만큼만 샘플링하면
-       * 보이는 영역이 `w : (h·원본높이)` 가 되고, 이것을 7.5:1 로 두면 늘어남이 0 이다.
-       * 잘라 낸 띠는 지평선 근처를 잡도록 위에서 30% 지점부터 센다 — 하늘만 나오거나
-       * 물만 나오는 것을 막는다.
-       */
-      const src = img.image as { width: number; height: number }
-      const want = (HALF_W * 2) / GLASS_H          // 창의 종횡비 (7.5)
-      const bandY = Math.min(1, src.width / (want * src.height))
-      /**
-       * UV 의 y 원점은 **아래**다. `band` 는 읽기 쉽게 위에서 잰 값이라 뒤집어 쓴다.
-       * 띠가 위아래로 넘치지 않게 [0, 1−bandY] 로 물린다.
-       */
-      const fromBottom = 1 - band
-      const offY = Math.max(0, Math.min(1 - bandY, fromBottom - bandY / 2))
-      img.repeat.set(repeatX, bandY)
-      img.offset.set(tex.offset.x, offY)
+        /**
+         * ★ **가로 띠를 잘라 쓴다 — 그래서 아무 가로 이미지나 넣어도 된다.**
+         *
+         * 창은 12m × 1.6m 라 **7.5:1** 이다. 여기 16:9 그림을 그대로 붙이면 가로로
+         * 4배 늘어나 건물이 옆으로 퍼진다. 그렇다고 그림을 7.5:1 로 만들어 오라고
+         * 요구하면 쓸 수 있는 그림이 거의 없다.
+         *
+         * 대신 세로를 **잘라서** 비율을 맞춘다: 원본에서 높이의 `h` 만큼만 샘플링하면
+         * 보이는 영역이 `w : (h·원본높이)` 가 되고, 이것을 7.5:1 로 두면 늘어남이 0 이다.
+         * 잘라 낸 띠는 지평선 근처를 잡도록 위에서 30% 지점부터 센다 — 하늘만 나오거나
+         * 물만 나오는 것을 막는다.
+         */
+        const src = img.image as { width: number; height: number }
+        const want = (HALF_W * 2) / GLASS_H          // 창의 종횡비 (7.5)
+        const bandY = Math.min(1, src.width / (want * src.height))
+        /**
+         * UV 의 y 원점은 **아래**다. `band` 는 읽기 쉽게 위에서 잰 값이라 뒤집어 쓴다.
+         * 띠가 위아래로 넘치지 않게 [0, 1−bandY] 로 물린다.
+         */
+        const fromBottom = 1 - band
+        const offY = Math.max(0, Math.min(1 - bandY, fromBottom - bandY / 2))
+        img.repeat.set(repeatX, bandY)
+        img.offset.set(tex.offset.x, offY)
 
-      // 캔버스가 쓰던 자리를 그대로 물려받는다 — 흐른 거리(offset.x)까지 이어야 안 튄다
-      tex.image = img.image
-      tex.repeat.copy(img.repeat)
-      tex.offset.y = img.offset.y
-      tex.needsUpdate = true
-    },
-    undefined,
-    // 없으면 그린 것을 그대로 쓴다. 에셋이 아직 없는 상태가 **정상**이다
-    () => {},
-  )
+        // 캔버스가 쓰던 자리를 그대로 물려받는다 — 흐른 거리(offset.x)까지 이어야 안 튄다
+        tex.image = img.image
+        tex.repeat.copy(img.repeat)
+        tex.offset.y = img.offset.y
+        tex.anisotropy = img.anisotropy
+        tex.needsUpdate = true
+      },
+      undefined,
+      // 이 확장자가 없으면 다음 것을 본다. 다 없으면 그린 것을 쓴다 — **정상 상태다**
+      () => tryLoad(rest),
+    )
+  }
+  tryLoad(['webp', 'png'])
   return tex
 }
 
@@ -412,31 +447,53 @@ const drawLed = (wrong: boolean): HTMLCanvasElement => {
  * 덮는다 — 이음매가 존재하지 않으므로 그림의 좌우 끝을 맞출 필요도 없다.
  * 터널만 4m 마다(3회) 되풀이한다: 케이블·보수등은 원래 일정 간격으로 지나간다.
  *
- * 띠 중심(원본 위에서 %)은 **실측으로 정한 값이다.**
- *   일출 0.70 — 해가 위에서 68%, 다리·스카이라인이 78%. 그 둘을 다 문다
- *   지옥 0.58 — 지옥문이 55%, 용암이 75%. 0.70 이면 지옥문 윗부분과 번개가 잘린다
+ * 띠 중심(원본 위에서 %)은 **그림마다 실측해서 정한다.** 행별 평균 밝기를 재면
+ * 지평선과 광원이 어디 있는지 바로 나온다:
+ *
+ *   일출 — 하늘·해가 20~33% 에서 가장 밝고, 58% 에 어두운 띠(대안 강변)가 있고,
+ *          73~86% 가 물 반사다. 띠(높이 40%)가 해와 지평선을 다 물려면 중심 **0.45**.
+ *   지옥 — 20% 에 번개, 86% 에 용암이 몰려 있다. 중심 **0.55** 면 둘 다 들어온다.
+ *
+ * ⚠ **그림을 바꾸면 이 값을 다시 재야 한다.** 종횡비가 바뀌면 띠 높이가 달라져서
+ *   같은 중심값이 다른 구간을 자른다 — 실제로 3.6:1 → 3:1 로 바뀌자 0.70 이 물만
+ *   잡았다(하늘도 해도 화면 밖이었다).
  */
-const dawnTex = loadOrDraw('ending-dawn', drawDawn, 1, 0.70)
-const hellTex = loadOrDraw('ending-hell', drawHell, 1, 0.58)
+const dawnTex = loadOrDraw('ending-dawn', drawDawn, 1, 0.45)
+const hellTex = loadOrDraw('ending-hell', drawHell, 1, 0.55)
 const tunnelTex = texOf(drawTunnel(), 3)
 const ledOk = texOf(drawLed(false))
 const ledWrong = texOf(drawLed(true))
 
 // ─────────────────────────── 조립 ───────────────────────────
 
-const panel = (w: number, h: number, tex: Texture, opacity: number, gain = 1): Mesh => {
+const panel = (w: number, h: number, tex: Texture, opacity: number): Mesh => {
   const m = new Mesh(
     new PlaneGeometry(w, h),
     new MeshBasicMaterial({
       map: tex, transparent: true, opacity, side: DoubleSide, depthWrite: false,
       /**
-       * ★ `gain > 1` 은 **노출차**다. 어두운 실내에서 밝은 바깥을 보면 창이 하얗게
-       *   뜬다 — 그게 "탁 트였다"의 정체다. 그런데 객실 밝기는 조명이 아니라 GLB 에
-       *   **구워진 라이트맵**에서 오므로(`setIndirect` 는 이미 0.06) 실내를 어둡게
-       *   만들 수가 없다. 그래서 반대로 창을 올린다. ACES 톤매핑이 위쪽을 눌러 주므로
-       *   1.3 이어도 흰색으로 날아가지 않고 밝기만 붙는다.
+       * ★★ **톤매핑을 통과시키지 않는다.** 이 한 줄이 화질 문제의 대부분이었다.
+       *
+       * 렌더러는 `ACESFilmicToneMapping` + `exposure 0.88` 로 돈다(`render/scene.ts`).
+       * ACES 는 하이라이트를 압축하면서 **채도를 강하게 빼는** 커브라, 창밖 그림이
+       * 그걸 통과하면 원본과 다른 그림이 된다. 실측(원본 vs 화면, 같은 영역):
+       *
+       *   채도 137 → 80  (−42%) · 대비 38.6 → 25.8 (−33%) · 밝기 188 → 154
+       *
+       * 밝은 그림일수록 손해가 크다 — 일출은 −42% 인데 지옥은 −10% 였다. 그 비대칭이
+       * 원인을 특정해 줬다. 창밖은 **우리 씬의 빛이 아니라 자기 색을 내는 화면**이라
+       * 톤매핑 대상이 아니다.
+       *
+       * 이 저장소가 이미 쓰는 규칙이다: `render/phone.ts` 의 폰 화면, `station.ts` 의
+       * 광고판·사인, `decals.ts`, `guide-arrows.ts` 가 전부 `toneMapped: false` 다.
+       * 창밖만 빠져 있었다.
+       *
+       * ★ `color` 배율(한때 1.3)은 **뺐다.** 어두운 실내 대비 밝은 바깥을 만들려던
+       *   것이었는데, 이미 밝은 일출에 곱하니 ACES 어깨로 밀려 하얗게 탈색됐다.
+       *   톤매핑을 끄면 노출차는 저절로 생긴다 — 객실은 ACES·0.88 을 지나 눌리고
+       *   창밖은 원본 그대로 나오므로, 곱하지 않아도 창이 더 밝다.
        */
-      color: new Color(gain, gain, gain),
+      toneMapped: false,
     }),
   )
   // 창밖은 조명을 안 받는다 — 바깥은 우리 역의 형광등과 무관하다(`MeshBasicMaterial`)
@@ -453,7 +510,7 @@ export const buildEndingStage = (): EndingStage => {
    * 뒤(풍경) → 앞(터널) 두 장. 터널이 걷히면 뒤가 드러난다.
    * 뒤에 무엇이 오는지는 `wrong` 이 정한다 — 성공이면 일출, 반대 방면이면 지옥.
    */
-  const back = panel(GLASS_W, GLASS_H, dawnTex, 1, 1.3)
+  const back = panel(GLASS_W, GLASS_H, dawnTex, 1)
   back.position.set(0, GLASS_Z, -GLASS_Y - 0.02)
   root.add(back)
 
@@ -531,12 +588,13 @@ export const buildEndingStage = (): EndingStage => {
       // 빛은 창밖이 드러난 만큼만 들어온다 — 터널이 걷히는 곡선과 같이 움직인다
       sunLight.intensity = wrong ? 0 : glow * 1.15
       /**
-       * 2.4 였을 때 인물이 통째로 분홍색으로 날아가 **형태가 죽었다**(실측).
        * 툰 재질은 3단 램프라 일정 밝기를 넘으면 전부 최상단 계단으로 붙는다 —
-       * 세게 줄수록 붉어지는 게 아니라 **평평해진다.** 1.7 이 색은 확실히 얹히면서
-       * 실루엣이 남는 지점이다.
+       * **세게 줄수록 붉어지는 게 아니라 평평해진다.** 2.4 → 1.7 → 1.15 로 두 번
+       * 내렸다. 1.7 에서도 인물이 하얗게 떠서 형태가 죽었다(실측). 붉은 공간감은
+       * 광원이 아니라 **창밖 그림과 바닥 반사**가 이미 충분히 만들고 있고,
+       * 광원이 할 일은 "그 빛이 여기까지 닿는다"를 보이는 것까지다.
        */
-      lavaLight.intensity = wrong ? glow * 1.7 * flash : 0
+      lavaLight.intensity = wrong ? glow * 1.15 * flash : 0
 
       /**
        * 창밖이 흐르는 방향은 **진행의 반대**다. 열차가 +x 로 가면 바깥은 −x 로 흐른다.
