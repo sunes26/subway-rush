@@ -42,10 +42,10 @@ test('P1 스크린샷 — 아웃라인 · 대화 · QTE · HUD', async ({ page }
   await place(page, 38, 2.7, [38, 5.35])
   await page.screenshot({ path: `${DIR}/01-outline-umbrella.png` })
 
-  // 2) 인벤 3슬롯 + 양심 게이지 (아이템을 채워 보여준다)
+  // 2) 인벤 3슬롯 (아이템을 채워 보여준다)
   await place(page, 30, 12, [42, 15], {
     inventory: ['I-01', 'I-06', 'I-12'],
-    scores: { conscience: 2, style: 2, knowledge: 1 },
+    scores: { style: 2, knowledge: 1 },
     flags: ['MASK_ON', 'GRANDPA_HELPED'],
   })
   await page.screenshot({ path: `${DIR}/02-hud-inventory.png` })
@@ -74,7 +74,6 @@ test('P1 스크린샷 — 아웃라인 · 대화 · QTE · HUD', async ({ page }
   await place(page, 36, 13.5, [42, 13.9], {
     inventory: ['I-01', null, null],
     flags: ['GRANDPA_ANGRY'],
-    scores: { conscience: -3, style: 0, knowledge: 0 },
   }, -0.28)
   await page.waitForTimeout(1100)
   await page.screenshot({ path: `${DIR}/05-chase-danso.png` })
@@ -83,7 +82,7 @@ test('P1 스크린샷 — 아웃라인 · 대화 · QTE · HUD', async ({ page }
   await page.evaluate(() => {
     const g = window.__game!
     g.set({ phase: 'ended', endingId: 'E-14', boarded: true, timeLeftMs: 24_000,
-      scores: { conscience: 3, style: 4, knowledge: 4 },
+      scores: { style: 4, knowledge: 4 },
       tally: { coinsEarned: 3500, itemsUsed: ['I-01', 'I-06', 'I-09', 'I-12'],
         secrets: ['a', 'b', 'c', 'd'], pushes: 0, crowdMs: 41_000, staminaMin: 34 } })
   })

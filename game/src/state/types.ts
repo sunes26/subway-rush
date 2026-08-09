@@ -21,7 +21,7 @@ export type Phase = 'title' | 'intro' | 'playing' | 'boarding' | 'ended'
 /** P0은 2종. 배열 구조는 완성해 두고 P1~P2에서 항목만 추가한다 (GDD §9.4) */
 export type EndingId =
   | 'E-01' | 'E-02' | 'E-03' | 'E-04' | 'E-05'
-  | 'E-06' | 'E-07' | 'E-08' | 'E-09' | 'E-10' | 'E-11'
+  | 'E-06' | 'E-08' | 'E-09' | 'E-11'
   | 'E-12' | 'E-13' | 'E-14' | 'E-15' | 'E-16' | 'E-17' | 'E-18'
 
 /** P1 예약 — 지금은 선언만 */
@@ -414,7 +414,7 @@ export type GameState = Readonly<{
 
   /** 3슬롯 고정. 교통카드·동전은 슬롯 미점유 (GDD §5.2) */
   inventory: readonly (ItemId | null)[]
-  scores: Readonly<{ conscience: number; style: number; knowledge: number }>
+  scores: Readonly<{ style: number; knowledge: number }>
   chase: ChaseState
   ambush: AmbushState
   knockdown: KnockdownState
@@ -489,7 +489,6 @@ export type Action =
   | { t: 'ITEM_SPEND'; slot: number }
   | { t: 'ITEM_USED'; item: ItemId }
   | { t: 'BALANCE'; delta: number; label: string; text?: string }
-  | { t: 'CONSCIENCE'; delta: number }
   | { t: 'SECRET'; id: string }
   | { t: 'FLAG'; id: FlagId; on: boolean }
 

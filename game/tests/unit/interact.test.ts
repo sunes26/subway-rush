@@ -177,7 +177,7 @@ describe('S8-6 3슬롯 초과 습득', () => {
 describe('S8-7 조건 미충족은 사유만 낸다', () => {
   it('효자손 없이 자판기에 E — 사유 1줄, 상태 변화 0', () => {
     let s = atZ2(VEND_A.x, VEND_A.y - 1.0)
-    const before = { bal: s.cardBalance, t: s.timeLeftMs, c: s.scores.conscience }
+    const before = { bal: s.cardBalance, t: s.timeLeftMs }
     const yaw = yawTo(s, VEND_A.x, VEND_A.y)
     s = tap(s, { pressInteract: true }, yaw)
 
@@ -185,7 +185,6 @@ describe('S8-7 조건 미충족은 사유만 낸다', () => {
     expect(s.act.denyMs).toBeGreaterThan(0)
     expect(s.qte.active, 'QTE는 열리지 않는다').toBe(false)
     expect(s.cardBalance).toBe(before.bal)
-    expect(s.scores.conscience).toBe(before.c)
     // 시간은 프레임 1회분(16.7ms)만 흐른다 — 페널티가 없다는 뜻이다
     expect(before.t - s.timeLeftMs).toBeLessThan(20)
   })

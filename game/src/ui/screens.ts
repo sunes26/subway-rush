@@ -75,10 +75,8 @@ const WHAT_HAPPENED: Readonly<Record<EndingId, string>> = {
   'E-04': '닫히는 문 사이로 간신히 탑승했습니다.',
   'E-05': '흠잡을 데 없이 탑승했습니다.',
   'E-06': '눈앞에서 열차를 놓쳤습니다.',
-  'E-07': '개찰구를 통과하지 못했습니다.',
   'E-08': '반대 방향 열차에 탑승했습니다.',
   'E-09': '요금을 내지 않고 통과하다 적발됐습니다.',
-  'E-10': '훔친 채로 승강장에 도달했습니다.',
   'E-11': '우산으로 인파를 밀어냈습니다.',
   'E-12': '열차가 떠났습니다.',
   'E-13': '볼일을 보는 사이 열차가 떠났습니다.',
@@ -111,9 +109,7 @@ const atFirstQueue = (s: GameState): boolean =>
  *        멈추신다" 는 결과가 아니라 공략이다
  *     · `e.reason` (E-05) — 히든 엔딩의 획득 조건 **전체**를 그대로 적고 있었다
  *     · E-12 의 선행 3종 목록 — 마찬가지로 조건 전체
- *     · E-10 양심 수치 · E-11 밀친 횟수 — 발동 **임계값**이 그대로 읽힌다.
- *       특히 양심은 플레이 중엔 숫자를 안 보여 주는 축인데(GDD §7.2) 끝에서
- *       숫자로 까면 숨겨 둔 의미가 없다
+ *     · E-11 밀친 횟수 — 발동 **임계값**이 그대로 읽힌다
  *
  *   남는 것은 **플레이하며 이미 겪어 안 것**뿐이다 — 남은 시간, 다음 열차,
  *   획득 동전, 내가 선 승차위치. 히든 계열은 값 없이 제목과 한마디로 끝낸다.
@@ -131,7 +127,7 @@ const factsFor = (e: EndingDef, s: GameState): readonly Fact[] => {
       return atFirstQueue(s) ? [{ label: '승차위치', value: '3-1' }, left] : [left]
 
     // ── 열차를 놓친 것들 — 다음 열차는 승강장에 서면 어차피 보인다 ──
-    case 'E-06': case 'E-07':
+    case 'E-06':
       return [next]
 
     // ── 동전은 주우면서 이미 셌다 ──
@@ -155,7 +151,7 @@ const factsFor = (e: EndingDef, s: GameState): readonly Fact[] => {
  * 매번 `resolveEnding(s)` 로 다시 계산하면 E-15(오답 선물)·E-16(단소 2대째)이
  * 절대 안 나온다. 그 둘은 `when` 이 항상 거짓인 강제 엔딩이라(`data/endings.ts`),
  * 시스템이 발행해 놓아도 재계산은 못 고른다 — 실측: E-16 으로 끝낸 판이 화면에는
- * E-07 지각 확정으로 떴다. 발행된 id 가 있으면 그것을 쓴다.
+ * E-06 다음 열차로 떴다. 발행된 id 가 있으면 그것을 쓴다.
  */
 const shown = (s: GameState): EndingDef =>
   (s.endingId ? ENDINGS.find((e) => e.id === s.endingId) : undefined) ?? resolveEnding(s)
@@ -297,7 +293,7 @@ export const createScreens = (mount: HTMLElement): Screens => {
     sync(s) {
       // 엔딩 화면이 읽는 값이 바뀌면 다시 그린다. 안 넣으면 첫 렌더 시점 값이 굳는다.
       const key = `${s.phase}:${s.endingId ?? ''}:${s.seed}:${s.boarded}:` +
-        `${s.timeLeftMs}:${s.scores.conscience},${s.tally.coinsEarned},${s.tally.pushes}`
+        `${s.timeLeftMs}:${s.tally.coinsEarned},${s.tally.pushes}`
       if (key === lastKey) return
       lastKey = key
       if (prevPhase === 'title' && s.phase === 'playing') flash()

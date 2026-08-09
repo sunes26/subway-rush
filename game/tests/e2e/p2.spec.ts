@@ -5,6 +5,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test'
+import { ENDINGS } from '../../src/data/endings'
 import { SLOTS } from '../../src/data/tuning'
 
 const SAVE_KEY = 'subway-rush.save.v1'
@@ -29,21 +30,23 @@ const boot = async (page: Page, query = '?seed=7'): Promise<string[]> => {
 }
 
 test.describe('S18-4/5 엔딩 도감', () => {
-  test('C 를 누르면 17칸이 열리고 미해금은 ??? 다', async ({ page }) => {
+  test('C 를 누르면 도감 전체 칸이 열리고 미해금은 ??? 다', async ({ page }) => {
     const errs = await boot(page)
     await page.evaluate((k) => localStorage.removeItem(k), SAVE_KEY)
 
     await page.keyboard.press('KeyC')
     await page.waitForTimeout(250)
 
+    // ENDINGS.length 를 직접 참조한다 — 하드코딩된 숫자는 엔딩이 추가·삭제될 때마다
+    // 어긋난다. 실제로 17로 하드코딩돼 있던 값이 E-18 추가(18) · 양심 게이지
+    // 폐지(16) 두 번 다 안 고쳐진 채 방치돼 있었다.
     const cells = page.locator('#collection .cell')
-    await expect(cells).toHaveCount(17)
-    await expect(page.locator('#collection .cell.locked')).toHaveCount(17)
-    await expect(page.locator('#collection .sub')).toContainText('0 / 17')
+    await expect(cells).toHaveCount(ENDINGS.length)
+    await expect(page.locator('#collection .cell.locked')).toHaveCount(ENDINGS.length)
+    await expect(page.locator('#collection .sub')).toContainText(`0 / ${ENDINGS.length}`)
     // 조건식이 노출되면 안 된다 — 도감이 체크리스트가 되면 수집이 아니라 심부름이다
     const text = await page.locator('#collection').innerText()
     expect(text).not.toContain('>=')
-    expect(text).not.toContain('conscience')
 
     await page.keyboard.press('Escape')
     await page.waitForTimeout(200)
