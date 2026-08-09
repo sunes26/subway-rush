@@ -34,7 +34,7 @@ const buildGrid = (items: readonly Solid[]): Map<number, Solid[]> => {
   return g
 }
 
-const STATIC_GRID = buildGrid(SOLIDS)
+const STATIC_GRID = buildGrid(SOLIDS.filter((s) => s.collide !== false))
 
 /** 프레임마다 갈아끼우는 동적 충돌체 (게이트 플랩 · PSD 가동문 · 신호등 차단). */
 let dynamicSolids: readonly Solid[] = []

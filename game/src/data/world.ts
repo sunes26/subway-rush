@@ -56,6 +56,8 @@ export type Solid = Readonly<{
    * 그 벽이 화면 절반을 먹는다. 충돌은 4~5m로 두고 그림만 낮춘다.
    */
   renderH?: number
+  /** false면 그려지기만 하고 충돌하지 않는다. 생략하면 true. */
+  collide?: boolean
 }>
 export type SolidLook =
   | 'wall' | 'glass' | 'column' | 'prop' | 'machine' | 'bench'
@@ -66,8 +68,8 @@ export type SolidLook =
 const at = (cx: number, cy: number, w: number, d: number): Rect =>
   [cx - w / 2, cy - d / 2, cx + w / 2, cy + d / 2]
 
-const solid = (id: string, rect: Rect, z0: number, h: number, look: SolidLook): Solid =>
-  ({ id, rect, z0, h, look })
+const solid = (id: string, rect: Rect, z0: number, h: number, look: SolidLook, collide = true): Solid =>
+  ({ id, rect, z0, h, look, collide })
 
 /** 외벽 — 충돌은 h, 그림은 PARAPET_H. */
 const parapet = (id: string, rect: Rect, z0: number, h: number, look: SolidLook = 'wall'): Solid =>
@@ -482,10 +484,11 @@ export const SOLIDS: readonly Solid[] = [
   solid('OBJ-01-BUS', [-65.3, 19.1, -54.4, 21.7], 0, 3.2, 'bus'),
   // 정류장 쉘터 — 지붕과 기둥만. 부록 A의 spawn(−58,24)이 이 안이므로 통짜 박스면 스폰이 벽 속이다.
   { id: 'Z1-SHELTER-ROOF', rect: [-60.0, 23.4, -56.0, 25.4], z0: 2.45, h: 0.3, look: 'shelter' },
-  solid('Z1-SHELTER-P1', [-60.0, 23.4, -59.7, 23.7], 0, 2.45, 'shelter'),
-  solid('Z1-SHELTER-P2', [-60.0, 25.1, -59.7, 25.4], 0, 2.45, 'shelter'),
-  solid('Z1-SHELTER-P3', [-56.3, 23.4, -56.0, 23.7], 0, 2.45, 'shelter'),
-  solid('Z1-SHELTER-P4', [-56.3, 25.1, -56.0, 25.4], 0, 2.45, 'shelter'),
+  // 기둥은 스폰(−58,24)에 너무 가까워 반경 0.32 캡슐이 걸린다 — 그려지기만 하고 충돌은 안 한다.
+  solid('Z1-SHELTER-P1', [-60.0, 23.4, -59.7, 23.7], 0, 2.45, 'shelter', false),
+  solid('Z1-SHELTER-P2', [-60.0, 25.1, -59.7, 25.4], 0, 2.45, 'shelter', false),
+  solid('Z1-SHELTER-P3', [-56.3, 23.4, -56.0, 23.7], 0, 2.45, 'shelter', false),
+  solid('Z1-SHELTER-P4', [-56.3, 25.1, -56.0, 25.4], 0, 2.45, 'shelter', false),
   solid('OBJ-03-CART', at(-50, 32, 2.4, 1.6), 0, 2.2, 'kiosk'),        // 붕어빵 카트 · 신규 치수
   solid('OBJ-04-STALL', at(-40, 32, 3.0, 1.4), 0, 1.9, 'kiosk'),       // 인도 좌판 · 신규 치수
   solid('OBJ-02-LIGHT', at(-32.6, 22.6, 0.4, 0.4), 0, 4.2, 'sign'),    // 신호등 폴
