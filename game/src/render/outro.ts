@@ -32,7 +32,8 @@
  */
 
 import { clamp01, easeInOut, lerp } from '../core/math'
-import { CABIN_Y1, FLOOR } from '../data/world'
+import { TRAIN } from '../data/tuning'
+import { FLOOR } from '../data/world'
 
 export type OutroKind = 'success' | 'jit' | 'wrongway'
 
@@ -111,10 +112,10 @@ const mix = (a: OutroCam, b: OutroCam, k: number): OutroCam => ({
 })
 
 /**
- * 창의 y. 무대(`ending-stage.ts`)의 유리와 같은 값을 봐야 카메라가 창을 정확히 문다 —
- * 여기서 따로 정하면 둘이 소리 없이 어긋난다.
+ * 창의 y. 무대(`ending-stage.ts`)의 창밖 판과 **같은 식으로 구한다** —
+ * 여기서 숫자를 따로 적으면 둘이 소리 없이 어긋난다.
  */
-const GLASS_Y = CABIN_Y1 - 0.07
+const GLASS_Y = TRAIN.bodyYMax + 0.06
 
 /**
  * 열차 속도감 — 출발은 **눌러서 시작한다.** 처음부터 최고 속도로 흐르면 이미 달리던
@@ -130,8 +131,9 @@ const scrollAt = (t: number): number => {
  * @param kind 확정된 결과 — 여기서 다시 판정하지 않는다
  * @param tMs  컷 시작부터의 경과
  * @param px   주인공이 선 x. 카메라·창·안내판이 전부 이 값을 기준으로 놓인다
+ * @param yOff 반대 방면이면 `Y_OFFSET_OPP`. 두 승강장은 y 만 다르므로 전부 여기에 더한다
  */
-export const outroAt = (kind: OutroKind, tMs: number, px: number): OutroFrame => {
+export const outroAt = (kind: OutroKind, tMs: number, px: number, yOff = 0): OutroFrame => {
   const t = Math.max(0, Math.min(OUTRO_MS, tMs))
   const z = FLOOR.B2
 
@@ -154,27 +156,27 @@ export const outroAt = (kind: OutroKind, tMs: number, px: number): OutroFrame =>
 
   // ── ① 몸: 살짝 옆에서. 인물 뒤가 창이라 실루엣이 산다
   const bodyA: OutroCam = {
-    x: px + 0.46, y: 12.52, eye: z + EYE,
-    lx: px + 0.40, ly: STAND_Y, lz: z + 0.92, fov: 51,
+    x: px + 0.46, y: 12.52 + yOff, eye: z + EYE,
+    lx: px + 0.40, ly: STAND_Y + yOff, lz: z + 0.92, fov: 51,
   }
   // 컷 안에서 아주 조금 다가간다 — 선 카메라가 숨을 쉬는 정도
-  const bodyB: OutroCam = { ...bodyA, x: px + 0.40, y: 12.68, lx: px + 0.36, lz: z + 0.96 }
+  const bodyB: OutroCam = { ...bodyA, x: px + 0.40, y: 12.68 + yOff, lx: px + 0.36, lz: z + 0.96 }
 
   // ── ② 시선: 창으로 올라간다. 주인공은 화면 왼쪽 아래에 남는다
   const turnTo: OutroCam = {
-    x: px + 0.34, y: 12.80, eye: z + EYE,
-    lx: px + 0.30, ly: GLASS_Y, lz: z + 1.50, fov: 52,
+    x: px + 0.34, y: 12.80 + yOff, eye: z + EYE,
+    lx: px + 0.30, ly: GLASS_Y + yOff, lz: z + 1.50, fov: 52,
   }
 
   // ── ③ 바깥: 창이 화면을 채운다
   const outsideTo: OutroCam = {
-    x: px + 0.26, y: 12.76, eye: z + EYE + 0.04,
-    lx: px + 0.24, ly: GLASS_Y, lz: z + 1.52, fov: 55,
+    x: px + 0.26, y: 12.76 + yOff, eye: z + EYE + 0.04,
+    lx: px + 0.24, ly: GLASS_Y + yOff, lz: z + 1.52, fov: 55,
   }
   /** WRONG WAY 는 ③ 에서 사람에게 돌아온다 — 바깥이 준 답을 받는 얼굴이 필요하다 */
   const backToBody: OutroCam = {
-    x: px + 0.52, y: 12.50, eye: z + EYE - 0.06,
-    lx: px + 0.34, ly: STAND_Y, lz: z + 0.94, fov: 50,
+    x: px + 0.52, y: 12.50 + yOff, eye: z + EYE - 0.06,
+    lx: px + 0.34, ly: STAND_Y + yOff, lz: z + 0.94, fov: 50,
   }
 
   const cam =
@@ -183,7 +185,8 @@ export const outroAt = (kind: OutroKind, tMs: number, px: number): OutroFrame =>
     : mix(turnTo, kind === 'wrongway' ? backToBody : outsideTo,
         easeInOut(seg(t, SHOT.turn, SHOT.outside)))
 
-  return { cam, actor: actorAt(kind, t), stage: stageAt(kind, t) }
+  const a = actorAt(kind, t)
+  return { cam, actor: { ...a, y: a.y + yOff }, stage: stageAt(kind, t) }
 }
 
 /**

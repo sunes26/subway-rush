@@ -9,7 +9,7 @@ import { createSfx } from './audio/sfx'
 import { createInput, EMPTY_INPUT, type InputFrame } from './core/input'
 import { resolveSeed } from './core/rng'
 import { CAMERA, FPV, MAX_FRAME_MS, MAX_STEPS_PER_FRAME, MOVE, STEP_MS } from './data/tuning'
-import { FLOOR, GATES, GATE_BODY, GATE_LAMP_Z, TRAFFIC_LIGHT,
+import { FLOOR, GATES, GATE_BODY, GATE_LAMP_Z, TRAFFIC_LIGHT, Y_OFFSET_OPP,
   ZONE_NAMES } from './data/world'
 import { byId, FISHCAKE_ID, GIFT_STALL_ID, GRANDPA_ID, type InteractKind } from './data/interactables'
 import { CHAR_SCALE, loadActors, type Actors } from './render/actors'
@@ -666,7 +666,8 @@ const frame = (now: number): void => {
      */
     const t = outroHold ?? now - outroAtMs
     if (t >= OUTRO_MS) { endOutro() } else {
-      const f = outroAt(outroKind, t, state.player.pos.x)
+      const yOff = state.boardedTrain2 ? Y_OFFSET_OPP : 0
+      const f = outroAt(outroKind, t, state.player.pos.x, yOff)
 
       /**
        * 주인공 — 시뮬은 멈춰 있으므로(`ended`) 리그에 넘길 상태를 만들어 준다.
@@ -690,6 +691,8 @@ const frame = (now: number): void => {
 
       endStage?.sync({
         x: state.player.pos.x,
+        // 탄 열차가 반대 방면이면 무대도 그쪽으로 — 두 승강장은 y 만 다르다
+        yOff,
         tunnel: f.stage.tunnel,
         scroll: f.stage.scroll,
         led: f.stage.led,

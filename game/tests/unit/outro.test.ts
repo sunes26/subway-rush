@@ -13,6 +13,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { TRAIN } from '../../src/data/tuning'
 import { CABIN_Y1 } from '../../src/data/world'
 import { OUTRO_MS, outroAt, outroKindOf, SHOT, STAND_Y } from '../../src/render/outro'
 
@@ -73,8 +74,9 @@ describe('카메라는 객실 안에 머문다', () => {
         const { cam } = outroAt(kind, t, PX)
         expect(cam.y, `${kind} t=${t}`).toBeGreaterThan(12.42)
         expect(cam.y, `${kind} t=${t}`).toBeLessThan(CABIN_Y1)
-        // 시선도 창을 넘지 않는다
-        expect(cam.ly, `${kind} t=${t}`).toBeLessThanOrEqual(CABIN_Y1)
+        expect(cam.ly, `${kind} t=${t}`).toBeGreaterThan(cam.y)
+        // 시선은 창밖 판(차체 바깥면 바로 뒤)까지만 나간다
+        expect(cam.ly, `${kind} t=${t}`).toBeLessThanOrEqual(TRAIN.bodyYMax + 0.1)
       }
     }
   })
@@ -87,6 +89,23 @@ describe('카메라는 객실 안에 머문다', () => {
   it('주인공은 객실 안쪽에 선다 — 문 앞이면 카메라를 못 뺀다', () => {
     expect(STAND_Y).toBeGreaterThan(13.5)
     expect(STAND_Y).toBeLessThan(CABIN_Y1)
+  })
+})
+
+describe('반대 방면 승강장', () => {
+  /**
+   * 두 승강장은 **y 만 다르다**(`Y_OFFSET_OPP`). 오프셋을 빠뜨리면 카메라만 본편
+   * 자리에 남아 40m 떨어진 빈 곳을 비춘다 — 실측으로 그 그림을 한 번 봤다.
+   */
+  it('오프셋을 주면 카메라도 인물도 통째로 따라간다', () => {
+    const a = outroAt('wrongway', 1000, PX, 0)
+    const b = outroAt('wrongway', 1000, PX, 40)
+    expect(b.cam.y - a.cam.y).toBeCloseTo(40)
+    expect(b.cam.ly - a.cam.ly).toBeCloseTo(40)
+    expect(b.actor.y - a.actor.y).toBeCloseTo(40)
+    // x 와 높이는 안 건드린다
+    expect(b.cam.x).toBe(a.cam.x)
+    expect(b.cam.eye).toBe(a.cam.eye)
   })
 })
 

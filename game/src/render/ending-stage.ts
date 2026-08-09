@@ -1,19 +1,22 @@
 /**
- * 엔딩 무대 — **객실은 안 만든다. 창과 안내판만 만든다.**
+ * 엔딩 무대 — **창밖과 안내판, 둘뿐이다.**
  *
- * 객실은 이미 실제 공간이다(`data/world.ts` `Z5-CABIN`, y 12.2~15.45 · 벽 3면).
- * 탑승 판정이 "객실 안에 들어섰는가"라서(`systems/train.ts trainSystem`) 판이 끝나는
- * 순간 주인공은 **이미 그 안에 서 있다.** 그러니 엔딩을 위해 옮길 것도, 지을 것도,
- * 씬을 갈아탈 것도 없다 — 없는 것은 **창밖**뿐이다.
+ * ★ 한때 여기서 객실(바닥·천장·안쪽 벽·양끝 벽)까지 지었다. **틀렸다.**
+ *   `Z5_TRAIN.glb` 가 이미 객실 내부를 통째로 들고 있다 — 좌석·손잡이봉·출입문·창까지
+ *   있고, `render/station.ts` 가 본편(`trainGroup`)과 반대 방면(`train2Group`, `B_` 접두사)
+ *   두 벌로 세운다. 우리가 세운 판들은 그 진짜 내부를 **가리고 있었다**(실측: 본편
+ *   승강장 컷에서 좌석이 안 보이고 회색 벽만 나왔다. 반대 방면에서는 우리 무대가
+ *   40m 떨어진 자리에 놓여 안 가렸고, 그래서 거기서만 진짜 객실이 보였다).
+ *
+ * 그래서 남기는 것은 **원래 없던 것**뿐이다:
+ *   · 창밖 — 차창 너머는 비어 있다. 터널과 한강 일출을 그 자리에 놓는다
+ *   · 차내 안내판 — 「이번 역 · 다음 역」. WRONG WAY 의 전부가 이 한 장이다
  *
  * ■ 창밖을 지오메트리로 안 만든다
  *
- * 객실 북쪽 벽(`Z5-CABIN-N`)은 2.4m 짜리 불투명 벽이고, 월드의 벽들은 look 별로
- * 묶인 `InstancedMesh` 라(`world-builder.ts`) 한 장만 골라 숨기기가 어렵다.
- * 그래서 **벽 안쪽에 창 패널을 덧댄다.** 바깥 풍경은 그 패널에 그려진 그림이다 —
- * 5초짜리 컷에서 시차(parallax)를 살려 얻을 것보다, 벽을 건드리지 않아 잃지 않는
- * 것이 훨씬 크다. 대신 **텍스처를 옆으로 흘려** 속도를 낸다: 창밖이 흐르는 것이
- * 곧 "열차가 달린다"이고, 그건 시차가 아니라 속도로 읽히는 정보다.
+ * 바깥 풍경은 판 한 장에 그린 그림이고, **텍스처를 옆으로 흘려** 속도를 낸다.
+ * 5초짜리 컷에서 시차(parallax)로 얻을 것보다 판 하나로 끝나는 값이 크다 —
+ * 창밖이 흐르는 것이 곧 "열차가 달린다"이고, 그건 시차가 아니라 속도로 읽힌다.
  *
  * ■ 왜 두 장인가
  *
@@ -26,43 +29,29 @@ import {
   CanvasTexture, Color, DoubleSide, Group, LinearFilter, Mesh, MeshBasicMaterial,
   PlaneGeometry, RepeatWrapping, SRGBColorSpace, type Texture,
 } from 'three'
-import { CABIN_Y1, FLOOR } from '../data/world'
-
-/** 안쪽 벽이 서는 y — 객실 북쪽 한계(15.45) 바로 앞. 살짝 당겨 z-fighting 을 피한다 */
-const WALL_Y = CABIN_Y1 - 0.05
-/** 창(유리)은 벽보다 아주 조금 더 뒤 — 벽에 뚫린 구멍처럼 보이게 한다 */
-const GLASS_Y = WALL_Y + 0.03
+import { TRAIN } from '../data/tuning'
+import { FLOOR } from '../data/world'
 
 /**
- * 객실 치수.
- *
- * ★ **걸어 다니는 공간(`Z5-CABIN`)은 이미 있는데 「안」이 없었다.** 바닥 슬랩과
- *   충돌 벽만 있고 안쪽에서 보이는 면이 없어서, 객실에 들어서면 어두운 허공에
- *   서 있는 그림이 됐다(실측). 컷이 성립하려면 최소한 **천장과 안쪽 벽**이 있어야
- *   한다 — 그 둘이 "실내"의 전부다. 좌석·손잡이까지 가지 않는 이유는, 5초 컷에서
- *   카메라가 보는 것은 사람과 창뿐이고 나머지는 화면 밖이기 때문이다.
+ * 창밖 판이 서는 y — **차체 바깥쪽.** 차체는 y 12.42~15.58 이고 그 너머는 비어 있다.
+ * 진짜 차창(`TR_dwin_`) 뒤에 이 판이 놓여야 창을 통해 보인다.
  */
-const CEIL_Z = FLOOR.B2 + 2.62
-/**
- * 무대의 x 반폭 — **객차 한 칸의 절반보다 넉넉하게.**
- *
- * 7m 로 잡았다가 실측에서 프레임 왼쪽으로 승강장이 새어 들어왔다. 객실은 x 로
- * 128m 짜리 통이라 "적당히 넓게"가 통하지 않는다 — 카메라가 어디를 보든 **끝이
- * 안 보여야** 실내가 된다. 16m 면 화각 57° 에서 어느 방향으로도 가장자리가 안 잡힌다.
- */
-const HALF_W = 16.0
-/** 남쪽(문 쪽) 한계 — 바닥과 천장이 여기까지 깔린다. 카메라는 이 안에서만 움직인다 */
-const SOUTH_Y = 12.25
-
-/** 창 — 아래는 앉은 사람 어깨, 위는 선 사람 눈 위 */
-const GLASS_Z0 = FLOOR.B2 + 0.95
-const GLASS_Z1 = FLOOR.B2 + 2.02
+const GLASS_Y = TRAIN.bodyYMax + 0.06
+/** 창 높이 — 실제 차창 띠에 맞춘다. 아래는 좌석 등받이 위, 위는 선 사람 눈 위 */
+const GLASS_Z0 = FLOOR.B2 + 1.02
+const GLASS_Z1 = FLOOR.B2 + 2.06
 const GLASS_Z = (GLASS_Z0 + GLASS_Z1) / 2
 const GLASS_H = GLASS_Z1 - GLASS_Z0
+/**
+ * 창밖 판의 x 반폭. 카메라가 어디를 보든 끝이 안 보여야 한다 —
+ * 좁게 잡았다가 프레임 옆으로 역이 새는 것을 실측으로 겪었다.
+ */
+const HALF_W = 16.0
 const GLASS_W = HALF_W * 2
 
-/** 안내판 — 창 위 띠. 실제 객실에서 문 위에 붙는 그 자리다 */
-const LED_Z = (GLASS_Z1 + CEIL_Z) / 2
+/** 차내 안내판 — 문 위 띠. 차체 안쪽 면에 붙인다 */
+const LED_Y = TRAIN.bodyYMax - 0.14
+const LED_Z = FLOOR.B2 + 2.28
 const LED_W = 3.4
 const LED_H = 0.42
 
@@ -70,12 +59,13 @@ export type EndingStage = Readonly<{
   root: Group
   /**
    * @param x     주인공이 선 x — 창과 안내판을 그 앞으로 옮긴다
+   * @param yOff  반대 방면이면 `Y_OFFSET_OPP`. 두 승강장은 y 만 다르다
    * @param tunnel 터널 불투명도 1 → 0 (내려가면 일출이 드러난다)
    * @param scroll 창밖이 흐른 누적 거리(m 상당). 속도가 곧 이 값의 증가율이다
    * @param led    안내판 불투명도 0 → 1
    * @param wrong  참이면 안내판이 **신촌**(반대 방면)을 띄운다
    */
-  sync(o: { x: number; tunnel: number; scroll: number; led: number; wrong: boolean }): void
+  sync(o: { x: number; yOff: number; tunnel: number; scroll: number; led: number; wrong: boolean }): void
   setVisible(on: boolean): void
 }>
 
@@ -255,77 +245,19 @@ export const buildEndingStage = (): EndingStage => {
   root.add(tunnel)
 
   /**
-   * 안쪽 벽 — 창 **아래**와 **위** 두 판. 가운데를 비워 두는 것이 곧 창이다.
-   *
-   * 한 장짜리 벽에 유리를 덧대는 방법도 되지만, 그러면 유리가 벽에 걸린 액자로
-   * 읽힌다. 벽이 창을 **둘러싸야** 창문이 된다 — 실제 객실 벽도 창 위아래로 나뉜다.
+   * 창틀 — 창밖 판의 위아래 경계. 진짜 차창(`TR_dwin_`)이 이 앞에 있지만, 그 유리는
+   * 반투명이라 경계가 흐리다. 얇은 띠 두 줄을 뒤에 깔아 **창의 위아래가 어디인지**를
+   * 분명히 한다. 이게 없으면 바깥 그림이 차체를 뚫고 떠 있는 것처럼 보인다.
    */
-  const wallMat = new MeshBasicMaterial({ color: new Color(0xb9bfc6) })
-  const wallPanel = (z0: number, z1: number): Mesh => {
-    const m = new Mesh(new PlaneGeometry(HALF_W * 2, z1 - z0), wallMat)
-    m.position.set(0, (z0 + z1) / 2, -WALL_Y)
-    return m
-  }
-  root.add(wallPanel(FLOOR.B2, GLASS_Z0))
-  root.add(wallPanel(GLASS_Z1, CEIL_Z))
-
-  /** 창틀 — 유리와 벽이 만나는 자리에 굵은 띠 두 줄. 이게 있어야 구멍이 창이 된다 */
-  const frameMat = new MeshBasicMaterial({ color: new Color(0x39414a) })
+  const frameMat = new MeshBasicMaterial({ color: new Color(0x2a3038) })
   for (const z of [GLASS_Z0, GLASS_Z1]) {
-    const bar = new Mesh(new PlaneGeometry(HALF_W * 2, 0.09), frameMat)
-    bar.position.set(0, z, -WALL_Y + 0.012)
+    const bar = new Mesh(new PlaneGeometry(HALF_W * 2, 0.10), frameMat)
+    bar.position.set(0, z, -GLASS_Y + 0.02)
     root.add(bar)
   }
 
-  /**
-   * 바닥과 천장 — **이 둘이 실내를 만든다.**
-   *
-   * 없으면 머리 위가 역 천장이고 발밑으로 선로가 보인다. 실제로 그랬다:
-   * 객실 슬랩(`Z5-CABIN`)은 걷기 위한 면이라 이 각도에서 선로를 못 가렸다.
-   * 여기서 한 겹 더 까는 것은 중복이 아니라, **컷이 보는 면**을 우리가 쥐는 것이다.
-   */
-  const depth = CABIN_Y1 - SOUTH_Y
-  const midY = (SOUTH_Y + CABIN_Y1) / 2
-  const slab = (z: number, color: number): Mesh => {
-    const m = new Mesh(
-      new PlaneGeometry(HALF_W * 2, depth),
-      new MeshBasicMaterial({ color: new Color(color), side: DoubleSide }),
-    )
-    m.rotation.x = Math.PI / 2
-    m.position.set(0, z, -midY)
-    return m
-  }
-  root.add(slab(FLOOR.B2 + 0.012, 0x8f959c))   // 바닥 — 객실 바닥은 승강장보다 어둡다
-  root.add(slab(CEIL_Z, 0xd7dce1))
-
-  /**
-   * 형광등 띠 — 객실 조명은 늘 이 모양이고, 무엇보다 **인물 위에 밝은 선이 있어야**
-   * 어두운 컷에서 실루엣이 산다. 천장보다 1.5cm 아래에 둬 z-fighting 을 피한다.
-   */
-  const strip = new Mesh(
-    new PlaneGeometry(HALF_W * 2, 0.34),
-    new MeshBasicMaterial({ color: new Color(0xfff6e2), side: DoubleSide }),
-  )
-  strip.rotation.x = Math.PI / 2
-  strip.position.set(0, CEIL_Z - 0.015, -(midY + 0.35))
-  root.add(strip)
-
-  /**
-   * 양 끝 벽 — 옆 칸으로 넘어가는 관통문 자리. 실제 객차에도 있고, 여기서는
-   * **프레임을 닫는 일**을 한다. 카메라가 아무리 틀어져도 통 끝이 안 보인다.
-   */
-  for (const sx of [-HALF_W, HALF_W]) {
-    const end = new Mesh(
-      new PlaneGeometry(depth, CEIL_Z - FLOOR.B2),
-      new MeshBasicMaterial({ color: new Color(0xa9b0b7), side: DoubleSide }),
-    )
-    end.rotation.y = Math.PI / 2
-    end.position.set(sx, (FLOOR.B2 + CEIL_Z) / 2, -midY)
-    root.add(end)
-  }
-
   const led = panel(LED_W, LED_H, ledOk, 0)
-  led.position.set(0, LED_Z, -WALL_Y + 0.02)
+  led.position.set(0, LED_Z, -LED_Y)
   root.add(led)
 
   const ledMat = led.material as MeshBasicMaterial
@@ -334,8 +266,10 @@ export const buildEndingStage = (): EndingStage => {
   return {
     root,
     setVisible(on) { root.visible = on },
-    sync({ x, tunnel: tunnelK, scroll, led: ledK, wrong }) {
+    sync({ x, yOff, tunnel: tunnelK, scroll, led: ledK, wrong }) {
       root.position.x = x
+      // 월드 y 는 three z 로 부호가 뒤집혀 들어간다(`train-rig.ts` 와 같은 규약)
+      root.position.z = -yOff
       tunnelMat.opacity = tunnelK
       ledMat.opacity = ledK
       const want = wrong ? ledWrong : ledOk
