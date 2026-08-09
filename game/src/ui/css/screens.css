@@ -65,7 +65,28 @@ body.run-ended #gl{filter:blur(5px) saturate(.90) brightness(.80);
 #screen .board.result{width:min(840px,90vw)}
 
 /* ─────────────── 안내판 본체 ─────────────── */
-#screen .board{position:relative;width:min(1040px,92vw);background:var(--frame);
+/*
+ * ■ ★ 크기는 **폭이 아니라 `zoom` 으로 키운다**
+ *
+ * 판을 키워 달라는 요청에 폭만 넓혀 봤더니(1040 → 1180) 판은 커지는데 글자는
+ * 그대로라, 늘어난 자리가 전부 빈칸이 됐다. "큰 전광판"이 아니라 "잡아 늘인
+ * 전광판"이다. 아래 `.result` 주석이 경고한 것과 같은 현상이다.
+ *
+ * 글자를 같이 키우려면 손잡이가 하나 필요한데 **이 시트에는 없다** — font-size
+ * 24개가 전부 px 이고 rem/em 이 0개다. 스케일 단위로 바꾸는 것은 별개의
+ * 리팩터이므로, 판 하나를 통째로 확대하는 `zoom` 한 줄로 푼다. 실측:
+ *
+ *   1040 × 272 (뷰포트의 81.3%)  →  1210 × 306 (94.5%)
+ *
+ * ⚠ ★ **`vw` 상한을 `zoom` 으로 나눠 둔다.** 92 ÷ 1.12 = 82vw 다.
+ *
+ *   `zoom` 은 이 요소 안의 길이에 곱해지는데 `vw` 는 **뷰포트 기준**이라 안 줄어든다.
+ *   그래서 `92vw` 를 그대로 두면 좁은 화면에서 92 × 1.12 = 103% 가 되어 넘친다.
+ *   실측으로 확인했다 — 1024px 뷰포트에서 판이 1055px 로 그려져 오른쪽이 72px
+ *   잘렸고, 900·768 에서도 같았다. 1280 이상에서는 px 상한이 먼저 걸려 안 보인다.
+ *   **넓은 화면만 보고 판단하면 못 잡는 종류다.**
+ */
+#screen .board{position:relative;width:min(1080px,82vw);zoom:1.12;background:var(--frame);
   border:1px solid var(--edge);border-radius:2px;padding:6px;font-family:var(--mono)}
 /*
  * 천장 매달림 — **봉은 화면 위로 잘려 나간다.**
