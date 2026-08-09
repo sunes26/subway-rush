@@ -17,7 +17,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { TRAIN } from '../../src/data/tuning'
 import { DOOR_XS, FLOOR, Y_OFFSET_OPP } from '../../src/data/world'
-import { OUTRO_MS, SHOT } from '../../src/render/outro'
+import { anchorXOf, OUTRO_MS, SHOT } from '../../src/render/outro'
 
 const DIR = 'tests/e2e/__shots__/ending'
 
@@ -53,17 +53,19 @@ const startPlaying = async (page: Page): Promise<void> => {
  * @param opp 반대 방면 승강장이면 참
  * @param at  승강장에 설 때의 `elapsedMs`. 이 값이 곧 **얼마나 아슬아슬하게 타는가**다
  */
-const toPlatform = async (page: Page, opp: boolean, at: number): Promise<void> => {
-  await page.evaluate(({ doorX, floorB2, yOff, at: t }) => {
+const toPlatform = async (
+  page: Page, opp: boolean, at: number, doorX = DOOR_XS[8] as number,
+): Promise<void> => {
+  await page.evaluate(({ doorX: dx, floorB2, yOff, at: t }) => {
     const g = window.__game!
     const s = g.state()
     g.set({
       elapsedMs: t,
       timeLeftMs: 180_000 - t,
-      player: { ...s.player, pos: { x: doorX, y: 10.4 + yOff, z: floorB2 } },
+      player: { ...s.player, pos: { x: dx, y: 10.4 + yOff, z: floorB2 } },
     })
   }, {
-    doorX: DOOR_XS[8] as number,
+    doorX,
     floorB2: FLOOR.B2,
     yOff: opp ? Y_OFFSET_OPP : 0,
     at,
@@ -136,12 +138,12 @@ const shots = async (page: Page, tag: string, kind: 'success' | 'jit' | 'wrongwa
 }
 
 const runCut = async (
-  page: Page, opp: boolean, tag: string, at = EASY_AT,
+  page: Page, opp: boolean, tag: string, at = EASY_AT, doorX = DOOR_XS[8] as number,
 ): Promise<string> => {
   await page.setViewportSize({ width: 960, height: 540 })
   await boot(page)
   await startPlaying(page)
-  await toPlatform(page, opp, at)
+  await toPlatform(page, opp, at, doorX)
   await walkIn(page, opp)
 
   // 탑승 → 출발 → 종료까지도 실제 시계로 기다린다(`TRAIN.boardDwellMs` + 2초)
@@ -179,6 +181,87 @@ test.describe('엔딩 컷 — 실제 플레이', () => {
     const id = await runCut(page, false, 'jit', TIGHT_AT)
     expect(id).toBe('E-04')
   })
+})
+
+/**
+ * 문별 앵커 — **이 스펙이 비어 있어서 버그가 세 번 살아남았다.**
+ *
+ * 위 세 테스트는 전부 `DOOR_XS[8]`(객차 오프셋 +2) 하나만 밟는다. 그런데 객차에는
+ * 문이 넷(+2·+6·+10·+14) 있고, 옛 앵커 공식(`문 + 2m`)은 **+14 문에서만** 사람을
+ * 차량 연결부에 세웠다 — 32개 문 중 8개다. 통과하는 테스트만 보고 "고쳤다"고 세 번
+ * 보고한 뒤에야 잡혔다.
+ *
+ * 그래서 여기서는 **그림을 안 찍고 자로 잰다.** 컷이 도는 중에 인물이 설 자리에서
+ * 창 쪽으로 레이를 쏘아, 그 자리가 진짜 객실 구간인지 확인한다:
+ *
+ *   제대로 된 자리 → 좌석 1.42m · 창 1.51m · 차체 1.53m
+ *   연결부         → **아무것도 없음.** 16m 밖 역 벽까지 관통한다(실측)
+ */
+test.describe('어느 문으로 타도 같은 자리에 선다', () => {
+  test.setTimeout(600_000)
+
+  /** 한 객차(k=2)의 문 넷. 왼쪽 끝 · 가운데 둘 · 오른쪽 끝 */
+  const DOORS = [
+    ['왼쪽(+2)', DOOR_XS[8] as number],
+    ['중앙-1(+6)', DOOR_XS[9] as number],
+    ['중앙-2(+10)', DOOR_XS[10] as number],
+    ['오른쪽(+14)', DOOR_XS[11] as number],
+  ] as const
+
+  for (const [label, doorX] of DOORS) {
+    for (const opp of [false, true]) {
+      const dir = opp ? 'WRONG WAY' : 'SUCCESS'
+      test(`${label} 문 → ${dir} — 벽·연결부에 안 낀다`, async ({ page }) => {
+        await runCut(page, opp, `door-${doorX}${opp ? '-opp' : ''}`, EASY_AT, doorX)
+
+        /**
+         * ⚠ **앵커를 여기서 계산한다.** 한때 `state.player.pos.x` 를 읽었는데 그건
+         *   **탄 자리**(문 앞)다 — 컷은 상태를 안 건드리고 렌더에만 앵커를 쓴다.
+         *   그래서 옛 공식으로 되돌려도 이 테스트가 통과했다(실측). 문 앞에는 늘
+         *   객실 구조가 있으니 당연히 통과한다. 재야 할 곳은 **사람이 서게 될 x** 다.
+         */
+        const st = await page.evaluate(() => {
+          const s = window.__game!.state()
+          return {
+            doorX: s.boardedDoorX!,
+            trainX: (s.boardedTrain2 ? s.train2 : s.train).x,
+          }
+        })
+        const anchorX = anchorXOf(st.doorX, st.trainX)
+
+        const probe = await page.evaluate(({ yOff, floorB2, ax }) => {
+          const g = window.__game!
+          const tick = (): Promise<void> => new Promise((res) => {
+            let n = 0
+            const step = (): void => { if (++n >= 3) res(); else requestAnimationFrame(step) }
+            requestAnimationFrame(step)
+          })
+          const out: Record<string, { name: string; dist: number }[]> = {}
+          // 통로 한가운데에서 창(북)으로 — 좌석 높이와 창 높이 두 번
+          return (async () => {
+            for (const h of [0.5, 1.6]) {
+              g.freeCam([ax, 13.95 + yOff, floorB2 + h], [ax, 18.95 + yOff, floorB2 + h])
+              await tick()
+              out[`h${h}`] = g.pick(0, 0).slice(0, 3)
+            }
+            return out
+          })()
+        }, { yOff: opp ? Y_OFFSET_OPP : 0, floorB2: FLOOR.B2, ax: anchorX })
+
+        for (const [where, hits] of Object.entries(probe)) {
+          /**
+           * 객실 안이면 3m 안에 차체가 있다. 연결부라면 첫 히트가 16m 밖 역
+           * 구조물이므로 이 한 줄이 그대로 걸린다.
+           */
+          const near = hits.filter((h) => h.dist < 3)
+          expect(near.length, `${label} ${where}: 3m 안이 비었다 — ${JSON.stringify(hits)}`)
+            .toBeGreaterThan(0)
+          expect(near.some((h) => /TR_(SEAT|WINDOW|BODY|DOOR|INNER)/.test(h.name)),
+            `${label} ${where}: 객실 구조가 없다 — ${JSON.stringify(hits)}`).toBe(true)
+        }
+      })
+    }
+  }
 })
 
 /**

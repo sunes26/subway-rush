@@ -40,21 +40,29 @@ export type OutroKind = 'success' | 'jit' | 'wrongway'
 /**
  * 컷 경계(ms). ③ 이 가장 길다 — 바깥을 보는 시간이 이 연출의 목적이다.
  *
- * ★ 5.2 → **7.0 초.** 브리프가 허용한 4~7초의 위 끝이다. 5.2 초에서는 ③ 이 2.1 초라
- *   터널이 걷히는 것을 보다가 끝났다 — 드러난 풍경을 **보고 있을 시간**이 없었다.
- *   늘린 1.8 초는 전부 ③ 에 얹었다(2.1 → 3.0). ① 도 0.5 초 늘려 안도든 탈진이든
- *   몸이 한 박자 머물게 했다.
+ * ★ 5.2 → 7.0 → **8.5 초.** 두 번 늘렸고 이유가 각각 다르다.
+ *
+ *   5.2 초에서는 ③ 이 2.1 초라 터널이 걷히는 것을 보다가 끝났다 — 드러난 풍경을
+ *   **보고 있을 시간**이 없었다. 7.0 으로 늘려 그건 해결됐다.
+ *
+ *   8.5 는 다른 문제다. **문구가 뜨자마자 화면이 끝났다** — 성공 계열은 여운이
+ *   0.9 초뿐이었다. 그리고 앞에 걸어 들어오는 0.7 초(`WALK_MS`)가 붙으면서 ① 이
+ *   실질 1.4 초로 줄었다. 늘린 1.5 초를 ① 에 0.2 · ③ 에 1.3 으로 나눴다.
+ *
+ *   이제 각 구간이 브리프 기준을 넘긴다:
+ *     일출/지옥이 **완전히 드러난 채로** 보이는 시간  3.6~4.2 초
+ *     문구가 뜬 뒤 남는 여운                          2.6~3.8 초
  *
  * ⚠ 아래 연출 시각은 전부 이 세 값에서 파생시킨다. 밀리초를 박아 두면 길이를 바꿀
  *   때마다 조용히 어긋난다 — `render/intro.ts` 가 같은 이유로 같은 규칙을 쓴다.
  */
 export const SHOT = {
-  /** ① 몸 — 출발과 함께 힘이 풀리거나, 무너진다 */
-  body: 2100,
+  /** ① 몸 — 걸어 들어와 힘이 풀리거나, 무너진다 */
+  body: 2300,
   /** ② 시선 — 카메라가 창으로 */
   turn: 4000,
   /** ③ 바깥 — 일출 / 안내판 */
-  outside: 7000,
+  outside: 8500,
 } as const
 
 export const OUTRO_MS = SHOT.outside
@@ -117,8 +125,8 @@ export type OutroActor = Readonly<{
   x: number
   /** 컷 동안 서 있을 y (월드) */
   y: number
-  /** 재생할 클립 — 없으면 그대로 둔다 */
-  clip: 'Idle' | 'Stumble' | 'Hit' | null
+  /** 재생할 클립 — 없으면 그대로 둔다. 이름은 `render/player-rig.ts ClipName` 그대로다 */
+  clip: 'Idle' | 'Walk' | 'Stumble' | 'Hit' | null
   /** 무릎 짚기 0~1 (`render/pose.ts` BRACE) */
   brace: number
   /** 머리 감싸기 0~1 (`render/pose.ts` SLUMP) */
@@ -211,8 +219,17 @@ const scrollAt = (t: number): number => {
   return (ramp / 2 + (t - ramp)) / 1000
 }
 
-/** 문 중심에서 옆 **창 중심**까지(m). 문 간격 4m 의 절반이다 */
-const WINDOW_DX = 2.0
+/**
+ * 한 객차 안의 **안전한 창 중심** 오프셋(차량 앞단 기준 m).
+ *
+ * 문은 객차 16m 안에 +2 · +6 · +10 · +14 네 곳이다(`TRAIN.doorOffsets`). 그 사이
+ * 중점이 곧 창 한가운데이므로 **+4 · +8 · +12** 세 곳이 나온다. 마지막 문(+14) 옆
+ * 중점은 +16 인데 그것은 **다음 차량의 앞단** — 즉 차량 연결부다. 그래서 목록에서
+ * 빠진다. 이 한 줄이 이 함수의 전부이자, 오래 끌던 버그의 답이다(`anchorXOf` 참고).
+ */
+const WINDOW_OFFSETS: readonly number[] = TRAIN.doorOffsets
+  .slice(0, -1)
+  .map((o, i) => (o + (TRAIN.doorOffsets[i + 1] as number)) / 2)
 
 /**
  * 컷의 기준점 — **차창 하나의 중심.** 카메라·인물·무대가 전부 이 x 에 걸린다.
@@ -230,19 +247,73 @@ const WINDOW_DX = 2.0
  *   `boardedDoorX` 는 **명목 좌표**(`DOOR_XS`)라 열차가 밀린 만큼을 더해야 실제
  *   렌더 위치가 된다 — `render/train-rig.ts` 와 `station.ts` 가 쓰는 그 오프셋이다.
  *
+ * ★★ **한때 `doorX + 2.0` 이었다. 문 넷 중 하나에서 사람을 연결부에 세웠다.**
+ *
+ *   문은 4m 간격이라 "+x 로 2m" 가 대개 창 한가운데로 떨어진다. 그런데 객차 마지막
+ *   문(+14)에서는 그 2m 가 **차량 경계(+16)** 에 정확히 앉는다. 32개 문 중 8개가
+ *   여기 해당하고, 마지막 문(204)은 앵커가 206 — **열차 꼬리 끝, 객실 밖**이었다.
+ *
+ *   실측(레이를 통로 한가운데에서 창 쪽으로 쏨):
+ *
+ *     문 112(+2) · 116(+6) · 120(+10) → 좌석 1.42m · 창 1.51m · 차체 1.53m
+ *     문 124(+14)                     → **아무것도 없음.** 16m 밖 역 벽까지 관통
+ *                                        (열차 길이 방향으로는 `TR_JOINT@0` — 연결부 안)
+ *
+ *   E2E 가 이걸 못 잡은 이유도 같이 남긴다: 스펙이 `DOOR_XS[8]`(오프셋 +2) **하나만**
+ *   썼다. 깨지는 8개 문은 테스트가 한 번도 밟은 적이 없었다. 그래서 "고쳤는데
+ *   그대로다"가 세 번 반복됐다 — 통로 중앙(y)만 보고 x 를 안 본 것이다.
+ *
+ *   이제 **가장 가까운 안전 창 중심**(`WINDOW_OFFSETS`)을 고른다. +2·+6·+10 문은
+ *   결과가 예전과 완전히 같고(각각 +4·+8·+12), +14 문만 −x 쪽 +12 로 간다.
+ *   어느 문이든 이동 거리가 2m 로 같아서 걸어가는 시간도 문마다 안 달라진다.
+ *
  * @param doorX  탄 문의 명목 x (`state.boardedDoorX`)
  * @param trainX 지금 그 열차의 1량 앞단 x (`state.train.x` 또는 `train2.x`)
  */
-export const anchorXOf = (doorX: number, trainX: number): number =>
-  doorX + (trainX - TRAIN.firstCarX) + WINDOW_DX
+export const anchorXOf = (doorX: number, trainX: number): number => {
+  const fromFirst = doorX - TRAIN.firstCarX
+  const car = Math.floor(fromFirst / TRAIN.carLength)
+  const inCar = fromFirst - car * TRAIN.carLength
+  let best = WINDOW_OFFSETS[0] as number
+  for (const o of WINDOW_OFFSETS) {
+    if (Math.abs(o - inCar) < Math.abs(best - inCar)) best = o
+  }
+  return TRAIN.firstCarX + car * TRAIN.carLength + best + (trainX - TRAIN.firstCarX)
+}
+
+/**
+ * 탄 자리 → 앵커까지 **걸어가는 시간(ms).**
+ *
+ * 순간이동을 안 쓴다. 컷이 이미 카메라를 잡고 있어서 사람이 텔레포트하면 그게
+ * 그대로 보인다 — 페이드로 가리는 것도 5초짜리 컷의 첫 박자를 통째로 쓰는 짓이다.
+ *
+ * 어느 문에서 타든 걸어갈 거리는 **정확히 2m 로 같다**(`anchorXOf` 참고). 그래서
+ * 시간을 문마다 안 나눠도 되고, 속도가 늘 초속 3m 남짓이라 뛰지도 어슬렁대지도 않는다.
+ *
+ * JIT 만 짧다. **몸이 급해야 하기 때문**이고, 그래야 뒤따르는 휘청임이 "뛰어들어와
+ * 멈추지 못한 것"으로 읽힌다. 같은 배경을 쓰는 두 엔딩을 가르는 것은 템포뿐이다.
+ *
+ * ⚠ 이동 중에는 **충돌을 안 지난다.** 컷은 `movementSystem`(이미 `phase !== 'playing'`
+ *   에서 반환한다)이 아니라 이 함수가 좌표를 직접 쓰므로 `resolveMove`·`depenetrate`
+ *   가 개입하지 않는다. 콜라이더를 임시로 끌 필요도, 되돌릴 필요도 없다.
+ */
+export const WALK_MS: Readonly<Record<OutroKind, number>> = {
+  success: 700,
+  jit: 520,
+  wrongway: 700,
+}
 
 /**
  * @param kind 확정된 결과 — 여기서 다시 판정하지 않는다
  * @param tMs  컷 시작부터의 경과
  * @param ax   창 중심 x (`anchorXOf`). 카메라·인물·무대가 전부 이 값에 걸린다
  * @param yOff 반대 방면이면 `Y_OFFSET_OPP`. 두 승강장은 y 만 다르므로 전부 여기에 더한다
+ * @param from 판이 끝난 자리(월드). 여기서 앵커까지 걸어온다. 생략하면 이미 앵커에 선다
  */
-export const outroAt = (kind: OutroKind, tMs: number, ax: number, yOff = 0): OutroFrame => {
+export const outroAt = (
+  kind: OutroKind, tMs: number, ax: number, yOff = 0,
+  from?: { x: number; y: number },
+): OutroFrame => {
   const t = Math.max(0, Math.min(OUTRO_MS, tMs))
   const z = FLOOR.B2
 
@@ -336,8 +407,32 @@ export const outroAt = (kind: OutroKind, tMs: number, ax: number, yOff = 0): Out
   const sh = kind === 'wrongway' ? shakeAt(t) : { x: 0, z: 0 }
   const cam: OutroCam = { ...base, shakeX: sh.x, shakeZ: sh.z }
 
-  const a = actorAt(kind, t)
-  return { cam, actor: { ...a, x: ax, y: a.y + yOff }, stage: stageAt(kind, t) }
+  /**
+   * ★ **걸어 들어간다.** 판이 끝난 자리에서 앵커까지.
+   *
+   * 카메라는 이미 엔딩 구도에 서 있고 사람이 **프레임 안으로 걸어 들어온다** —
+   * 이 순서라야 "탔다"와 "엔딩이 시작됐다"가 한 동작으로 이어진다. 카메라를 같이
+   * 움직여 따라가면 그냥 플레이가 이어지는 것으로 보인다.
+   *
+   * 도착 시각의 값이 곧 앵커라 스냅이 따로 필요 없다 — 보간의 종점이 목표다.
+   */
+  const w = WALK_MS[kind]
+  const a = actorAt(kind, t, w)
+  const src = from ?? { x: ax, y: STAND_Y + yOff }
+  const k = easeInOut(seg(t, 0, w))
+  const x = lerp(src.x, ax, k)
+  const y = lerp(src.y, a.y + yOff, k)
+  /**
+   * 걷는 동안은 **가는 쪽**을 본다. 그 뒤 0.3초에 걸쳐 서 있는 자세의 방향으로 푼다.
+   * 앵커가 −x 쪽인 문(객차 마지막 문)에서는 몸이 반대로 돌아 걷고 다시 돌아서는데,
+   * 그게 맞다 — 그 사람은 실제로 반대쪽으로 걸어간 것이다.
+   */
+  const dx = ax - src.x
+  const dy = (a.y + yOff) - src.y
+  const walkFacing = Math.abs(dx) + Math.abs(dy) < 1e-6 ? a.facing : Math.atan2(dy, dx)
+  const facing = t < w ? walkFacing : lerp(walkFacing, a.facing, easeInOut(seg(t, w, w + 300)))
+
+  return { cam, actor: { ...a, x, y, facing }, stage: stageAt(kind, t) }
 }
 
 /**
@@ -348,7 +443,7 @@ export const outroAt = (kind: OutroKind, tMs: number, ax: number, yOff = 0): Out
  *   클립은 **한 순간**을 치고 지나가므로, 그 뒤에 남아야 하는 **머무는 자세**만
  *   본 회전으로 얹는다(`pose.ts` BRACE·SLUMP).
  */
-const actorAt = (kind: OutroKind, t: number): OutroActor => {
+const actorAt = (kind: OutroKind, t: number, walk: number): OutroActor => {
   /**
    * 몸의 방향은 **컷을 따라 돈다.**
    *
@@ -359,15 +454,28 @@ const actorAt = (kind: OutroKind, t: number): OutroActor => {
    */
   const facing = lerp(0.30, 1.35, easeInOut(seg(t, SHOT.body - 300, SHOT.turn - 200)))
 
+  /**
+   * ★ 걸어 들어오는 동안은 **걷는 사람이다.** 감정 연기는 도착한 뒤에 시작한다.
+   *
+   * 클립을 새로 만들지 않는다 — 리그의 `Walk` 를 그대로 쓴다(`player-rig.ts`).
+   * 방향과 좌표는 `outroAt` 이 덮어쓰므로 여기서는 클립만 고른다.
+   */
+  if (t < walk) return { x: 0, y: STAND_Y, clip: 'Walk', brace: 0, slump: 0, facing }
+
   if (kind === 'jit') {
     /**
      * 탈진 — 휘청 → 무릎 짚기 → 서서히 편다.
-     * 다 펴지 않는다(0.22 가 남는다). 5초 만에 숨이 돌아오지는 않는다.
+     * 다 펴지 않는다(0.22 가 남는다). 몇 초 만에 숨이 돌아오지는 않는다.
+     *
+     * ★ 휘청임을 **도착 직후**로 붙였다(`walk` 기준). 컷 시작에 못 박아 두면
+     *   걸어오는 중에 휘청이게 되어, 뛰어들어와 멈추지 못한 것이 아니라 그냥
+     *   비틀거리며 걷는 사람이 된다. 급한 걸음(520ms) 뒤에 와야 인과가 선다.
      */
-    const brace = t < 420
-      ? seg(t, 120, 420)                                  // 휘청이며 접힌다
-      : lerp(1, 0.22, easeInOut(seg(t, 2600, OUTRO_MS)))  // 창을 보며 조금 편다
-    return { x: 0, y: STAND_Y, clip: t < 420 ? 'Stumble' : 'Idle', brace, slump: 0, facing }
+    const st = t - walk
+    const brace = st < 420
+      ? seg(st, 120, 420)                                 // 휘청이며 접힌다
+      : lerp(1, 0.22, easeInOut(seg(t, 3400, OUTRO_MS)))  // 창을 보며 조금 편다
+    return { x: 0, y: STAND_Y, clip: st < 420 ? 'Stumble' : 'Idle', brace, slump: 0, facing }
   }
 
   if (kind === 'wrongway') {
@@ -386,7 +494,7 @@ const actorAt = (kind: OutroKind, t: number): OutroActor => {
    * `BRACE` 를 **아주 얕게**(0.18) 써서 한 번 숨을 내쉬고 돌아오게 한다. 이 정도가
    * "긴장이 풀렸다"이고, 더 주면 지쳐 쓰러지는 사람이 된다.
    */
-  const breathe = Math.sin(seg(t, 200, 1900) * Math.PI) * 0.18
+  const breathe = Math.sin(seg(t, walk + 200, 2900) * Math.PI) * 0.18
   return { x: 0, y: STAND_Y, clip: 'Idle', brace: breathe, slump: 0, facing }
 }
 
@@ -406,7 +514,13 @@ const stageAt = (kind: OutroKind, t: number): OutroStage => {
      * 글자가 먼저 와야 "신촌이구나"가 원인이 되고, 창밖은 그 결과로 읽힌다.
      * 반대로 두면 그냥 무서운 배경이 지나간 것이 된다.
      */
-    const reveal = easeInOut(seg(t, SHOT.turn + 150, SHOT.turn + 1200))
+    /**
+     * ★ 드러나는 데 걸리는 시간을 1050 → **800ms** 로 줄였다. 컷이 8.5초가 되면서
+     *   중요해진 것은 "얼마나 천천히 드러나는가"가 아니라 **드러난 뒤 얼마나 오래
+     *   보이는가**다. 여기서 아낀 0.25초가 그대로 감상 시간이 된다 — 지옥이 완전히
+     *   드러난 채로 남는 시간이 3.6초다.
+     */
+    const reveal = easeInOut(seg(t, SHOT.turn + 100, SHOT.turn + 900))
     return {
       tunnel: 1 - reveal,
       scroll,
@@ -423,7 +537,7 @@ const stageAt = (kind: OutroKind, t: number): OutroStage => {
        * 붉어지는 게 아니라 **평평해진다**(`ending-stage.ts` 용암 광원 주석과 같은 이유).
        * 1.9 면 번쩍이는 것이 보이면서 실루엣이 남는다.
        */
-      flash: [SHOT.turn + 700, SHOT.turn + 1500]
+      flash: [SHOT.turn + 1000, SHOT.turn + 1900]
         .reduce((m, at) => Math.max(m, t >= at && t < at + 90 ? 1.9 : 1), 1),
       // 붉은 기는 **보조**다. 실제 어둠과 붉음은 무대의 광원이 만든다
       red: seg(t, SHOT.turn + 400, SHOT.turn + 1300) * 0.22,
@@ -436,13 +550,19 @@ const stageAt = (kind: OutroKind, t: number): OutroStage => {
    * 화면 안에 생긴다. 카메라가 다 돌고 나서 밝아지면 그냥 순서대로 일어난 두 일이다.
    */
   return {
-    tunnel: 1 - easeInOut(seg(t, SHOT.turn - 500, SHOT.outside - 600)),
+    /**
+     * ★ **`SHOT.outside` 에서 떼어 `SHOT.turn` 기준으로 옮겼다.** 예전에는 끝나기
+     *   0.6초 전에야 터널이 다 걷혔다 — 컷을 늘릴수록 일출을 **보는** 시간이 아니라
+     *   기다리는 시간만 늘어나는 식이었다. 이제 4.3초에 다 걷히고, 그 뒤 4.2초가
+     *   온전히 일출이다.
+     */
+    tunnel: 1 - easeInOut(seg(t, SHOT.turn - 1200, SHOT.turn + 300)),
     scroll,
     led: seg(t, 900, 1600) * 0.85,
     // 빛은 조금 늦게 들어와 조금 더 오래 남는다 — 해가 뜨는 속도가 그렇다
-    glow: easeInOut(seg(t, SHOT.turn - 200, SHOT.outside - 200)),
+    glow: easeInOut(seg(t, SHOT.turn - 900, SHOT.turn + 700)),
     // 아침이라 조금만 내린다. 0.72 면 창이 도드라지면서도 객실이 어둡지 않다
-    dim: lerp(1, 0.72, easeInOut(seg(t, SHOT.turn - 400, SHOT.outside - 400))),
+    dim: lerp(1, 0.72, easeInOut(seg(t, SHOT.turn - 1100, SHOT.turn + 500))),
     red: 0,
     flash: 1,
   }

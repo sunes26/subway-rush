@@ -734,7 +734,14 @@ const frame = (now: number): void => {
        */
       const boardedTrain = state.boardedTrain2 ? state.train2 : state.train
       const ax = anchorXOf(state.boardedDoorX ?? state.player.pos.x, boardedTrain.x)
-      const f = outroAt(outroKind, t, ax, yOff)
+      /**
+       * ★ **탄 자리**를 넘긴다 — 거기서 앵커까지 걸어오게 하려고.
+       *
+       * `state.player.pos` 는 컷이 도는 동안 **안 변한다.** 컷은 좌표를 상태에 쓰지
+       * 않고 아래 `at` 로 리그에만 넘기기 때문이다. 그래서 매 프레임 읽어도 늘
+       * "판이 끝난 그 자리"이고, 걸어오는 출발점으로 그대로 쓸 수 있다.
+       */
+      const f = outroAt(outroKind, t, ax, yOff, state.player.pos)
 
       /**
        * 주인공 — 시뮬은 멈춰 있으므로(`ended`) 리그에 넘길 상태를 만들어 준다.
@@ -749,7 +756,16 @@ const frame = (now: number): void => {
           ...state,
           // `boarding` 이면 리그가 `Board` 를 강제한다 — 컷의 클립 선택을 덮어쓴다
           phase: 'playing',
-          player: { ...state.player, pos: at, facing: f.actor.facing, moving: false, sprinting: false },
+          /**
+           * ★ `moving` 을 **클립에서 되읽는다.** 리그는 `sync()` 안에서 `p.moving` 을
+           *   보고 스스로 클립을 고르므로(`player-rig.ts`), 여기서 `false` 로 못 박으면
+           *   바로 위 `play('Walk')` 를 그 자리에서 `Idle` 로 덮어쓴다 — 앵커로 걸어가는
+           *   동안 사람이 미끄러지듯 이동하게 된다.
+           */
+          player: {
+            ...state.player, pos: at, facing: f.actor.facing,
+            moving: f.actor.clip === 'Walk', sprinting: false,
+          },
         }, dtSec, at)
         // ★ `sync()` 뒤에 얹는다 — 안의 `mixer.update()` 가 본 회전을 덮어쓴다
         if (!poseRig) poseRig = makePoseRig(player.root)

@@ -14,11 +14,134 @@
 
 import { describe, expect, it } from 'vitest'
 import { TRAIN } from '../../src/data/tuning'
-import { CABIN_Y1 } from '../../src/data/world'
-import { anchorXOf, OUTRO_MS, outroAt, outroKindOf, SHOT, STAND_Y } from '../../src/render/outro'
+import { CABIN_Y1, DOOR_XS } from '../../src/data/world'
+import {
+  anchorXOf, OUTRO_MS, outroAt, outroKindOf, SHOT, STAND_Y, WALK_MS,
+} from '../../src/render/outro'
 
 /** 창 중심 x — 실제로는 `anchorXOf(boardedDoorX, train.x)` 가 낸다 */
 const AX = 114
+
+/**
+ * 앵커 — **32개 문 전수로 잠근다.**
+ *
+ * 이 파일에서 가장 값비싼 테스트다. 여기가 뚫려 있어서 "사람이 벽에 껴 있다"가
+ * 세 번 반복됐다. E2E 는 문 하나(`DOOR_XS[8]`, 오프셋 +2)만 밟았고 유닛은 앵커를
+ * 아예 안 봤다. 둘 다 통과하는 채로 문 넷 중 하나가 사람을 **차량 연결부**에
+ * 세우고 있었다(`render/outro.ts anchorXOf` 주석에 실측 있음).
+ */
+describe('엔딩 앵커는 어느 문으로 타든 안전한 창 중심이다', () => {
+  /** 차량 경계 = 연결부. 앵커가 여기 앉으면 좌석도 창도 차체도 없다 */
+  const isCarBoundary = (x: number): boolean =>
+    Math.abs(((x - TRAIN.firstCarX) % TRAIN.carLength + TRAIN.carLength) % TRAIN.carLength) < 1e-6
+
+  it('32개 문 어디서 타도 앵커가 차량 경계에 앉지 않는다', () => {
+    for (const doorX of DOOR_XS) {
+      const ax = anchorXOf(doorX, TRAIN.firstCarX)   // 미끄러짐 0 인 명목 좌표로 본다
+      expect(isCarBoundary(ax), `문 ${doorX} → 앵커 ${ax} 가 연결부다`).toBe(false)
+    }
+  })
+
+  it('앵커는 문 사이 중점 셋(+4·+8·+12) 중 하나다 — 창이 있는 자리', () => {
+    for (const doorX of DOOR_XS) {
+      const inCar = (anchorXOf(doorX, TRAIN.firstCarX) - TRAIN.firstCarX) % TRAIN.carLength
+      expect([4, 8, 12], `문 ${doorX}`).toContain(inCar)
+    }
+  })
+
+  it('앵커는 열차 밖으로 안 나간다 — 마지막 문(204)이 꼬리 끝을 가리켰었다', () => {
+    const tail = TRAIN.firstCarX + TRAIN.carCount * TRAIN.carLength
+    for (const doorX of DOOR_XS) {
+      const ax = anchorXOf(doorX, TRAIN.firstCarX)
+      expect(ax, `문 ${doorX}`).toBeGreaterThan(TRAIN.firstCarX)
+      expect(ax, `문 ${doorX}`).toBeLessThan(tail)
+    }
+  })
+
+  it('어느 문에서든 걸어갈 거리가 같다 — 문마다 템포가 달라지면 안 된다', () => {
+    const walks = DOOR_XS.map((d) => Math.abs(anchorXOf(d, TRAIN.firstCarX) - d))
+    expect(new Set(walks).size, `거리가 여러 종류다: ${[...new Set(walks)].join()}`).toBe(1)
+  })
+
+  it('열차가 미끄러진 만큼 앵커도 같이 밀린다', () => {
+    const slide = -0.544
+    expect(anchorXOf(112, TRAIN.firstCarX + slide)).toBeCloseTo(114 + slide, 6)
+  })
+})
+
+/**
+ * 앵커까지 걸어가기 — **종점이 정확해야 한다.**
+ *
+ * 순간이동을 안 쓰는 대신, 보간이 끝나는 순간의 값이 곧 앵커여야 한다. 미세한
+ * 오차가 남으면 그 뒤 컷 전체가 그만큼 어긋난 자리에서 돌아간다.
+ */
+describe('탄 자리에서 앵커까지 걸어온다', () => {
+  const FROM = { x: AX - 2, y: 13.2 }
+
+  it('시작은 탄 자리, 끝은 앵커 — 오차가 안 남는다', () => {
+    for (const kind of ['success', 'jit', 'wrongway'] as const) {
+      const a0 = outroAt(kind, 0, AX, 0, FROM).actor
+      expect(a0.x, kind).toBeCloseTo(FROM.x, 6)
+      expect(a0.y, kind).toBeCloseTo(FROM.y, 6)
+
+      const done = outroAt(kind, WALK_MS[kind], AX, 0, FROM).actor
+      expect(done.x, kind).toBeCloseTo(AX, 9)
+      expect(done.y, kind).toBeCloseTo(STAND_Y, 9)
+    }
+  })
+
+  it('도착 뒤에는 앵커에 붙어 있다 — 끝까지 한 번도 안 떠난다', () => {
+    for (const kind of ['success', 'jit', 'wrongway'] as const) {
+      for (let t = WALK_MS[kind]; t <= OUTRO_MS; t += 100) {
+        const a = outroAt(kind, t, AX, 0, FROM).actor
+        expect(a.x, `${kind} t=${t}`).toBeCloseTo(AX, 9)
+        expect(a.y, `${kind} t=${t}`).toBeCloseTo(STAND_Y, 9)
+      }
+    }
+  })
+
+  it('걷는 동안은 걷는 클립이고, 도착하면 아니다', () => {
+    for (const kind of ['success', 'jit', 'wrongway'] as const) {
+      expect(outroAt(kind, WALK_MS[kind] - 50, AX, 0, FROM).actor.clip, kind).toBe('Walk')
+      expect(outroAt(kind, WALK_MS[kind] + 50, AX, 0, FROM).actor.clip, kind).not.toBe('Walk')
+    }
+  })
+
+  /** JIT 은 **급해야 한다** — 같은 배경을 쓰는 두 엔딩을 가르는 것은 템포뿐이다 */
+  it('JUST IN TIME 이 가장 빨리 걷는다', () => {
+    expect(WALK_MS.jit).toBeLessThan(WALK_MS.success)
+  })
+
+  /** 걷는 시간이 컷의 첫 박자를 잡아먹으면 안 된다 */
+  it('걷기가 ① 안에서 끝난다', () => {
+    for (const kind of ['success', 'jit', 'wrongway'] as const) {
+      expect(WALK_MS[kind], kind).toBeLessThan(SHOT.body)
+    }
+  })
+
+  /** `from` 을 안 주면 예전처럼 처음부터 앵커에 서 있다 — 기존 호출을 안 깬다 */
+  it('탄 자리를 안 주면 걷지 않는다', () => {
+    const a = outroAt('success', 0, AX).actor
+    expect(a.x).toBe(AX)
+    expect(a.y).toBe(STAND_Y)
+  })
+
+  /**
+   * 객차 마지막 문(+14)에서는 앵커가 **−x 쪽**이다. 그때도 몸이 가는 쪽을 봐야 한다 —
+   * 뒷걸음질로 미끄러져 가면 그게 그대로 보인다.
+   */
+  it('앵커가 뒤쪽이면 몸도 뒤로 돈다', () => {
+    const back = outroAt('success', 200, AX, 0, { x: AX + 2, y: 13.2 }).actor.facing
+    const fwd = outroAt('success', 200, AX, 0, { x: AX - 2, y: 13.2 }).actor.facing
+    expect(Math.abs(back)).toBeGreaterThan(Math.PI / 2)   // −x 쪽을 본다
+    expect(Math.abs(fwd)).toBeLessThan(Math.PI / 2)       // +x 쪽을 본다
+  })
+
+  it('반대 방면에서도 종점이 앵커다 — y 오프셋을 두 번 더하면 안 된다', () => {
+    const a = outroAt('success', WALK_MS.success, AX, 40, { x: AX - 2, y: 53.2 }).actor
+    expect(a.y).toBeCloseTo(STAND_Y + 40, 9)
+  })
+})
 
 describe('어떤 엔딩이 어떤 컷을 받는가', () => {
   it('E-04 는 JUST IN TIME, E-08 은 WRONG WAY', () => {
@@ -53,9 +176,9 @@ describe('어떤 엔딩이 어떤 컷을 받는가', () => {
 })
 
 describe('컷 길이', () => {
-  it('4~7초 안이다 — 반복 플레이 게임이라 그 이상은 벌이 된다', () => {
+  it('4~9초 안이다 — 반복 플레이 게임이라 그 이상은 벌이 된다', () => {
     expect(OUTRO_MS).toBeGreaterThanOrEqual(4000)
-    expect(OUTRO_MS).toBeLessThanOrEqual(7000)
+    expect(OUTRO_MS).toBeLessThanOrEqual(9000)
   })
 
   it('컷 경계가 순서대로다', () => {
@@ -232,16 +355,17 @@ describe('WRONG WAY 전용 효과', () => {
   /** 번개는 **지옥이 드러난 뒤에** 친다 — 터널에서 번쩍이면 그냥 오류로 보인다 */
   it('번개는 짧고, 지옥이 드러난 뒤에 친다', () => {
     expect(outroAt('wrongway', SHOT.turn + 100, AX).stage.flash).toBe(1)
-    expect(outroAt('wrongway', SHOT.turn + 720, AX).stage.flash).toBeGreaterThan(1.5)
-    expect(outroAt('wrongway', SHOT.turn + 900, AX).stage.flash).toBe(1)
+    expect(outroAt('wrongway', SHOT.turn + 1020, AX).stage.flash).toBeGreaterThan(1.5)
+    expect(outroAt('wrongway', SHOT.turn + 1200, AX).stage.flash).toBe(1)
   })
 })
 
 describe('컷마다 자기 몫의 몸짓이 있다', () => {
   it('JUST IN TIME 은 무릎을 짚는다 — 그리고 끝까지 다 펴지 않는다', () => {
-    expect(outroAt('jit', 500, AX).actor.brace).toBeGreaterThan(0.9)
+    // ⚠ 시각을 `WALK_MS` 에서 파생시킨다 — 휘청임은 **걸어 들어온 뒤**에 온다
+    expect(outroAt('jit', WALK_MS.jit + 500, AX).actor.brace).toBeGreaterThan(0.9)
     const last = outroAt('jit', OUTRO_MS, AX).actor.brace
-    expect(last).toBeGreaterThan(0)      // 5초 만에 숨이 돌아오지는 않는다
+    expect(last).toBeGreaterThan(0)      // 몇 초 만에 숨이 돌아오지는 않는다
     expect(last).toBeLessThan(0.5)
   })
 
