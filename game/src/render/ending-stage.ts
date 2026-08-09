@@ -53,10 +53,21 @@ const GLASS_Z1 = FLOOR.B2 + 2.40
 const GLASS_Z = (GLASS_Z0 + GLASS_Z1) / 2
 const GLASS_H = GLASS_Z1 - GLASS_Z0
 /**
- * 창밖 판의 x 반폭. 카메라가 어디를 보든 끝이 안 보여야 한다 —
- * 좁게 잡았다가 프레임 옆으로 역이 새는 것을 실측으로 겪었다.
+ * 창밖 판의 x 반폭 — **카메라가 보는 만큼만.**
+ *
+ * 한때 16m(폭 32m)였다. 카메라가 객차 길이 방향을 45° 로 비껴보던 시절의 방어값인데,
+ * 지금은 정북을 보므로 그만큼 필요 없다. 실제로 화면에 들어오는 창 폭을 재면:
+ *
+ *   카메라 → 창 2.84~3.14m · 최대 화각 55°(16:9 → 수평 85°)
+ *   → 보이는 폭 **약 5.7m** (px−2.6 ~ px+3.1)
+ *
+ * 32m 중 5.7m 만 보고 있었다는 뜻이고, 그 대가가 **해상도**였다: 2560px 그림을
+ * 32m 에 늘리면 80px/m 이라 보이는 구간이 원본 456px 뿐이다(960px 화면에 2배 확대).
+ * 12m 로 줄이면 같은 그림이 213px/m — **2.7배 선명해진다.**
+ *
+ * 6m 는 보이는 폭의 2배가 넘는 여유다. 이보다 줄이면 화각을 넓히는 순간 새기 시작한다.
  */
-const HALF_W = 16.0
+const HALF_W = 6.0
 const GLASS_W = HALF_W * 2
 
 /** 차내 안내판 — 문 위 띠. 차체 안쪽 면에 붙인다 */
@@ -132,11 +143,30 @@ const loadOrDraw = (name: string, draw: () => HTMLCanvasElement, repeatX: number
     (img) => {
       img.wrapS = RepeatWrapping
       img.wrapT = RepeatWrapping
-      img.repeat.set(repeatX, 1)
       img.colorSpace = SRGBColorSpace
-      // 캔버스가 쓰던 자리를 그대로 물려받는다 — 흐른 거리(offset)까지 이어야 안 튄다
-      img.offset.copy(tex.offset)
+
+      /**
+       * ★ **가로 띠를 잘라 쓴다 — 그래서 아무 가로 이미지나 넣어도 된다.**
+       *
+       * 창은 12m × 1.6m 라 **7.5:1** 이다. 여기 16:9 그림을 그대로 붙이면 가로로
+       * 4배 늘어나 건물이 옆으로 퍼진다. 그렇다고 그림을 7.5:1 로 만들어 오라고
+       * 요구하면 쓸 수 있는 그림이 거의 없다.
+       *
+       * 대신 세로를 **잘라서** 비율을 맞춘다: 원본에서 높이의 `h` 만큼만 샘플링하면
+       * 보이는 영역이 `w : (h·원본높이)` 가 되고, 이것을 7.5:1 로 두면 늘어남이 0 이다.
+       * 잘라 낸 띠는 지평선 근처를 잡도록 위에서 30% 지점부터 센다 — 하늘만 나오거나
+       * 물만 나오는 것을 막는다.
+       */
+      const src = img.image as { width: number; height: number }
+      const want = (HALF_W * 2) / GLASS_H          // 창의 종횡비 (7.5)
+      const bandY = Math.min(1, src.width / (want * src.height))
+      img.repeat.set(repeatX, bandY)
+      img.offset.set(tex.offset.x, Math.max(0, 0.30 - bandY / 2))
+
+      // 캔버스가 쓰던 자리를 그대로 물려받는다 — 흐른 거리(offset.x)까지 이어야 안 튄다
       tex.image = img.image
+      tex.repeat.copy(img.repeat)
+      tex.offset.y = img.offset.y
       tex.needsUpdate = true
     },
     undefined,
@@ -368,14 +398,17 @@ export const buildEndingStage = (): EndingStage => {
   /**
    * 반복 횟수는 **창 폭(32m)에 맞춘다.**
    *
-   * 1회로 두면 그림이 32m 로 늘어나 얼룩이 되고, 너무 잦으면 5초 안에 같은 그림이
-   * 여러 번 지나가 정체가 드러난다. 풍경(일출·지옥)은 20m 마다 한 번(1.6회) —
-   * 컷이 흐르는 거리가 그보다 짧아 **이음매가 화면에 안 들어온다.**
-   * 터널은 4m 마다(8회): 가까운 것일수록 촘촘해야 속도가 눈에 잡힌다.
+   * 풍경(일출·지옥)은 **반복하지 않는다(1회).** 창이 12m 로 줄면서 한 장이 그 폭을
+   * 그대로 덮을 수 있게 됐다 — 이음매가 아예 존재하지 않으므로 그림의 좌우 끝을
+   * 맞출 필요도 없다. 컷 전체에서 흐르는 거리가 한 장의 7~9% 라 이음매가 화면
+   * 가장자리(±6m)까지 밀려올 일도 없다.
+   *
+   * 터널만 4m 마다(3회) 되풀이한다: 가까운 것일수록 촘촘해야 속도가 눈에 잡히고,
+   * 케이블·보수등은 원래 일정 간격으로 지나가는 것이라 반복이 정상이다.
    */
-  const dawnTex = loadOrDraw('ending-dawn', drawDawn, 1.6)
-  const hellTex = loadOrDraw('ending-hell', drawHell, 1.6)
-  const tunnelTex = texOf(drawTunnel(), 8)
+  const dawnTex = loadOrDraw('ending-dawn', drawDawn, 1)
+  const hellTex = loadOrDraw('ending-hell', drawHell, 1)
+  const tunnelTex = texOf(drawTunnel(), 3)
   const ledOk = texOf(drawLed(false))
   const ledWrong = texOf(drawLed(true))
 
