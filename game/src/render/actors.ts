@@ -18,7 +18,7 @@ import type { GameState, ObsId } from '../state/types'
 import { ambushLineAt, AMBUSH_TASER_LINE_INDEX } from '../systems/ambush'
 import { rampZ } from '../systems/collision'
 import { secondsSinceDoorsOpen, secondsSinceDoorsOpenOpp } from '../systems/disembark'
-import { FLYER_AT, ajummaAt, zombieAt } from '../systems/obstacles'
+import { auntieAt, studentAt, zombieAt } from '../systems/obstacles'
 import { staffAt } from '../systems/staff'
 import { loadNpcRig, type NpcRig } from './npc-rig'
 
@@ -35,10 +35,9 @@ export type Actors = Readonly<{
  * *"도 아십니까 아주머니가 구현 안 된 것 같다"* 는 지적이 나왔다. 보이지 않는 방해요소는
  * GDD §11 이 금지한 **단서 없는 랜덤 처형**이다 — 피할 대상이 화면에 있어야 피한다.
  *
- * 프롭이 곧 정체다: `PR_Flyer`(전단지) · `PR_Book`(도 아세요) · `PR_Phone`(좀비폰족).
+ * 프롭이 곧 정체다: `PR_Book`(도 아세요) · `PR_Phone`(좀비폰족).
  */
 const OBS_ACTORS = [
-  { key: 'ajp', obs: 'OBS-06' as ObsId, file: 'ajp_character_rigged.glb' },
   { key: 'aj', obs: 'OBS-07' as ObsId, file: 'aj_character_rigged.glb' },
   { key: 'zp', obs: 'OBS-08' as ObsId, file: 'zp_character_rigged.glb' },
   { key: 'ss', obs: 'OBS-13' as ObsId, file: 'ss_character_rigged.glb' },
@@ -144,7 +143,7 @@ export const CHAR_SCALE = 1.6
  *   멀쩡해 보인다 — 실제로 남북으로만 확인하다 두 번 놓쳤다.
  *   `tests/e2e/p2.spec.ts` 의 "네 방향" 테스트가 이걸 잠근다.
  */
-const YAW_FIX = { gp: 0, cp: 0, aj: 0, ajp: 0, zp: 0, ss: 0, cl: 0, fm: 0, st: 0 } as const
+const YAW_FIX = { gp: 0, cp: 0, aj: 0, zp: 0, ss: 0, cl: 0, fm: 0, st: 0 } as const
 
 /**
  * 앉은 자세 보정(m) — **실척 가구와 축소 캐릭터의 간극**을 메운다.
@@ -234,25 +233,24 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
    * `loadNpcRig` 이 스켈레톤까지 복제하므로 셋이 각자 움직인다(얕은 복제는 본을 공유한다).
    * 브라우저가 같은 URL 을 캐시하므로 네트워크 비용은 1회다.
    */
-  const [gp, cp0, cp1, cp2, ajp, aj, zp, ss, cl, fm, ao, st, ...riders] = await Promise.all([
+  const [gp, cp0, cp1, cp2, aj, zp, ss, cl, fm, ao, st, ...riders] = await Promise.all([
     loadOr(`${dir}gp_character_rigged.glb`, 'GP', YAW_FIX.gp),
     loadOr(`${dir}cp_character_rigged.glb`, 'CP0', YAW_FIX.cp),
     loadOr(`${dir}cp_character_rigged.glb`, 'CP1', YAW_FIX.cp),
     loadOr(`${dir}cp_character_rigged.glb`, 'CP2', YAW_FIX.cp),
-    loadOr(`${dir}${OBS_ACTORS[0].file}`, 'AJP', YAW_FIX.ajp),
-    loadOr(`${dir}${OBS_ACTORS[1].file}`, 'AJ', YAW_FIX.aj),
-    loadOr(`${dir}${OBS_ACTORS[2].file}`, 'ZP', YAW_FIX.zp),
-    loadOr(`${dir}${OBS_ACTORS[3].file}`, 'SS', YAW_FIX.ss),
+    loadOr(`${dir}${OBS_ACTORS[0].file}`, 'AJ', YAW_FIX.aj),
+    loadOr(`${dir}${OBS_ACTORS[1].file}`, 'ZP', YAW_FIX.zp),
+    loadOr(`${dir}${OBS_ACTORS[2].file}`, 'SS', YAW_FIX.ss),
     loadOr(`${dir}cl_character_rigged.glb`, 'CL', YAW_FIX.cl),
     // 붕어빵 아저씨 — 전용 리그(CL 베이스에 갈색 앞치마·분홍 팔토시로 분화, 완전 대체 아님)
     loadOr(`${dir}fm_character_rigged.glb`, 'FM', YAW_FIX.fm),
     // 개찰구 매복 역무원 — 방해요소 `ss`(OBS-13 순찰)와 별개다. OBS-13이 이번 판에 안 뽑히면
     // `ss`는 몸이 없다(`obsOff`) — 매복은 그 롤과 무관하게 **항상** 일어나야 하므로 전용 인스턴스를 둔다
     loadOr(`${dir}ss_character_rigged.glb`, 'AO', YAW_FIX.ss),
-    // OBS-07 학생 — 아주머니 파트너 룩(포니테일·백팩)을 이 장면의 학생으로 쓴다(디렉터 지시).
-    // `ajp`(OBS-06 전단지 배포원)와 같은 glb 를 또 로드한 전용 인스턴스다 — 위 AO 와 같은 이유:
-    // OBS-06이 이번 판에 안 뽑혀도 아주머니 옆의 학생은 OBS-07 롤과 무관하게 항상 있어야 한다
-    loadOr(`${dir}${OBS_ACTORS[0].file}`, 'ST', YAW_FIX.st),
+    // OBS-07 학생 — 아주머니 파트너 룩(포니테일·백팩, ajp_character_rigged.glb)을 이 장면의
+    // 학생으로 쓴다(디렉터 지시). 아주머니(`aj`)와 마찬가지로 OBS-07 전용 인스턴스다 —
+    // 둘은 이제 한 세트로 같이 켜지고 같이 꺼진다(`obsOff` 가 둘 다 'OBS-07' 을 본다)
+    loadOr(`${dir}ajp_character_rigged.glb`, 'ST', YAW_FIX.st),
     ...RIDER_SPOTS.map((_, i) => loadOr(`${dir}cp_character_rigged.glb`, `RIDER${i}`, YAW_FIX.cp)),
   ])
   const cps = [cp0, cp1, cp2] as const
@@ -289,8 +287,8 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
 
   const root = new Group()
   root.name = 'actors'
-  root.add(gp.root, cp0.root, cp1.root, cp2.root, ajp.root, aj.root, zp.root, ss.root, cl.root,
-    fm.root, ao.root)
+  root.add(gp.root, cp0.root, cp1.root, cp2.root, aj.root, zp.root, ss.root, cl.root,
+    fm.root, ao.root, st.root)
   for (const r of riders) root.add(r.root)
   for (const r of disembarkRigs) root.add(r.root)
   for (const r of disembarkRigs2) root.add(r.root)
@@ -475,92 +473,42 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
     return dx * dx + dy * dy + dz * dz < OBS_CULL_M * OBS_CULL_M
   }
 
-  /** 전단지 — 제자리. 플레이어가 반경에 들면 말을 걸고, 이어폰이면 무시당한다 */
-  const syncTalker = (
-    s: GameState, rig: NpcRig, id: ObsId, at: { x: number; y: number }, rangeM: number,
+  /**
+   * 아주머니·학생 순찰 — 공통 동작. 둘 다 Z1 지상의 독립된 남북 구간을 왕복하다,
+   * 플레이어가 반경(또는 그 2.2배)에 들면 걸음을 멈춘 것처럼 플레이어를 보고 말을 건다.
+   * 이어폰이면 무시당한다. `OBS-07` 온/오프를 같이 본다 — 둘은 한 세트라 아주머니가
+   * 없는 판엔 학생도 없다.
+   */
+  const syncPreacher = (
+    s: GameState, rig: NpcRig, at: { x: number; y: number }, prev: { x: number; y: number },
     dtSec: number,
   ): void => {
-    if (obsOff(s, rig, id)) return
-    // OBS-06 전단지 배포원만 지상(Z1)이다 — 나머지는 대합실
-    const zz = id === 'OBS-06' ? FLOOR.L0 : FLOOR.B1
+    if (obsOff(s, rig, 'OBS-07')) return
     const p = s.player.pos
     const d = Math.hypot(p.x - at.x, p.y - at.y)
-    // 다가오는 사람을 본다 — 등을 보이면 피할 대상으로 안 읽힌다
-    const facing = d > 0.05 ? Math.atan2(p.y - at.y, p.x - at.x) : 0
-    rig.place(at.x, at.y, zz, facing)
+    const spotted = d <= OBSTACLE.preachRangeM * 2.2
+    const walkFacing = Math.atan2(at.y - prev.y, at.x - prev.x)
+    const lookFacing = d > 0.05 ? Math.atan2(p.y - at.y, p.x - at.x) : 0
+    rig.place(at.x, at.y, FLOOR.L0, spotted ? lookFacing : walkFacing)
 
-    const visible = nearObs(s, at.x, at.y, zz)
+    const visible = nearObs(s, at.x, at.y, FLOOR.L0)
     rig.setVisible(visible)
     if (!visible) return
 
-    const engaged = d <= rangeM
+    const engaged = d <= OBSTACLE.preachRangeM
     const ignored = s.flags.includes('EARBUDS_ON')
     if (engaged && ignored) rig.play('AJ_Ignored')
     else if (engaged) rig.play('AJ_Talk')
-    else if (d <= rangeM * 2.2) rig.play('AJ_Spot')
-    else rig.play('AJ_Idle')
+    else if (spotted) rig.play('AJ_Spot')
+    else rig.play('AJ_Approach')
     rig.update(dtSec)
   }
 
-  /**
-   * 아주머니 — 좀비폰족과 같은 식으로 순찰하다, 플레이어가 반경(또는 그 2.2배)에 들면
-   * 걸음을 멈춘 것처럼 플레이어를 보고 말을 건다. 이어폰이면 무시당한다
-   */
-  const syncAjumma = (s: GameState, dtSec: number): void => {
-    if (obsOff(s, aj, 'OBS-07')) return
-    const at = ajummaAt(s.elapsedMs)
-    const p = s.player.pos
-    const d = Math.hypot(p.x - at.x, p.y - at.y)
-    const spotted = d <= OBSTACLE.ajummaRangeM * 2.2
-    const prev = ajummaAt(Math.max(0, s.elapsedMs - 120))
-    const walkFacing = Math.atan2(at.y - prev.y, at.x - prev.x)
-    const lookFacing = d > 0.05 ? Math.atan2(p.y - at.y, p.x - at.x) : 0
-    aj.place(at.x, at.y, FLOOR.B1, spotted ? lookFacing : walkFacing)
+  const syncAjumma = (s: GameState, dtSec: number): void =>
+    syncPreacher(s, aj, auntieAt(s.elapsedMs), auntieAt(Math.max(0, s.elapsedMs - 120)), dtSec)
 
-    const visible = nearObs(s, at.x, at.y, FLOOR.B1)
-    aj.setVisible(visible)
-    if (!visible) return
-
-    const engaged = d <= OBSTACLE.ajummaRangeM
-    const ignored = s.flags.includes('EARBUDS_ON')
-    if (engaged && ignored) aj.play('AJ_Ignored')
-    else if (engaged) aj.play('AJ_Talk')
-    else if (spotted) aj.play('AJ_Spot')
-    else aj.play('AJ_Approach')
-    aj.update(dtSec)
-  }
-
-  /** 아주머니 옆(북쪽 1m)에서 나란히 걷는 학생 — 2인조를 이루는 파트너(디렉터 지시) */
-  const STUDENT_OFFSET_Y = 1.0
-
-  /**
-   * 학생 — `syncAjumma`와 같은 식이지만 위치를 오프셋만큼 민다. `OBS-07` 온/오프를
-   * 아주머니와 공유한다 — 둘은 한 세트라 아주머니가 없는 판엔 학생도 없다.
-   */
-  const syncStudent = (s: GameState, dtSec: number): void => {
-    if (obsOff(s, st, 'OBS-07')) return
-    const ajAt = ajummaAt(s.elapsedMs)
-    const at = { x: ajAt.x, y: ajAt.y + STUDENT_OFFSET_Y }
-    const p = s.player.pos
-    const d = Math.hypot(p.x - at.x, p.y - at.y)
-    const spotted = d <= OBSTACLE.ajummaRangeM * 2.2
-    const ajPrev = ajummaAt(Math.max(0, s.elapsedMs - 120))
-    const walkFacing = Math.atan2(ajAt.y - ajPrev.y, ajAt.x - ajPrev.x)
-    const lookFacing = d > 0.05 ? Math.atan2(p.y - at.y, p.x - at.x) : 0
-    st.place(at.x, at.y, FLOOR.B1, spotted ? lookFacing : walkFacing)
-
-    const visible = nearObs(s, at.x, at.y, FLOOR.B1)
-    st.setVisible(visible)
-    if (!visible) return
-
-    const engaged = d <= OBSTACLE.ajummaRangeM
-    const ignored = s.flags.includes('EARBUDS_ON')
-    if (engaged && ignored) st.play('AJ_Ignored')
-    else if (engaged) st.play('AJ_Talk')
-    else if (spotted) st.play('AJ_Spot')
-    else st.play('AJ_Approach')
-    st.update(dtSec)
-  }
+  const syncStudent = (s: GameState, dtSec: number): void =>
+    syncPreacher(s, st, studentAt(s.elapsedMs), studentAt(Math.max(0, s.elapsedMs - 120)), dtSec)
 
   /** 좀비폰족 — 위치가 시간의 순수 함수라 렌더도 **같은 식**을 쓴다 */
   const syncZombie = (s: GameState, dtSec: number): void => {
@@ -688,7 +636,6 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
       syncGrandpa(s, dtSec)
       syncCarrier(s, dtSec)
       syncRiders(s, dtSec)
-      syncTalker(s, ajp, 'OBS-06', FLYER_AT, OBSTACLE.flyerRangeM, dtSec)
       syncAjumma(s, dtSec)
       syncStudent(s, dtSec)
       syncZombie(s, dtSec)
@@ -703,9 +650,9 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
       gp.dispose()
       for (const c of cps) c.dispose()
       for (const r of riders) r.dispose()
-      ajp.dispose(); aj.dispose(); zp.dispose(); ss.dispose()
+      aj.dispose(); zp.dispose(); ss.dispose()
       cl.dispose()
-      fm.dispose(); ao.dispose()
+      fm.dispose(); ao.dispose(); st.dispose()
       for (const r of disembarkRigs) r.dispose()
       for (const r of disembarkRigs2) r.dispose()
     },

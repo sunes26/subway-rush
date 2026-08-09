@@ -37,7 +37,8 @@ describe('unitsOf', () => {
   })
 
   it('켜진 방해요소만 danger 유닛으로 찍힌다', () => {
-    const s = start(1, { obstacles: ['OBS-07', 'OBS-08', 'OBS-06', 'OBS-13'] })
+    // OBS-07은 아주머니·학생 둘을 찍는다 — 2 + 좀비폰족 1 + 역무원 1 = 4
+    const s = start(1, { obstacles: ['OBS-07', 'OBS-08', 'OBS-13'] })
     const units = unitsOf(s)
     expect(units.filter((u) => u.danger).length).toBe(4)
   })

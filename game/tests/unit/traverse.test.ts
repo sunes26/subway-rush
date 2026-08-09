@@ -62,10 +62,11 @@ const traverse = (seed: number): { state: GameState; log: string[]; failed: stri
     { name: 'Z1 횡단보도 앞', x: -34, y: 27.5 },
     // 적신호면 최대 18초 대기해야 한다 (MAP §3.3)
     { name: 'Z1 횡단보도 통과', x: -20, y: 27.5, maxSec: 30 },
-    { name: 'Z1 4번 출구', x: 0.5, y: 28 },
+    // 아주머니(x=-8.2)·학생(x=-15.8) 순찰 구간(y 22.7~32.7)을 가로지른다 — OBS-07 강제
+    // 대화(25.6s)에 붙잡힐 수 있어 예산을 넉넉히 둔다
+    { name: 'Z1 4번 출구', x: 0.5, y: 28, maxSec: 50 },
     { name: 'B1 계단 하단', x: 15.5, y: 28, r: 1.6 },
-    // OBS-07 아주머니+학생에 붙잡히면 강제 대화(25.6s)가 걸린다 — 그 잠금 시간까지 예산에 넣는다
-    { name: 'Z2 대합실 중앙', x: 34, y: 20, maxSec: 55 },
+    { name: 'Z2 대합실 중앙', x: 34, y: 20, maxSec: 25 },
     { name: 'Z3 진입선', x: 55, y: 14 },
     { name: '정상 게이트 정렬', x: 58.6, y: workingY, r: 0.8 },
     { name: '개찰구 통과', x: 64, y: workingY, r: 1.6, maxSec: 12 },

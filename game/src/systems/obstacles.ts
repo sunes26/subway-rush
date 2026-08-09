@@ -45,22 +45,34 @@ const holding = (s: GameState, item: ItemId): boolean => s.inventory.includes(it
 /** OBS-05 물청소 구역 — Z4 운임구역 통로(x 72~95.8 · y 2~12) 한가운데 */
 export const WET_ZONE: Rect = [82, 4.4, 89, 9.6]
 
-/** OBS-06 전단지 배포원 — Z1 보도, 횡단보도와 출입구 사이 */
-export const FLYER_AT = { x: -36, y: 27.4 } as const
-
-/** OBS-07 "도 아세요" 아주머니 순찰 중심 — Z2 대합실, 유도선(y 14)에서 살짝 북쪽 */
-const AJUMMA_CENTER = { x: 34, y: 20.4 } as const
+/**
+ * OBS-07 "도 아세요" 아주머니+학생 — Z1 지상, 인도 남북 구간을 각자 독립적으로 왕복한다
+ * (디렉터 지시). 원래 학생 역할이 개발 중 전단지 배포원(구 OBS-06)으로 떨어져 나갔던 걸
+ * 다시 아주머니의 파트너로 합쳤다 — 더 이상 붙어 다니지 않고, 7.6m 떨어진 평행선을
+ * 각자 순찰한다. 아무나 반경에 걸리면 같은 강제 대화(`systems/preach.ts`)가 시작된다.
+ */
+const PREACH_Y_MIN = 22.7
+const PREACH_Y_MAX = 32.7
+const AUNTIE_X = -8.2
+const STUDENT_X = -15.8
 
 /**
- * OBS-07 아주머니 — 제자리가 아니라 중심에서 좌우로 오간다.
- * 좀비폰족(`zombieAt`)과 같은 수법: **시간의 순수 함수**라 렌더와 판정이 같은 식을 쓴다.
+ * 순찰 y — 좀비폰족(`zombieAt`)과 같은 수법: **시간의 순수 함수**라 렌더와 판정이
+ * 같은 식을 쓴다. 아주머니·학생 둘 다 같은 위상으로 걷는다(디렉터가 위상차를
+ * 특정하지 않았다 — 각자 독립된 경로만 요구했다).
  */
-export const ajummaAt = (elapsedMs: number): { x: number; y: number } => {
-  const period = OBSTACLE.ajummaPeriodMs
+const preachPatrolY = (elapsedMs: number): number => {
+  const period = OBSTACLE.preachPeriodMs
   const t = ((elapsedMs % period) / period) * 2          // 0..2
   const k = t <= 1 ? t : 2 - t                           // 삼각파 0..1..0
-  return { x: AJUMMA_CENTER.x - OBSTACLE.ajummaPatrolM + k * OBSTACLE.ajummaPatrolM * 2, y: AJUMMA_CENTER.y }
+  return PREACH_Y_MIN + k * (PREACH_Y_MAX - PREACH_Y_MIN)
 }
+
+export const auntieAt = (elapsedMs: number): { x: number; y: number } =>
+  ({ x: AUNTIE_X, y: preachPatrolY(elapsedMs) })
+
+export const studentAt = (elapsedMs: number): { x: number; y: number } =>
+  ({ x: STUDENT_X, y: preachPatrolY(elapsedMs) })
 
 /**
  * OBS-10 공사중 막다른 길 — `OBJ-28-N`(y 6.6~7.0, x 44~56)과
@@ -118,27 +130,17 @@ const RULES: readonly Rule[] = [
     cooldownMs: OBSTACLE.wetCooldownMs,
   },
   {
-    id: 'OBS-06',
-    fires: (s) => onFloor(s.player.pos.z, FLOOR.L0) &&
-      near(s, FLYER_AT.x, FLYER_AT.y, OBSTACLE.flyerRangeM),
-    effect: () => [
-      { t: 'TIME_PENALTY', ms: OBSTACLE.flyerPenaltyMs, label: '전단지' },
-      { t: 'STALL', ms: OBSTACLE.flyerStallMs },
-      { t: 'FX', kind: 'toast', text: '"잠깐만요, 이것 좀 보고 가세요!"', lifeMs: 2200, value: 0 },
-    ],
-    negatedText: '이어폰 — 못 들은 척했다',
-    cooldownMs: OBSTACLE.talkCooldownMs,
-  },
-  {
     id: 'OBS-07',
     fires: (s) => {
       // 대화가 이미 진행 중이면 다시 발동하지 않는다 — 좀비폰족(OBS-08)과 같은 이유:
       // 쿨다운(25s)이 대화 길이(약 26s)보다 짧아, 이 가드가 없으면 막바지에 재충돌로
       // 다시 시작될 수 있다
       if (s.preach.active) return false
-      if (!onFloor(s.player.pos.z, FLOOR.B1)) return false
-      const at = ajummaAt(s.elapsedMs)
-      return near(s, at.x, at.y, OBSTACLE.ajummaRangeM)
+      if (!onFloor(s.player.pos.z, FLOOR.L0)) return false
+      const auntie = auntieAt(s.elapsedMs)
+      const student = studentAt(s.elapsedMs)
+      return near(s, auntie.x, auntie.y, OBSTACLE.preachRangeM) ||
+        near(s, student.x, student.y, OBSTACLE.preachRangeM)
     },
     // 시간을 깎지 않는다 — 대화가 끝날 때까지 그 자리에 붙잡힌다 (`systems/movement.ts` isTalkLocked)
     effect: () => [{ t: 'PREACH_START' }],

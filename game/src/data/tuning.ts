@@ -322,17 +322,11 @@ export const OBSTACLE = {
   // OBS-05 물청소 — 뛸 때만 미끄러진다. 걸으면 통과할 수 있어야 한다
   wetStallMs: 1200,
   wetCooldownMs: 4000,
-  // OBS-06 전단지
-  flyerRangeM: 2.5,
-  flyerPenaltyMs: 5000,
-  flyerStallMs: 3000,
-  // OBS-07 아주머니+학생 — 제자리 대신 소구간을 오간다 (디렉터 지시)
+  // OBS-07 아주머니+학생 — Z1 지상에서 각자 독립된 남북 구간을 왕복한다 (디렉터 지시)
   // 정지 시간은 대화 총 길이가 정한다(`systems/preach.ts` PREACH_LINES) — 여기 별도 상수를 안 둔다
-  ajummaRangeM: 3.0,
+  preachRangeM: 3.0,
   /** 순찰 왕복 1주기(ms) */
-  ajummaPeriodMs: 10_000,
-  /** 중심에서 좌우로 오가는 반폭(m) */
-  ajummaPatrolM: 4,
+  preachPeriodMs: 10_000,
   /** 말 거는 계열 공용 — 한 번 붙잡히면 그 사람은 한동안 다시 안 붙는다 */
   talkCooldownMs: 25_000,
   // OBS-08 좀비폰족 — 위치는 시간의 순수 함수다. 정지 시간은 대화 총 길이가 정한다

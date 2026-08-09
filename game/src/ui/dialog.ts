@@ -35,6 +35,14 @@ const AO_PORTRAIT = `${import.meta.env.BASE_URL}portraits/ambush-officer.png`
 /** OBS-07 아주머니+학생 초상화 — 스크린샷 렌더(디렉터 제공) */
 const AUNTIE_PORTRAIT = `${import.meta.env.BASE_URL}portraits/auntie-preacher.png`
 const STUDENT_PORTRAIT = `${import.meta.env.BASE_URL}portraits/student-preacher.png`
+/** OBS-08 좀비폰족 초상화 — 스크린샷 렌더(디렉터 제공). `#preach`와 같은 실물 렌더 규약 */
+const ZOMBIE_PORTRAIT = `${import.meta.env.BASE_URL}portraits/zombie-phone.png`
+/**
+ * 플레이어 초상화 — `grandpa-alt.png`. 이름과 달리 할아버지가 아니라 액세서리 없는
+ * 민머리 캐릭터(ACT-01 플레이어 베이스) 렌더다. 아무 데도 안 쓰이고 있었다 — 지금까지
+ * 대화 UI에서 내 차례에는 초상화가 아예 없었다.
+ */
+const PLAYER_PORTRAIT = `${import.meta.env.BASE_URL}portraits/grandpa-alt.png`
 
 /**
  * 편의점 상점 카드 순서 — 선물 5지 + 마스크(디렉터 지시, 매대 상품 목록에 편입).
@@ -177,8 +185,12 @@ export const createDialog = (mount: HTMLElement): Dialog => {
       </div>
     </div>
     <div id="zombietalk">
+      <div class="actor-card">
+        <div class="frame" id="zt-frame"><img id="zt-portrait" src="" alt=""></div>
+        <div class="tag" id="zt-who"></div>
+      </div>
       <div class="conv">
-        <div class="bubble"><span class="who" id="zt-speaker"></span><p id="zt-line"></p></div>
+        <div class="bubble"><p id="zt-line"></p></div>
         <div class="bar"><i id="zt-bar"></i></div>
       </div>
     </div>
@@ -261,7 +273,8 @@ export const createDialog = (mount: HTMLElement): Dialog => {
   const gpstoryBar = $('gpstory-bar')
   const gpstoryCap = $('gpstory-cap')
   const zombietalk = $('zombietalk')
-  const ztSpeaker = $('zt-speaker')
+  const ztWho = $('zt-who')
+  const ztPortrait = $<HTMLImageElement>('zt-portrait')
   const ztLine = $('zt-line')
   const ztBar = $('zt-bar')
   const blackout = $('blackout')
@@ -272,7 +285,6 @@ export const createDialog = (mount: HTMLElement): Dialog => {
   const ambushLine = $('ambush-line')
   const ambushBar = $('ambush-bar')
   const preach = $('preach')
-  const preachFrame = $('preach-frame')
   const preachWho = $('preach-who')
   const preachPortrait = $<HTMLImageElement>('preach-portrait')
   const preachLine = $('preach-line')
@@ -495,14 +507,19 @@ export const createDialog = (mount: HTMLElement): Dialog => {
         gpstoryCap.textContent = `${busyLabel(s)} · ${Math.ceil(s.act.busyLeftMs / 1000)}s`
       }
 
-      // ── OBS-08 좀비폰족 부딪힘 — 선택지 없이 8초 자동 진행, `#gpstory` 와 같은 문법
+      /**
+       * ── OBS-08 좀비폰족 부딪힘 — 선택지 없이 8초 자동 진행. `#preach`와 같은
+       * 초상화 카드 UI로 맞춘다(디렉터 지시) — 내 차례에도 초상화가 있어야
+       * 다른 강제 대화(할아버지·아주머니+학생)와 같은 문법으로 읽힌다.
+       */
       if (zombietalk.className !== (s.zombieTalk.active ? 'on' : '')) {
         zombietalk.className = s.zombieTalk.active ? 'on' : ''
       }
       if (s.zombieTalk.active) {
         const { line } = zombieTalkLineAt(s.zombieTalk.phaseMs, s.zombieTalk.variant)
-        ztSpeaker.textContent = line.speaker === 'player' ? '나' : '행인'
-        ztSpeaker.className = `who${line.speaker === 'player' ? ' player' : ''}`
+        ztWho.textContent = line.speaker === 'player' ? '나' : '행인'
+        ztWho.className = `tag${line.speaker === 'player' ? ' player' : ''}`
+        ztPortrait.src = line.speaker === 'player' ? PLAYER_PORTRAIT : ZOMBIE_PORTRAIT
         ztLine.textContent = line.text
         const total = zombieTalkTotalMs(s.zombieTalk.variant) || 1
         ztBar.style.transform = `scaleX(${Math.min(1, s.zombieTalk.phaseMs / total).toFixed(3)})`
@@ -565,7 +582,8 @@ export const createDialog = (mount: HTMLElement): Dialog => {
       /**
        * ── OBS-07 아주머니+학생 강제 대화 — `#ambush`와 같은 초상화 카드 UI.
        * 선택지 없이 25.6초 자동 진행, 세 화자(아주머니·학생·나)가 돌아가며 말한다.
-       * `player` 차례엔 초상화를 감춘다 — `#ambush`가 `??` 구간에서 감추는 것과 같은 문법.
+       * `player` 차례에도 초상화를 보여준다(`PLAYER_PORTRAIT`) — `#gpstory`·`#zombietalk`은
+       * 내 차례에 초상화가 아예 없는 것과 다르게, 여기는 `#ambush`형 카드라 항상 프레임이 있다.
        */
       if (preach.className !== (s.preach.active ? 'on' : '')) {
         preach.className = s.preach.active ? 'on' : ''
@@ -576,12 +594,9 @@ export const createDialog = (mount: HTMLElement): Dialog => {
         preachWho.textContent = who
         preachWho.className = `tag${line.speaker === 'player' ? ' player' : ''}`
         preachLine.textContent = line.text
-        if (line.speaker === 'player') {
-          preachFrame.style.display = 'none'
-        } else {
-          preachFrame.style.display = ''
-          preachPortrait.src = line.speaker === 'auntie' ? AUNTIE_PORTRAIT : STUDENT_PORTRAIT
-        }
+        preachPortrait.src = line.speaker === 'auntie' ? AUNTIE_PORTRAIT
+          : line.speaker === 'student' ? STUDENT_PORTRAIT
+            : PLAYER_PORTRAIT
         preachBar.style.transform =
           `scaleX(${Math.min(1, s.preach.phaseMs / PREACH_TOTAL_MS).toFixed(3)})`
       }

@@ -109,22 +109,20 @@
   background:var(--gold);transition:transform .1s linear}
 #gpstory .cap{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--muted)}
 
-/* OBS-08 좀비폰족 부딪힘 — `#gpstory` 와 같은 자동 진행 대화지만, 이 사람은 초상화
-   에셋이 없다(즉석에서 스쳐 지나가는 행인이라 굳이 안 만든다) — actor-card를 뺀
-   더 가벼운 버전. 자리는 같다(bottom 210) — 동시에 뜨는 대화가 없으므로 안전하다. */
+/* OBS-08 좀비폰족 부딪힘 — `#preach`와 같은 초상화 카드 UI(디렉터 지시로 통일).
+   한때 초상화 없는 가벼운 버전이었지만, 다른 강제 대화(할아버지·아주머니+학생)와
+   문법이 달라 보여 맞췄다 — 화자가 나(`player`)여도 초상화가 나온다(`PLAYER_PORTRAIT`,
+   `grandpa-alt.png`). 이름표만 금색이 되는 것은 `#preach`와 같다. */
 #zombietalk{position:absolute;left:50%;bottom:210px;transform:translateX(-50%);
-  width:min(480px,86vw);display:none;justify-content:center;font-family:var(--sans);
+  width:min(620px,88vw);display:none;align-items:center;gap:20px;font-family:var(--sans);
   background:var(--panel);border:1.5px solid var(--accent);border-radius:var(--r-panel);
-  padding:18px 20px;box-shadow:0 16px 32px rgba(0,0,0,.8),inset 0 0 24px rgba(0,240,255,.16)}
+  padding:20px;box-shadow:0 16px 32px rgba(0,0,0,.8),inset 0 0 24px rgba(0,240,255,.16)}
 #zombietalk.on{display:flex;animation:rpop .22s ease both}
 #zombietalk .conv{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:10px}
 #zombietalk .bubble{background:rgba(14,16,23,.8);border:1px solid rgba(255,255,255,.08);
   border-radius:12px;padding:14px 16px;box-shadow:0 10px 24px rgba(0,0,0,.25);min-height:52px}
-/* 화자 표시 — `#gpstory` 와 같은 문법: 상대는 accent, 나는 gold */
-#zombietalk .who{display:block;font-family:var(--mono);font-size:10px;font-weight:800;
-  letter-spacing:.08em;margin-bottom:5px;color:var(--accent)}
-#zombietalk .who.player{color:var(--gold)}
 #zombietalk .bubble p{font-size:14px;line-height:1.5;color:#fff;margin:0;transition:opacity .18s}
+#zombietalk .tag.player{color:var(--gold);background:rgba(255,200,61,.15);border-color:var(--gold)}
 #zombietalk .bar{height:4px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden}
 #zombietalk .bar i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left;
   background:var(--gold);transition:transform .1s linear}

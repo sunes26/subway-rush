@@ -1,11 +1,11 @@
 /**
- * 방해요소 테이블 — 13종 (GDD 부록 D · `docs/P2-SPEC.md` §4).
+ * 방해요소 테이블 — 12종 (GDD 부록 D · `docs/P2-SPEC.md` §4).
  *
  * ★ 여기에는 **무엇이 있는가**만 있다. **어떻게 발동하는가**는 `systems/obstacles.ts` 다.
  *   데이터와 판정을 갈라 두면 시드 선택 로직이 판정을 임포트하지 않아도 되고,
  *   그래서 이 모듈을 리듀서(`initialState`)가 안전하게 부를 수 있다.
  *
- * 시드는 12종 중 **4종**을 고른다(항상 켜지는 4종과 합쳐 8종 활성).
+ * 시드는 셔플 풀 7종 중 **4종**을 고른다(항상 켜지는 4종과 합쳐 8종 활성).
  * GDD §11: *"시드당 8~9종만 활성화. 나머지는 다른 회차에 등장 → 리플레이 유인으로 전환."*
  */
 
@@ -13,7 +13,7 @@ import { streamFor } from '../core/rng'
 import type { ItemId, ZoneId } from '../state/types'
 
 export type ObsId =
-  | 'OBS-01' | 'OBS-02' | 'OBS-03' | 'OBS-04' | 'OBS-05' | 'OBS-06'
+  | 'OBS-01' | 'OBS-02' | 'OBS-03' | 'OBS-04' | 'OBS-05'
   | 'OBS-07' | 'OBS-08' | 'OBS-10' | 'OBS-11' | 'OBS-12' | 'OBS-13' | 'OBS-14'
 
 export type ObstacleDef = Readonly<{
@@ -36,9 +36,9 @@ export type ObstacleDef = Readonly<{
  */
 export const ALWAYS_ON: readonly ObsId[] = ['OBS-01', 'OBS-02', 'OBS-11', 'OBS-12']
 
-/** 시드가 이 8종 중 4종을 고른다 */
+/** 시드가 이 7종 중 4종을 고른다 */
 export const SHUFFLE_POOL: readonly ObsId[] = [
-  'OBS-03', 'OBS-04', 'OBS-05', 'OBS-06', 'OBS-07', 'OBS-08', 'OBS-10', 'OBS-13',
+  'OBS-03', 'OBS-04', 'OBS-05', 'OBS-07', 'OBS-08', 'OBS-10', 'OBS-13',
 ]
 
 /** OBS-14 단소 추격은 **유일하게 시드 무관** — 플레이어 선택으로만 발동한다 */
@@ -50,9 +50,10 @@ export const OBSTACLES: Readonly<Record<ObsId, ObstacleDef>> = {
   'OBS-03': { id: 'OBS-03', name: '에스컬레이터 인파벽', zone: 'Z4', costSec: 15, counteredBy: ['I-09', 'I-10'] },
   'OBS-04': { id: 'OBS-04', name: '하차 인파 역류', zone: 'Z5', costSec: 10, counteredBy: ['I-06', 'I-10'] },
   'OBS-05': { id: 'OBS-05', name: '물청소 구역', zone: 'Z4', costSec: 6, counteredBy: ['I-08'] },
-  'OBS-06': { id: 'OBS-06', name: '전단지 배포원', zone: 'Z1', costSec: 5, counteredBy: ['I-05'] },
-  // 실제 비용은 강제 대화 25.6초(`systems/preach.ts` PREACH_TOTAL_MS) — 예산 상한 계산용 명목치도 맞춘다
-  'OBS-07': { id: 'OBS-07', name: '"도 아세요" 아주머니', zone: 'Z2', costSec: 26, counteredBy: ['I-05'] },
+  // 실제 비용은 강제 대화 25.6초(`systems/preach.ts` PREACH_TOTAL_MS) — 예산 상한 계산용 명목치도 맞춘다.
+  // 원래 학생 역할이던 유닛이 한때 "전단지 배포원"(구 OBS-06)으로 떨어져 나갔다가 다시
+  // 이 방해요소로 합쳐졌다 — 아주머니·학생 둘 다 Z1 지상에서 순찰하며 아무나 걸리면 발동한다
+  'OBS-07': { id: 'OBS-07', name: '"도 아세요" 아주머니+학생', zone: 'Z1', costSec: 26, counteredBy: ['I-05'] },
   // 실제 비용은 강제 대화 8초(`systems/zombieTalk.ts` zombieTalkTotalMs) — 예산 상한 계산용 명목치도 맞춘다
   'OBS-08': { id: 'OBS-08', name: '좀비폰족', zone: 'Z2', costSec: 8, counteredBy: ['I-14'] },
   'OBS-10': { id: 'OBS-10', name: '공사중 출구 안내', zone: 'Z2', costSec: 20, counteredBy: ['I-13'] },
@@ -68,11 +69,17 @@ export const SHUFFLE_PICK = 4
 /**
  * 선택된 4종의 명목 비용 합 상한(초).
  *
- * 상한이 필요한 이유: 8종 pool 의 상위 4종을 다 뽑으면 20+15+15+10 = **60초**다.
+ * 상한이 필요한 이유: pool 의 비싼 4종을 다 뽑으면 20+26+15+10 = **71초**다.
  * 표준 플레이가 183초에 제한 180초라 의도적 적자가 3초뿐인데(프로젝트 메모),
- * 여기서 60초가 얹히면 그 시드는 시작부터 실패다.
+ * 여기서 70초 가까이 얹히면 그 시드는 시작부터 실패다.
+ *
+ * ⚠ **45 였다가 50 으로 올렸다.** OBS-07 의 명목 비용이 26(강제 대화 실측)이라,
+ *   가장 싼 나머지 3종(6+8+8=22)을 더해도 48 — 옛 상한(45) 아래서는 OBS-07 이 낀
+ *   조합이 단 하나도 안 남아 **이 방해요소가 정상 플레이에서 영영 안 뽑혔다**
+ *   (실측 — S14-3 다양성 회귀로 잡았다). 50 이면 조합 14/35 가 살아남고 그중 일부에
+ *   OBS-07 이 낀다 — 200시드 샘플에서 대략 5분의 1이 이 방해요소를 만난다.
  */
-export const COST_CAP_SEC = 45
+export const COST_CAP_SEC = 50
 
 const MAX_TRIES = 8
 

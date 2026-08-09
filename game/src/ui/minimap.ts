@@ -9,7 +9,7 @@
  *   전체가 다 보여야 한다. 대신 **가구·장식은 여전히 안 찍는다** — 여긴 판정·시간에
  *   실제로 걸리는 것만 올린다(방해요소·NPC·드랍), 벤치·화분 같은 장식은 원래도
  *   여기 들어올 자리가 없었다(이 파일이 아예 안 읽는다).
- *   방해요소 액터(아주머니·좀비폰족·전단지 배포원·역무원)는 **시간의 순수 함수**라
+ *   방해요소 액터(아주머니·학생·좀비폰족·역무원)는 **시간의 순수 함수**라
  *   판정(`systems/obstacles.ts`·`systems/staff.ts`)과 같은 식을 그대로 가져다 쓴다 —
  *   좌표를 여기서 새로 만들면 판정과 렌더가 갈라진다(이 프로젝트가 열한 번 데었던 실수).
  *   그 시드에 **꺼진 방해요소는 안 찍는다**(`s.obstacles`) — 없는 걸 찍으면 오정보다.
@@ -21,7 +21,7 @@
 import { byId, CP_IDS, FISHCAKE_ID, GRANDPA_ID } from '../data/interactables'
 import { itemDef } from '../data/items'
 import { DOOR_XS, FLOOR, PLATFORM, QUEUE_MARKERS } from '../data/world'
-import { ajummaAt, FLYER_AT, zombieAt } from '../systems/obstacles'
+import { auntieAt, studentAt, zombieAt } from '../systems/obstacles'
 import { staffAt } from '../systems/staff'
 import type { GameState } from '../state/types'
 
@@ -81,14 +81,15 @@ export const unitsOf = (s: GameState): readonly Unit[] => {
   if (FISHCAKE) units.push({ x: FISHCAKE.x, y: FISHCAKE.y, z: FISHCAKE.z, danger: false })
   for (const cp of CP_SPOTS) units.push({ x: cp.x, y: cp.y, z: cp.z, danger: false })
   if (s.obstacles.includes('OBS-07')) {
-    const p = ajummaAt(s.elapsedMs)
-    units.push({ x: p.x, y: p.y, z: FLOOR.B1, danger: true })
+    const auntie = auntieAt(s.elapsedMs)
+    units.push({ x: auntie.x, y: auntie.y, z: FLOOR.L0, danger: true })
+    const student = studentAt(s.elapsedMs)
+    units.push({ x: student.x, y: student.y, z: FLOOR.L0, danger: true })
   }
   if (s.obstacles.includes('OBS-08')) {
     const p = zombieAt(s.elapsedMs)
     units.push({ x: p.x, y: p.y, z: FLOOR.B1, danger: true })
   }
-  if (s.obstacles.includes('OBS-06')) units.push({ x: FLYER_AT.x, y: FLYER_AT.y, z: FLOOR.L0, danger: true })
   if (s.obstacles.includes('OBS-13')) {
     const p = staffAt(s.elapsedMs)
     units.push({ x: p.x, y: p.y, z: FLOOR.B1, danger: true })

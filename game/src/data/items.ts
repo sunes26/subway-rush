@@ -96,7 +96,7 @@ const DEFS: readonly ItemDef[] = [
     autoWear: true,
     toggleable: false,
     holdable: false,
-    negates: ['OBS-06', 'OBS-07'],
+    negates: ['OBS-07'],
     glyph: '🎧',
     noTargetReason: '이미 끼고 있다',
     cost: '누군가의 말을 무시할 수 있을 것 같다',
