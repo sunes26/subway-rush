@@ -377,11 +377,11 @@ body.run-ended #gl{filter:blur(5px) saturate(.90) brightness(.80);
 /* ── 몸통 — 왼쪽 그리드 70% · 오른쪽 상세 30% ── */
 #collection .cx-body{display:grid;grid-template-columns:70fr 30fr;min-height:0}
 /*
- * 18칸이 **스크롤 없이** 한 화면에 들어간다. 행 높이를 `1fr` 6개로 나눠
+ * 16칸(4×4)이 **스크롤 없이** 한 화면에 들어간다. 행 높이를 `1fr` 4개로 나눠
  * 남는 세로를 칸이 흡수하게 한다 — 고정 높이로 두면 화면마다 아래가 남거나 잘린다.
  */
 #collection .slots{list-style:none;margin:0;padding:clamp(16px,2vw,26px) clamp(16px,2.2vw,30px);
-  display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(6,1fr);
+  display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(4,1fr);
   gap:clamp(8px,1vw,13px);min-height:0}
 
 /*
@@ -506,13 +506,13 @@ body.run-ended #gl{filter:blur(5px) saturate(.90) brightness(.80);
  * 밀어 넣는 것이 목적이 아니라 읽히는 것이 목적이다.
  */
 @media (max-width:1180px){
-  #collection .slots{grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(9,1fr)}
+  #collection .slots{grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(8,1fr)}
 }
 /* 더 좁으면 상세를 아래로 내린다 — 옆에 두면 둘 다 좁아진다 */
 @media (max-width:900px){
   #collection.on{grid-template-rows:auto 1fr auto}
   #collection .cx-body{grid-template-columns:1fr;grid-template-rows:1fr auto}
   #collection .detail{border-left:0;border-top:1px solid var(--line)}
-  #collection .slots{grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(9,auto)}
+  #collection .slots{grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(8,auto)}
 }
 

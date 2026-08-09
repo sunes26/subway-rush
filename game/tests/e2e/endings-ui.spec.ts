@@ -66,6 +66,7 @@ for (const [w, h] of [[1920, 1080], [1280, 720]] as const) {
       const r = s0.getBoundingClientRect()
       return {
         cols: getComputedStyle(ul).gridTemplateColumns.split(' ').length,
+        slots: ul.children.length,
         slot: `${Math.round(r.width)}×${Math.round(r.height)}`,
         title: getComputedStyle(nm).fontSize,
         detail: getComputedStyle(dn).fontSize,
@@ -73,7 +74,7 @@ for (const [w, h] of [[1920, 1080], [1280, 720]] as const) {
         docScroll: document.documentElement.scrollHeight > innerHeight + 1,
       }
     })
-    console.log(`VP ${w}×${h}  ${m.cols}열  슬롯 ${m.slot}  제목 ${m.title}  상세제목 ${m.detail}  그리드스크롤 ${m.scroll ? '★YES' : 'no'}  문서스크롤 ${m.docScroll ? '★YES' : 'no'}`)
+    console.log(`VP ${w}×${h}  ${m.slots}칸/${m.cols}열  슬롯 ${m.slot}  제목 ${m.title}  상세제목 ${m.detail}  그리드스크롤 ${m.scroll ? '★YES' : 'no'}  문서스크롤 ${m.docScroll ? '★YES' : 'no'}`)
     await page.screenshot({ path: `${DIR}/ui-collection-${w}.png` })
     expect(m.scroll).toBe(false)
 
