@@ -149,7 +149,12 @@ const PHONE: Readonly<Partial<Record<BoneName, Turn | readonly Turn[]>>> = {
     { axis: FOREARM_IN_R, angle: -0.70 },
   ],
   // 화면을 내려다본다. 크게 숙이면 얼굴이 안 보인다
-  Head: { axis: [1, 0, 0], angle: 0.26 },
+  /**
+   * 고개를 폰으로 숙인다. 앉은 자세가 이미 0.10 을 얹으므로 합이 0.48rad(27°) —
+   * 실제로 폰을 보는 사람의 목 각이다. 0.26(합 0.36)에서는 시선이 폰보다 앞을
+   * 보고 있어서 "들고 있지만 안 보는" 자세로 읽혔다. 상체는 안 굽힌다.
+   */
+  Head: { axis: [1, 0, 0], angle: 0.38 },
 }
 
 /**
