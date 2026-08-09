@@ -100,7 +100,17 @@ const sfx = createSfx()
 const hud = createHud(uiRoot)
 /** 상호작용 오버레이 — 프롬프트·진행링·사유·대화·QTE. HUD와 분리한 이유는 ui/dialog.ts 헤더 참고 */
 const dialog = createDialog(uiRoot)
-const screens = createScreens(uiRoot)
+/**
+ * 결과 화면의 버튼 셋. **전부 이미 있던 함수에 연결만 한다** — 새 경로가 없다.
+ *
+ * ⚠ `restart`·`toTitle`·`collection` 은 아래에서 선언된다. 화살표로 감싸는 이유가
+ *   그것이다 — 호출 시점(버튼을 누를 때)에는 전부 초기화돼 있다.
+ */
+const screens = createScreens(uiRoot, {
+  restart: () => { restart() },
+  collection: () => { collection.toggle() },
+  title: () => { toTitle() },
+})
 const collection = createCollection(uiRoot)
 const intro = createIntro(uiRoot)
 const outro = createOutro(uiRoot)
