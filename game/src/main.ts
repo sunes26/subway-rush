@@ -440,6 +440,9 @@ const endIntro = (): void => {
   intro.hide()
   introHold = null
   introInBus = false
+  // 조작권을 넘기는 순간 시선을 역 방향(yaw 0 · pitch 0)으로 고정한다 —
+  // 안 그러면 재시작 후 직전 판에서 보던 방향이 그대로 남는다
+  input.resetLook()
   phone?.setVisible(false)
   if (westRoad) westRoad.root.visible = false
   riders?.setVisible(false)
