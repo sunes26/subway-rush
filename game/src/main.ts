@@ -335,6 +335,29 @@ let freeCamAt: { pos: [number, number, number]; look: [number, number, number] }
  */
 let outroAtMs: number | null = null
 let outroKind: OutroKind | null = null
+/**
+ * 컷 동안 **숨기는 객실 전경** — 배경을 조각내던 것들.
+ *
+ * 엔딩에서 창밖은 화면의 주인공인데, 평소 객실 구조가 그 앞을 세로로 여러 번 자른다.
+ * 실측으로 하나씩 꺼 보며 어느 병합 메시가 무엇인지 확인했다(`merged:` 는 존을
+ * 머티리얼별로 합친 덩어리라 부품 단위로는 못 끈다 — `render/station.ts`):
+ *
+ *   `TR_INNER` (576 tri)   좌우 세로 기둥 + 상단 가로 손잡이봉  ← 시야를 3등분하던 주범
+ *   `TR_DOOR`  (768 tri)   차문. 창을 세로로 쪼갠다. 끄면 통창이 된다
+ *
+ * 안 끄는 것:
+ *   `TR_JOINT` (1836) 차량 연결부 — 화면에 안 들어온다
+ *   `TR_BODY`  (13248) 차체 셸. **매달린 스트랩이 여기 병합돼 있다** — 스트랩만
+ *              떼려면 원본에서 머티리얼을 갈라야 한다. 셸을 끄면 벽·천장까지
+ *              사라져 "열차 안"이 아니게 된다(실측으로 확인하고 되돌렸다)
+ *
+ * ⚠ **삭제가 아니라 숨김이다.** 원래 값을 들고 있다가 컷이 끝나면 그대로 되돌린다.
+ */
+const CUT_HIDDEN = /^merged:(B_)?TR_(INNER|DOOR)$/
+
+/** 숨기기 전의 `visible` — 컷이 끝나면 이 값으로 되돌린다 */
+let cutHidden: { o: Object3D; was: boolean }[] = []
+
 /** 컷을 켠 엔딩 id — 같은 판에서 두 번 켜지지 않게 한다(`recordIfEnded` 와 같은 수법) */
 let lastEndedId: string | null = null
 /** E2E 전용 — 컷 시계를 못 박는다(`introHold` 와 같은 이유) */
@@ -441,6 +464,13 @@ const beginOutro = (kind: OutroKind): void => {
   endStage.setVisible(true)
   // 컷은 **몸을 보여줘야 한다** — 1인칭이면 자기 몸이 꺼져 있다(`applyView`)
   player?.setVisible(true)
+  // 배경을 조각내던 전경을 치운다 — 원래 값은 들고 간다
+  cutHidden = []
+  stage.scene.traverse((o) => {
+    if (!CUT_HIDDEN.test(o.name)) return
+    cutHidden.push({ o, was: o.visible })
+    o.visible = false
+  })
   outro.show(kind)
   screens.setHold(true)
   // HUD 는 `ended` 에서 스스로 숨는다(`ui/hud.ts`) — 여기서 따로 끌 것이 없다
@@ -463,6 +493,9 @@ const endOutro = (): void => {
   outro.hide()
   // 실내 감광 복원 — 빠뜨리면 다음 판의 역 전체가 어둡다
   stage.setIndirect(baseIndirect)
+  // 치웠던 전경 복원 — 빠뜨리면 다음 판의 열차에 기둥과 문이 없다
+  for (const h of cutHidden) h.o.visible = h.was
+  cutHidden = []
   // 시점 설정(1인칭이면 몸을 다시 끈다)과 화각을 원래대로 되돌린다
   applyView()
   screens.setHold(false)

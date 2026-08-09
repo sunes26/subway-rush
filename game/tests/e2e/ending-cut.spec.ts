@@ -213,6 +213,14 @@ test.describe('엔딩 뒤 정리', () => {
        * 실내 감광이 되돌아왔는가 — 컷이 `setIndirect` 로 씬 광원 5개를 한꺼번에
        * 낮춘다. 안 되돌리면 **다음 판의 역 전체가 어둡다.**
        */
+      /**
+       * 치웠던 전경이 돌아왔는가 — 컷이 기둥(`TR_INNER`)과 차문(`TR_DOOR`)을 숨긴다.
+       * 안 되돌리면 **다음 판의 열차에 기둥도 문도 없다.**
+       */
+      let hiddenLeft = 0
+      ;(window as any).__scene.traverse((o: any) => {
+        if (/^merged:(B_)?TR_(INNER|DOOR)$/.test(o.name) && !o.visible) hiddenLeft++
+      })
       let amb = -1
       ;(window as any).__scene.traverse((o: any) => {
         if (o.isAmbientLight) amb = o.intensity
@@ -226,7 +234,7 @@ test.describe('엔딩 뒤 정리', () => {
         outroCls: outro?.className ?? 'no-el',
         board: document.getElementById('screen')?.innerHTML.length ?? -1,
         fov: (window as any).__camera.fov,
-        amb,
+        amb, hiddenLeft,
       }
     })
 
@@ -240,5 +248,6 @@ test.describe('엔딩 뒤 정리', () => {
     expect(left.fov, '화각이 복원돼야 한다').toBeGreaterThan(60)
     // WRONG WAY 는 간접광을 0.28 배까지 내린다. 복원 안 되면 역이 어두운 채로 남는다
     expect(left.amb, '간접광이 복원돼야 한다').toBeGreaterThan(0.1)
+    expect(left.hiddenLeft, '치웠던 기둥·차문이 돌아와야 한다').toBe(0)
   })
 })
