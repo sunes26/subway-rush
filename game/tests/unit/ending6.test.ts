@@ -100,16 +100,8 @@ describe('S12-2~S12-3 우선순위', () => {
 })
 
 describe('S12-4~S12-6 채점 축', () => {
-  it('S12-5 스타일 = 사용 아이템 **종류** 수 (같은 종류 2회는 1)', () => {
-    // 캐리어를 두 번 쓴다 — 두 번째는 이미 끌고 있다가 놓는 것뿐이다
-    // (이어폰·마스크는 토글이 없어졌으므로 여전히 토글인 캐리어로 잰다)
-    const s0 = put(start(7, { inventory: ['I-10', null, null] }), 30, 15, FLOOR.B1)
-    let s = tap(s0, { pressSlot: 1 })
-    expect(s.scores.style).toBe(1)
-    expect(s.tally.itemsUsed).toEqual(['I-10'])
-    s = tap(wait(s, 100), { pressSlot: 1 })
-    expect(s.scores.style, '종류가 늘지 않았으므로 그대로').toBe(1)
-  })
+  // 캐리어(I-10, 유일한 토글형 아이템)는 디렉터 지시로 아이템 체계째 지웠다 —
+  // "같은 종류 2회는 1"을 재현할 반복 가능한 아이템이 더 없어 이 케이스는 뺐다.
 
   it('S12-6 지식은 시크릿 중복을 세지 않는다', () => {
     const s0 = start(7)

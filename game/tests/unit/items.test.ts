@@ -45,13 +45,12 @@ const fishcakePick = (key: 1 | 2, patch: Partial<GameState> = {}): GameState => 
 }
 
 describe('S15-1 신규 7종 습득', () => {
+  // 캐리어(OBJ-13-BAG/I-10)·EMP 폭탄(OBJ-25-EMP/I-14)은 디렉터 지시로 아이템 체계째 지웠다
   const CASES: readonly (readonly [string, ItemId])[] = [
     ['OBJ-18-COFFEE', 'I-07'],
     ['OBJ-17-PAPER', 'I-08'],
-    ['OBJ-13-BAG', 'I-10'],
     ['OBJ-11-WALLET', 'I-11'],
     ['OBJ-15-MAP', 'I-13'],
-    ['OBJ-25-EMP', 'I-14'],
   ]
 
   for (const [objId, item] of CASES) {
@@ -131,7 +130,7 @@ describe('S15-1 신규 7종 습득', () => {
   })
 
   it('11종이 전부 슬롯 점유이고 동전·카드만 미점유다', () => {
-    expect(SLOT_ITEMS.length).toBe(15)
+    expect(SLOT_ITEMS.length).toBe(13)
     expect(ITEMS['I-02']?.slot).toBe(false)
     expect(ITEMS['I-04']?.slot).toBe(false)
   })
@@ -185,16 +184,18 @@ describe('S22-3 소지품 10칸 (디렉터 지시)', () => {
   it('SLOTS 는 10 이고 마지막 칸(키 `0`)도 쓸 수 있다', () => {
     expect(SLOTS).toBe(10)
     const inv: (ItemId | null)[] = Array.from({ length: SLOTS }, () => null)
-    inv[SLOTS - 1] = 'I-10'
-    const s = tap(start(7, { inventory: inv }), { pressSlot: SLOTS })
-    expect(s.flags, '경계 칸이 안 먹으면 마지막 슬롯이 죽은 칸이 된다').toContain('CARRIER_ON')
+    inv[SLOTS - 1] = 'I-09'
+    const s = put(start(7, { inventory: inv }), 30, 15, FLOOR.B1)
+    const held = tap(s, { pressSlot: SLOTS })
+    expect(held.hand.item, '경계 칸이 안 먹으면 마지막 슬롯이 죽은 칸이 된다').toBe('I-09')
   })
 
   it('슬롯 수를 넘는 입력은 무시한다', () => {
     const inv: (ItemId | null)[] = Array.from({ length: SLOTS }, () => null)
-    inv[0] = 'I-10'
-    const s = tap(start(7, { inventory: inv }), { pressSlot: SLOTS + 1 })
-    expect(s.flags).not.toContain('CARRIER_ON')
+    inv[0] = 'I-09'
+    const s = put(start(7, { inventory: inv }), 30, 15, FLOOR.B1)
+    const held = tap(s, { pressSlot: SLOTS + 1 })
+    expect(held.hand.item).toBeNull()
   })
 })
 
@@ -239,8 +240,7 @@ describe('S22-2 즉시 착용 (디렉터 지시)', () => {
     expect(off.flags).toContain('MASK_ON')
   })
 
-  it('즉시 착용은 캐리어만 예외다', () => {
-    // 이동속도를 깎는 캐리어만 켜는 순간이 판단이라 자동으로 안 켠다
+  it('착용형은 전부 즉시 착용이다 (캐리어 예외는 아이템 체계와 함께 사라졌다)', () => {
     const auto = ITEMS_AUTO()
     expect(auto).toEqual(['I-05', 'I-06'])
   })
@@ -248,7 +248,6 @@ describe('S22-2 즉시 착용 (디렉터 지시)', () => {
   it('토글 자체가 없는 것도 이어폰·마스크뿐이다', () => {
     expect(ITEMS['I-05']?.toggleable).toBe(false)
     expect(ITEMS['I-06']?.toggleable).toBe(false)
-    expect(ITEMS['I-10']?.toggleable).not.toBe(false)
   })
 })
 
@@ -304,12 +303,8 @@ describe('S15-3 소모형', () => {
     expect(after.flags).toContain('CAFFEINE')
   })
 
-  it('스타일 축은 종류 수다 — 같은 걸 두 번 써도 1', () => {
-    // 이어폰·마스크는 토글이 없어졌으므로(디렉터 지시) 여전히 토글인 캐리어로 잰다
-    const s1 = tap(start(7, { inventory: ['I-10', null, null] }), { pressSlot: 1 })
-    const s2 = tap(tap(s1, { pressSlot: 1 }), { pressSlot: 1 })
-    expect(s2.tally.itemsUsed.filter((i) => i === 'I-10').length).toBe(1)
-  })
+  // 캐리어(I-10, 유일한 토글형 아이템)는 디렉터 지시로 아이템 체계째 지웠다 —
+  // "같은 걸 두 번 써도 1"을 재현할 반복 가능한 아이템이 더 없어 이 케이스는 뺐다.
 })
 
 describe('S15-4 동전 (I-02)', () => {

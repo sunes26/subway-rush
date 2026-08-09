@@ -52,13 +52,7 @@ describe('슬롯 키 — 쓸 데가 없으면 든다', () => {
     expect(s.hand.item, '손에 들지 않는다').toBeNull()
   })
 
-  it('토글 가능한 착용형(캐리어)은 그대로 토글이다 — 손이 아니라 몸에 걸친다', () => {
-    const on = tap(nowhere(['I-10']), { pressSlot: 1 })
-    expect(on.flags).toContain('CARRIER_ON')
-    expect(on.hand.item, '캐리어는 손에 드는 물건이 아니다').toBeNull()
-    const off = tap(on, { pressSlot: 1 })
-    expect(off.flags).not.toContain('CARRIER_ON')
-  })
+  // 캐리어(I-10, 유일한 토글형 착용 아이템)는 디렉터 지시로 아이템 체계째 지웠다
 
   it('마스크는 이어폰과 같이 손에도 안 든다 — 쓰는 물건이지 드는 물건이 아니다 (디렉터 지시 갱신)', () => {
     const s = tap(nowhere(['I-06']), { pressSlot: 1 })

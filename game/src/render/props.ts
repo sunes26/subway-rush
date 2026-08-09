@@ -60,15 +60,13 @@ const PULSE_AMP = 0.15
  * 실제 메시가 생겨 여기서 빠졌다.
  */
 export const PLACEHOLDER_ITEMS: ReadonlySet<ItemId> =
-  new Set<ItemId>(['I-07', 'I-08', 'I-10', 'I-11', 'I-14'])
+  new Set<ItemId>(['I-07', 'I-08', 'I-11'])
 
 /** 아이템별 자리표시자 색 — 실루엣만으로 구분되게. 전부 회색이면 뭘 주웠는지 모른다 */
 const PLACEHOLDER_LOOK: Readonly<Partial<Record<ItemId, { c: number; w: number; h: number; d: number }>>> = {
   'I-07': { c: 0x6b4a34, w: 0.09, h: 0.20, d: 0.09 },   // 텀블러
   'I-08': { c: 0xe8e4d8, w: 0.26, h: 0.04, d: 0.19 },   // 접힌 신문
-  'I-10': { c: 0x2f5d8a, w: 0.36, h: 0.55, d: 0.22 },   // 캐리어
   'I-11': { c: 0x8a3b2f, w: 0.12, h: 0.09, d: 0.03 },   // 지갑
-  'I-14': { c: 0x3c3f46, w: 0.14, h: 0.14, d: 0.14 },   // EMP
 }
 
 const placeholderCache = new Map<ItemId, Object3D>()

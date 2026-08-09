@@ -141,13 +141,11 @@ export const movementSystem = (s: GameState, ctx: MoveCtx): Action[] => {
   const rampKind = ground0.ramp?.kind ?? null
   /**
    * 이동 배수 — 곱해서 쌓는다.
-   *  · 캐리어(CARRIER_ON) −20% (GDD §5.3 I-10)
    *  · 관찰 모드 `Q` −40% — 멈추지 않는 이유는 `docs/P2-SPEC.md` §8.2 에 있다
    *    (3분 게임에서 정지는 곧 무한 시간이다)
    */
-  const carry = s.flags.includes('CARRIER_ON') ? 0.8 : 1
   const observe = input.observe ? 0.6 : 1
-  const speed = baseSpeed(rampKind, canSprint) * (1 - p.speedPenalty) * carry * observe
+  const speed = baseSpeed(rampKind, canSprint) * (1 - p.speedPenalty) * observe
   const targetX = dirX * speed
   const targetY = dirY * speed
 
