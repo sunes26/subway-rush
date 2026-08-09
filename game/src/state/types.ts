@@ -283,6 +283,17 @@ export type KnockdownState = Readonly<{
 }>
 
 /**
+ * OBS-07 "도 아세요" 아주머니+학생 강제 대화 — **`AmbushState`와 같은 모양이지만
+ * 합치지 않는다**(위 주석과 같은 이유: 이건 죽지 않는다, 25.6초 뒤 저절로 풀려난다).
+ * 위치는 상태로 안 든다 — `ajummaAt(elapsedMs)`가 시간의 순수 함수라 렌더가 그대로
+ * 다시 읽으면 된다(`systems/obstacles.ts`).
+ */
+export type PreachState = Readonly<{
+  active: boolean
+  phaseMs: number
+}>
+
+/**
  * O-04 역류 (P1). 웨이브 자체는 `surgeAt(elapsedMs, seed)` 로 파생되므로 상태가 없다 —
  * 여기 남는 건 **한 번만 일어나야 하는 일**뿐이다.
  */
@@ -418,6 +429,8 @@ export type GameState = Readonly<{
   chase: ChaseState
   ambush: AmbushState
   knockdown: KnockdownState
+  /** OBS-07 아주머니+학생 강제 대화 — 활성 동안 이동·ESC가 잠긴다 */
+  preach: PreachState
   flags: readonly FlagId[]
 
   // ── P1 신설 ──
@@ -521,6 +534,14 @@ export type Action =
   | { t: 'KNOCKDOWN_START' }
   /** 체공·착지 진행. 총 길이를 넘기면 `systems/knockdown.ts`가 `END`를 낸다 */
   | { t: 'KNOCKDOWN_TICK'; dtMs: number }
+
+  // ── OBS-07 아주머니+학생 강제 대화 (신규) ──
+  /** 발동 — 이동·ESC가 잠긴다(`systems/movement.ts`·`main.ts escIsFree`) */
+  | { t: 'PREACH_START' }
+  /** 대사 진행. 총 길이를 넘기면 `systems/preach.ts`가 곧바로 `PREACH_END`를 낸다 */
+  | { t: 'PREACH_TICK'; dtMs: number }
+  /** 종료 — 게임을 안 끝낸다. 그냥 풀려난다(`ambush`와의 차이) */
+  | { t: 'PREACH_END' }
 
   // ── P1 인파 (O-04) ──
   | { t: 'SURGE_FALL' }

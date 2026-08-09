@@ -40,9 +40,9 @@ describe('S16-1 6종이 각각 발동한다', () => {
     expect(s.player.stallMs).toBeGreaterThan(0)
   })
 
-  it('OBS-07 아주머니 — 반경 안이면 −15s', () => {
+  it('OBS-07 아주머니+학생 — 반경 안이면 강제 대화가 시작된다', () => {
     const s = stand(armed(), AJUMMA_AT.x, AJUMMA_AT.y - 2.0, FLOOR.B1)
-    expect(s.timeLeftMs).toBeLessThan(180_000 - OBSTACLE.ajummaPenaltyMs)
+    expect(s.preach.active).toBe(true)
   })
 
   it('OBS-10 공사 — 막다른 주머니에 들어가면 −20s', () => {

@@ -22,6 +22,7 @@ import { knockdownSystem } from './knockdown'
 import { movementSystem } from './movement'
 import { emergencyDoor, emergencySystem } from './emergency'
 import { obstacleSystem } from './obstacles'
+import { preachSystem } from './preach'
 import { staffSystem } from './staff'
 import { qteSystem } from './qte'
 import {
@@ -124,6 +125,9 @@ export const tick = (state: GameState, dtMs: number, ctx: TickCtx): GameState =>
    * 앞에 두면 밀리기 전 위치로 판정해 "분명 밟았는데 안 미끄러졌다"가 된다.
    */
   s = applyAll(s, obstacleSystem(s, { dtMs, prev: before }))
+
+  /** 아주머니+학생 강제 대화 진행 — 방해요소 바로 뒤. 같은 스텝에 시작된 대화도 곧장 흐르기 시작한다 */
+  s = applyAll(s, preachSystem(s, { dtMs }))
 
   /**
    * 상호작용 → QTE 순서다.

@@ -16,6 +16,7 @@ import { QTE } from '../data/tuning'
 import { AMBUSH_DIALOGUE_MS, ambushCollapseT, ambushLineAt } from '../systems/ambush'
 import { knockdownT } from '../systems/knockdown'
 import { branchesFor, hasItem } from '../systems/interact'
+import { PREACH_TOTAL_MS, preachLineAt } from '../systems/preach'
 import type { GameState, ItemId } from '../state/types'
 // 스타일은 `css/dialog.css` 가 단일 원천이다 — UI 킷(/uikit.html)이 같은 파일을 읽는다.
 // `?inline` 은 파일 내용을 문자열로 준다: 주입 방식(<style> 삽입)은 예전과 같다.
@@ -30,6 +31,9 @@ const GP_PORTRAIT = `${import.meta.env.BASE_URL}portraits/grandpa.png`
 const FM_PORTRAIT = `${import.meta.env.BASE_URL}portraits/fishcake-man.png`
 /** 개찰구 매복 역무원 초상화 */
 const AO_PORTRAIT = `${import.meta.env.BASE_URL}portraits/ambush-officer.png`
+/** OBS-07 아주머니+학생 초상화 — 스크린샷 렌더(디렉터 제공) */
+const AUNTIE_PORTRAIT = `${import.meta.env.BASE_URL}portraits/auntie-preacher.png`
+const STUDENT_PORTRAIT = `${import.meta.env.BASE_URL}portraits/student-preacher.png`
 
 /**
  * 편의점 상점 카드 순서 — 선물 5지 + 마스크(디렉터 지시, 매대 상품 목록에 편입).
@@ -181,6 +185,16 @@ export const createDialog = (mount: HTMLElement): Dialog => {
         <div class="bar"><i id="ambush-bar"></i></div>
       </div>
     </div>
+    <div id="preach">
+      <div class="actor-card">
+        <div class="frame" id="preach-frame"><img id="preach-portrait" src="" alt=""></div>
+        <div class="tag" id="preach-who"></div>
+      </div>
+      <div class="conv">
+        <div class="bubble"><p id="preach-line"></p></div>
+        <div class="bar"><i id="preach-bar"></i></div>
+      </div>
+    </div>
     <div id="blackout"></div>
     <div id="qte">
       <div class="cap">자판기 밑을 긁는다 — 가운데에서 <b>클릭</b></div>
@@ -246,6 +260,12 @@ export const createDialog = (mount: HTMLElement): Dialog => {
   const ambushPortrait = $<HTMLImageElement>('ambush-portrait')
   const ambushLine = $('ambush-line')
   const ambushBar = $('ambush-bar')
+  const preach = $('preach')
+  const preachFrame = $('preach-frame')
+  const preachWho = $('preach-who')
+  const preachPortrait = $<HTMLImageElement>('preach-portrait')
+  const preachLine = $('preach-line')
+  const preachBar = $('preach-bar')
   const qte = $('qte')
   const qFill = $('qte-fill')
   const qWin = $('qte-win')
@@ -516,6 +536,30 @@ export const createDialog = (mount: HTMLElement): Dialog => {
         // 진행바는 **대사 구간**만 잰다 — 쓰러지는 동안엔 이 패널 자체가 없다
         const overall = Math.min(1, s.ambush.phaseMs / AMBUSH_DIALOGUE_MS)
         ambushBar.style.transform = `scaleX(${overall.toFixed(3)})`
+      }
+
+      /**
+       * ── OBS-07 아주머니+학생 강제 대화 — `#ambush`와 같은 초상화 카드 UI.
+       * 선택지 없이 25.6초 자동 진행, 세 화자(아주머니·학생·나)가 돌아가며 말한다.
+       * `player` 차례엔 초상화를 감춘다 — `#ambush`가 `??` 구간에서 감추는 것과 같은 문법.
+       */
+      if (preach.className !== (s.preach.active ? 'on' : '')) {
+        preach.className = s.preach.active ? 'on' : ''
+      }
+      if (s.preach.active) {
+        const { line } = preachLineAt(s.preach.phaseMs)
+        const who = line.speaker === 'auntie' ? '아주머니' : line.speaker === 'student' ? '학생' : '나'
+        preachWho.textContent = who
+        preachWho.className = `tag${line.speaker === 'player' ? ' player' : ''}`
+        preachLine.textContent = line.text
+        if (line.speaker === 'player') {
+          preachFrame.style.display = 'none'
+        } else {
+          preachFrame.style.display = ''
+          preachPortrait.src = line.speaker === 'auntie' ? AUNTIE_PORTRAIT : STUDENT_PORTRAIT
+        }
+        preachBar.style.transform =
+          `scaleX(${Math.min(1, s.preach.phaseMs / PREACH_TOTAL_MS).toFixed(3)})`
       }
 
       // ── UI-19 편의점 상점

@@ -135,6 +135,23 @@
 #ambush .bar i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left;
   background:var(--gold);transition:transform .1s linear}
 
+/* OBS-07 아주머니+학생 강제 대화 — `#ambush`와 같은 크롬(디렉터 지시로 통일), 킥커 배지만 뺐다
+   (여긴 정체를 숨기지 않는다 — 초상화가 바로 나온다). 화자가 나(`player`)면 `#gpstory`와 같은
+   문법으로 이름표만 금색이 되고, 초상화 프레임은 감춘다. */
+#preach{position:absolute;left:50%;bottom:210px;transform:translateX(-50%);
+  width:min(760px,90vw);display:none;align-items:center;gap:20px;font-family:var(--sans);
+  background:var(--panel);border:1.5px solid var(--accent);border-radius:var(--r-panel);
+  padding:20px;box-shadow:0 16px 32px rgba(0,0,0,.8),inset 0 0 24px rgba(0,240,255,.16)}
+#preach.on{display:flex;animation:rpop .22s ease both}
+#preach .conv{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:12px}
+#preach .bubble{background:rgba(14,16,23,.8);border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;padding:12px 14px;box-shadow:0 10px 24px rgba(0,0,0,.25)}
+#preach .bubble p{font-size:20px;line-height:1.5;color:#fff;margin:0}
+#preach .tag.player{color:var(--gold);background:rgba(255,200,61,.15);border-color:var(--gold)}
+#preach .bar{height:4px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden}
+#preach .bar i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left;
+  background:var(--gold);transition:transform .1s linear}
+
 /* 쓰러지며 의식이 꺼지는 암전 — 매복(E-17) 전용.
    엔딩 카드로 **툭 끊기지 않게** 마지막 구간을 검게 덮는다. 카메라가 이미 바닥에 누운
    뒤라 화면에 더 보여 줄 것이 없고, 여기서 끊으면 "쓰러졌다"가 "버그로 화면이 튀었다"로 읽힌다.

@@ -326,10 +326,9 @@ export const OBSTACLE = {
   flyerRangeM: 2.5,
   flyerPenaltyMs: 5000,
   flyerStallMs: 3000,
-  // OBS-07 아주머니 — 제자리 대신 소구간을 오간다 (디렉터 지시)
+  // OBS-07 아주머니+학생 — 제자리 대신 소구간을 오간다 (디렉터 지시)
+  // 정지 시간은 대화 총 길이가 정한다(`systems/preach.ts` PREACH_LINES) — 여기 별도 상수를 안 둔다
   ajummaRangeM: 3.0,
-  ajummaPenaltyMs: 15_000,
-  ajummaStallMs: 2000,
   /** 순찰 왕복 1주기(ms) */
   ajummaPeriodMs: 10_000,
   /** 중심에서 좌우로 오가는 반폭(m) */

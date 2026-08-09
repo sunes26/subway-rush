@@ -391,7 +391,7 @@ const endIntro = (): void => {
 
 const escIsFree = (s: GameState): boolean =>
   !collection.isOpen() && s.act.dialogId === null && !s.qte.active &&
-  !s.swap.active && s.act.busyId === null
+  !s.swap.active && s.act.busyId === null && !s.preach.active
 
 /**
  * 포인터 락 중에는 **ESC 키 이벤트가 페이지에 오지 않는다.** 브라우저가 먼저 먹어

@@ -69,7 +69,8 @@ const toConcourse = (s0: GameState): { s: GameState; stuckAt: string | null } =>
 
 /** 할아버지에게 정직하게 효자손을 얻는다 — 대화(15s). 회수당한 뒤의 복구 경로다 */
 const getHyoHonestly = (s0: GameState): GameState => {
-  const g = goto(s0, GP.x, GP.y - 1.2, { r: 0.7, maxSec: 25 })
+  // 경로가 아주머니+학생 순찰 구역을 지난다 — 강제 대화(25.6s)에 붙잡힐 수 있어 예산을 넉넉히 둔다
+  const g = goto(s0, GP.x, GP.y - 1.2, { r: 0.7, maxSec: 55 })
   if (!g.ok) return g.s
   const yaw = yawTo(g.s, GP.x, GP.y)
   let s = tap(g.s, { pressInteract: true }, yaw)
@@ -113,8 +114,9 @@ const toPlatform = (s0: GameState): { s: GameState; stuckAt: string | null } => 
   let s = s0
   const gy = GATES.find((g) => g.id === s.gates.workingIds[0])?.y ?? 14
   const legs: readonly (readonly [string, number, number, number, number])[] = [
-    // 기둥(x 36 · y 20)을 피하는 중간 경유점. P0 traverse 가 (34,20)을 둔 것과 같은 이유다
-    ['Z2 대합실 통로', 34, 16, 1.6, 25],
+    // 기둥(x 36 · y 20)을 피하는 중간 경유점. P0 traverse 가 (34,20)을 둔 것과 같은 이유다.
+    // OBS-07 아주머니+학생 강제 대화(25.6s)에 붙잡힐 수 있어 예산을 그만큼 넉넉히 둔다
+    ['Z2 대합실 통로', 34, 16, 1.6, 55],
     ['Z3 진입선', 55, 14, 1.4, 25],
     ['정상 게이트 정렬', 58.6, gy, 0.8, 20],
     ['개찰구 통과', 64, gy, 1.6, 14],
@@ -156,7 +158,8 @@ export const runRoute = (seed: number, route: Route): SweepRow => {
   if (c.stuckAt) return row(seed, route, s0, s, c.stuckAt)
 
   if (route !== 'N-skip') {
-    const g = goto(s, GP.x, GP.y - 1.2, { r: 0.7, maxSec: 25 })
+    // 아주머니+학생 강제 대화(25.6s)에 붙잡힐 수 있어 예산을 넉넉히 둔다
+    const g = goto(s, GP.x, GP.y - 1.2, { r: 0.7, maxSec: 55 })
     s = g.s
     if (!g.ok) return row(seed, route, s0, s, '할아버지 접근')
     const yaw = yawTo(s, GP.x, GP.y)

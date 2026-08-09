@@ -131,15 +131,16 @@ const RULES: readonly Rule[] = [
   {
     id: 'OBS-07',
     fires: (s) => {
+      // 대화가 이미 진행 중이면 다시 발동하지 않는다 — 좀비폰족(OBS-08)과 같은 이유:
+      // 쿨다운(25s)이 대화 길이(약 26s)보다 짧아, 이 가드가 없으면 막바지에 재충돌로
+      // 다시 시작될 수 있다
+      if (s.preach.active) return false
       if (!onFloor(s.player.pos.z, FLOOR.B1)) return false
       const at = ajummaAt(s.elapsedMs)
       return near(s, at.x, at.y, OBSTACLE.ajummaRangeM)
     },
-    effect: () => [
-      { t: 'TIME_PENALTY', ms: OBSTACLE.ajummaPenaltyMs, label: '도 아세요' },
-      { t: 'STALL', ms: OBSTACLE.ajummaStallMs },
-      { t: 'FX', kind: 'toast', text: '"혹시… 도(道)에 관심 있으세요?"', lifeMs: 2600, value: 0 },
-    ],
+    // 시간을 깎지 않는다 — 대화가 끝날 때까지 그 자리에 붙잡힌다 (`systems/movement.ts` isTalkLocked)
+    effect: () => [{ t: 'PREACH_START' }],
     negatedText: '이어폰 — 못 들은 척했다',
     cooldownMs: OBSTACLE.talkCooldownMs,
   },

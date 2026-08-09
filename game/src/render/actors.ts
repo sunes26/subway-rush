@@ -144,7 +144,7 @@ export const CHAR_SCALE = 1.6
  *   멀쩡해 보인다 — 실제로 남북으로만 확인하다 두 번 놓쳤다.
  *   `tests/e2e/p2.spec.ts` 의 "네 방향" 테스트가 이걸 잠근다.
  */
-const YAW_FIX = { gp: 0, cp: 0, aj: 0, ajp: 0, zp: 0, ss: 0, cl: 0, fm: 0 } as const
+const YAW_FIX = { gp: 0, cp: 0, aj: 0, ajp: 0, zp: 0, ss: 0, cl: 0, fm: 0, st: 0 } as const
 
 /**
  * 앉은 자세 보정(m) — **실척 가구와 축소 캐릭터의 간극**을 메운다.
@@ -234,7 +234,7 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
    * `loadNpcRig` 이 스켈레톤까지 복제하므로 셋이 각자 움직인다(얕은 복제는 본을 공유한다).
    * 브라우저가 같은 URL 을 캐시하므로 네트워크 비용은 1회다.
    */
-  const [gp, cp0, cp1, cp2, ajp, aj, zp, ss, cl, fm, ao, ...riders] = await Promise.all([
+  const [gp, cp0, cp1, cp2, ajp, aj, zp, ss, cl, fm, ao, st, ...riders] = await Promise.all([
     loadOr(`${dir}gp_character_rigged.glb`, 'GP', YAW_FIX.gp),
     loadOr(`${dir}cp_character_rigged.glb`, 'CP0', YAW_FIX.cp),
     loadOr(`${dir}cp_character_rigged.glb`, 'CP1', YAW_FIX.cp),
@@ -249,13 +249,18 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
     // 개찰구 매복 역무원 — 방해요소 `ss`(OBS-13 순찰)와 별개다. OBS-13이 이번 판에 안 뽑히면
     // `ss`는 몸이 없다(`obsOff`) — 매복은 그 롤과 무관하게 **항상** 일어나야 하므로 전용 인스턴스를 둔다
     loadOr(`${dir}ss_character_rigged.glb`, 'AO', YAW_FIX.ss),
+    // OBS-07 학생 — 아주머니 파트너 룩(포니테일·백팩)을 이 장면의 학생으로 쓴다(디렉터 지시).
+    // `ajp`(OBS-06 전단지 배포원)와 같은 glb 를 또 로드한 전용 인스턴스다 — 위 AO 와 같은 이유:
+    // OBS-06이 이번 판에 안 뽑혀도 아주머니 옆의 학생은 OBS-07 롤과 무관하게 항상 있어야 한다
+    loadOr(`${dir}${OBS_ACTORS[0].file}`, 'ST', YAW_FIX.st),
     ...RIDER_SPOTS.map((_, i) => loadOr(`${dir}cp_character_rigged.glb`, `RIDER${i}`, YAW_FIX.cp)),
   ])
   const cps = [cp0, cp1, cp2] as const
   // FM 은 전용 glb 라 이름 충돌은 없지만, e2e 접두어 매칭(위 헤더 주석 참고)이 기대하는
-  // 안정된 이름을 위해 명시적으로 붙인다. AO/rider 는 여전히 공유 glb 라 충돌 회피가 필요하다.
+  // 안정된 이름을 위해 명시적으로 붙인다. AO/ST/rider 는 여전히 공유 glb 라 충돌 회피가 필요하다.
   fm.root.name = 'npc:fishcake-man'
   ao.root.name = 'npc:ambush-officer'
+  st.root.name = 'npc:preach-student'
   for (const r of riders) r.root.name = 'npc:esc-rider'
   const riderAnchors: readonly Anchor[] = RIDER_SPOTS.map((spot) =>
     ({ x: spot.x, y: spot.y, z: rampZ(ESCALATOR, spot.x, spot.y) ?? FLOOR.B1 }))
@@ -525,6 +530,38 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
     aj.update(dtSec)
   }
 
+  /** 아주머니 옆(북쪽 1m)에서 나란히 걷는 학생 — 2인조를 이루는 파트너(디렉터 지시) */
+  const STUDENT_OFFSET_Y = 1.0
+
+  /**
+   * 학생 — `syncAjumma`와 같은 식이지만 위치를 오프셋만큼 민다. `OBS-07` 온/오프를
+   * 아주머니와 공유한다 — 둘은 한 세트라 아주머니가 없는 판엔 학생도 없다.
+   */
+  const syncStudent = (s: GameState, dtSec: number): void => {
+    if (obsOff(s, st, 'OBS-07')) return
+    const ajAt = ajummaAt(s.elapsedMs)
+    const at = { x: ajAt.x, y: ajAt.y + STUDENT_OFFSET_Y }
+    const p = s.player.pos
+    const d = Math.hypot(p.x - at.x, p.y - at.y)
+    const spotted = d <= OBSTACLE.ajummaRangeM * 2.2
+    const ajPrev = ajummaAt(Math.max(0, s.elapsedMs - 120))
+    const walkFacing = Math.atan2(ajAt.y - ajPrev.y, ajAt.x - ajPrev.x)
+    const lookFacing = d > 0.05 ? Math.atan2(p.y - at.y, p.x - at.x) : 0
+    st.place(at.x, at.y, FLOOR.B1, spotted ? lookFacing : walkFacing)
+
+    const visible = nearObs(s, at.x, at.y, FLOOR.B1)
+    st.setVisible(visible)
+    if (!visible) return
+
+    const engaged = d <= OBSTACLE.ajummaRangeM
+    const ignored = s.flags.includes('EARBUDS_ON')
+    if (engaged && ignored) st.play('AJ_Ignored')
+    else if (engaged) st.play('AJ_Talk')
+    else if (spotted) st.play('AJ_Spot')
+    else st.play('AJ_Approach')
+    st.update(dtSec)
+  }
+
   /** 좀비폰족 — 위치가 시간의 순수 함수라 렌더도 **같은 식**을 쓴다 */
   const syncZombie = (s: GameState, dtSec: number): void => {
     if (obsOff(s, zp, 'OBS-08')) return
@@ -653,6 +690,7 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
       syncRiders(s, dtSec)
       syncTalker(s, ajp, 'OBS-06', FLYER_AT, OBSTACLE.flyerRangeM, dtSec)
       syncAjumma(s, dtSec)
+      syncStudent(s, dtSec)
       syncZombie(s, dtSec)
       syncStaff(s, dtSec)
       syncClerk(s, dtSec)
