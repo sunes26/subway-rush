@@ -82,13 +82,15 @@ export const CONSTRUCTION_POCKET: Rect = [44.4, 0.4, 55.8, 6.4]
 
 /**
  * OBS-08 좀비폰족 — **시간의 순수 함수**다(열차·역류와 같은 규약).
- * Z2 유도선 축(y 14)을 x 6↔40 왕복. 위치가 상태에 없으므로 렌더도 같은 식을 쓴다.
+ * Z2 유도선 축(y 13.9)을 x 6↔36.2 왕복(속도 3.4 m/s). 위치가 상태에 없으므로 렌더도 같은 식을 쓴다.
  */
 export const zombieAt = (elapsedMs: number): { x: number; y: number } => {
-  const period = OBSTACLE.zombiePeriodMs
-  const t = ((elapsedMs % period) / period) * 2          // 0..2
-  const k = t <= 1 ? t : 2 - t                           // 삼각파 0..1..0
-  return { x: 6 + k * 34, y: 14 }
+  const { zombieMinX: minX, zombieMaxX: maxX, zombieY: y, zombieSpeedMps: speed } = OBSTACLE
+  const width = maxX - minX
+  const period = ((2 * width) / speed) * 1000             // 왕복 1주기(ms)
+  const t = ((elapsedMs % period) / period) * 2            // 0..2
+  const k = t <= 1 ? t : 2 - t                             // 삼각파 0..1..0
+  return { x: minX + k * width, y }
 }
 
 // ─────────────────────────── 규칙표 ───────────────────────────

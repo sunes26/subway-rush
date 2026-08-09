@@ -331,7 +331,12 @@ export const OBSTACLE = {
   talkCooldownMs: 25_000,
   // OBS-08 좀비폰족 — 위치는 시간의 순수 함수다. 정지 시간은 대화 총 길이가 정한다
   // (`systems/zombieTalk.ts` ZOMBIE_TALK_LINES) — 여기 별도 상수를 안 둔다
-  zombiePeriodMs: 18_000,
+  // x 6~36.2 왕복(원래 6~40, 디렉터 지시로 상한을 36.2로 낮춤), y는 13.9(원래 14)
+  // 속도는 원래(34/9 m/s)의 90% — 정확히 3.4 m/s(디렉터 지시). 주기는 zombieAt에서 유도한다
+  zombieMinX: 6,
+  zombieMaxX: 36.2,
+  zombieY: 13.9,
+  zombieSpeedMps: 3.4,
   zombieRangeM: 1.3,
   zombieCooldownMs: 6000,
   // OBS-10 공사
