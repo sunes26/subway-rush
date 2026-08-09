@@ -344,16 +344,29 @@ let outroKind: OutroKind | null = null
  *
  *   `TR_INNER` (576 tri)   좌우 세로 기둥 + 상단 가로 손잡이봉  ← 시야를 3등분하던 주범
  *   `TR_DOOR`  (768 tri)   차문. 창을 세로로 쪼갠다. 끄면 통창이 된다
+ *   `TR_LIGHT`             천장 조명 판. **안내판을 가리던 범인이다** — 아래 참고
+ *
+ * ★ `TR_LIGHT` 를 넣은 경위를 남긴다. 창을 1.04 → 1.80m 로 키우면서 안내판이
+ *   B2+2.28 → 2.64 로 올라갔는데, 그 순간 화면에서 **사라졌다.** 프레임 안에 있고
+ *   불투명도도 1 인데 안 보여서 오래 헤맸다. 카메라에서 레이를 쏴 보니 답이 나왔다:
+ *
+ *     TR_LIGHT  2.21m  (y 14.62 · 높이 B2+2.32)   ← 카메라와 안내판 사이
+ *     안내판    2.74m  (y 15.36 · 높이 B2+2.64)
+ *
+ *   조명 판은 천장에 붙어 **객실 안쪽으로 0.74m 나와 있다.** 안내판이 낮았을 때는
+ *   조명보다 화면에서 아래에 있어 안 겹쳤는데(16.7° 대 21.2°), 올라가면서 23.3° 가
+ *   되어 조명 뒤로 들어갔다. 어차피 차체 셸을 끄면서 천장은 무대가 새로 세우므로,
+ *   거기 붙어 있던 조명만 남겨 둘 이유가 없다.
  *
  * 안 끄는 것:
  *   `TR_JOINT` (1836) 차량 연결부 — 화면에 안 들어온다
- *   `TR_BODY`  (13248) 차체 셸. **매달린 스트랩이 여기 병합돼 있다** — 스트랩만
- *              떼려면 원본에서 머티리얼을 갈라야 한다. 셸을 끄면 벽·천장까지
- *              사라져 "열차 안"이 아니게 된다(실측으로 확인하고 되돌렸다)
+ *   `TR_SEAT`         좌석. **남긴다** — 여기가 열차 안이라는 유일한 기준선이다
  *
  * ⚠ **삭제가 아니라 숨김이다.** 원래 값을 들고 있다가 컷이 끝나면 그대로 되돌린다.
+ *   `TR_BODY`(차체 셸)도 끄는데, 끄면 벽·천장이 같이 사라지므로 무대가 그 자리를
+ *   대신 세운다(`render/ending-stage.ts` 의 셸).
  */
-const CUT_HIDDEN = /^merged:(B_)?TR_(INNER|DOOR|WINDOW|BODY)$/
+const CUT_HIDDEN = /^merged:(B_)?TR_(INNER|DOOR|WINDOW|BODY|LIGHT)$/
 
 /** 숨기기 전의 `visible` — 컷이 끝나면 이 값으로 되돌린다 */
 let cutHidden: { o: Object3D; was: boolean }[] = []
@@ -960,7 +973,22 @@ const frame = (now: number): void => {
    */
   const observing = sample.observe && state.phase === 'playing'
   const wantFov = observing ? FPV.fovDeg - 12 : FPV.fovDeg
-  if (Math.abs(stage.camera.fov - wantFov) > 0.05) {
+  /**
+   * ★ **컷 중에는 손대지 않는다.** 위 `player?.sync` 와 같은 종류의 사고였다.
+   *
+   * 이 블록은 분기 밖이라 인트로·엔딩 컷에서도 매 프레임 돌았고, 컷이 방금 세운
+   * 화각을 곧바로 `FPV.fovDeg`(74) 쪽으로 끌어당겼다. 렌더는 이 뒤에 일어나므로
+   * **화면에 나가는 화각은 컷이 적은 값이 아니었다.** 실측(엔딩 컷 ②, 적은 값 57):
+   *
+   *   60fps  → dtSec 0.017 이라 프레임마다 14% 씩 끌려 **59.3** 에서 평형
+   *   느린 판 → dtSec 0.5 면 `min(1, …)` 이 1 이라 한 프레임에 **74** 로 튄다
+   *
+   * 그래서 같은 코드가 브라우저에서는 그럴듯하고 E2E(소프트웨어 래스터)에서는
+   * 전혀 다른 그림을 냈다 — 안내판이 E2E 에서만 화면 밖으로 밀려 사라진 것도
+   * 이것 때문이다. 오래 헤맨 자리라 이유를 남긴다.
+   */
+  const inCut = introAt !== null || outroAtMs !== null
+  if (!inCut && Math.abs(stage.camera.fov - wantFov) > 0.05) {
     // 한 번에 튀면 멀미가 난다 — 시정수 0.12s 로 민다
     stage.camera.fov += (wantFov - stage.camera.fov) * Math.min(1, dtSec / 0.12)
     stage.camera.updateProjectionMatrix()

@@ -53,12 +53,27 @@ import { GLASS_Y } from './outro'
 /**
  * 창 높이 — **좌석 등받이 위부터 안내판 아래까지.** 그 사이가 실제 차창 띠다.
  *
- * 한때 1.60m(B2+0.80~2.40)까지 키웠다. 판을 차체 바깥에 두던 시절엔 그래도 됐지만,
- * 객실 안으로 들여온 지금은 **좌석과 안내판을 덮는다.** 1.04m 로 되돌린다 —
- * 대신 창이 작아 보이지 않는 이유는 카메라가 2.3m 앞에 서기 때문이다.
+ * 한때 1.60m(B2+0.80~2.40)까지 키웠다가 1.04m 로 되돌린 적이 있다. 판을 차체
+ * **바깥**에 두던 시절 이야기다 — 객실 안으로 들여오자 그 높이가 좌석과 안내판을
+ * 덮었다.
+ *
+ * ★ 이제 **1.80m**(B2+0.72~2.52)다. 되돌렸던 그 높이보다도 크다. 조건이 두 가지
+ *   바뀌었기 때문이다:
+ *
+ *     · 컷이 차체 셸을 통째로 숨기고 무대가 대신 세운다(`main.ts CUT_HIDDEN`).
+ *       그래서 "실제 차창 띠"에 맞출 이유가 없다 — 맞출 차창이 화면에 없다.
+ *     · 1.04m 는 화면 세로의 38% 였다. 배경이 **가로 띠**로 읽혔고, 하늘·도시·강을
+ *       한 화면에 넣을 수 없었다. 1.80m 면 67% 라 통창이 된다.
+ *
+ *   좌석은 B2+0.72 아래로 그대로 남고(등받이 위 0.45m 부근), 안내판은 위로 남는다.
+ *
+ * ⚠ 높이를 바꾸면 **배경 그림에서 잘라 쓰는 띠도 같이 바뀐다**(`loadOrDraw`).
+ *   종횡비가 11.5:1 → 6.7:1 이 되면서 띠가 원본의 26% → 45% 로 넓어진다 —
+ *   `band` 중심값은 그대로 두어도 위아래로 고르게 늘어나므로 다시 잴 필요는 없다.
+ *   (중심을 옮겼을 때만 다시 재라. `public/textures/README.md` 에 재는 법이 있다.)
  */
-const GLASS_Z0 = FLOOR.B2 + 1.12
-const GLASS_Z1 = FLOOR.B2 + 2.16
+const GLASS_Z0 = FLOOR.B2 + 0.72
+const GLASS_Z1 = FLOOR.B2 + 2.52
 const GLASS_Z = (GLASS_Z0 + GLASS_Z1) / 2
 const GLASS_H = GLASS_Z1 - GLASS_Z0
 /**
@@ -79,9 +94,19 @@ const GLASS_H = GLASS_Z1 - GLASS_Z0
 const HALF_W = 6.0
 const GLASS_W = HALF_W * 2
 
-/** 차내 안내판 — 문 위 띠. 차체 안쪽 면에 붙인다 */
+/**
+ * 차내 안내판 — 문 위 띠. 차체 안쪽 면에 붙인다.
+ *
+ * ⚠ 창 위 끝(`GLASS_Z1`)에서 **파생시킨다.** 예전에 2.28 처럼 박아 뒀다가 창을
+ *   키우자 안내판이 창 한가운데에 떠 버렸다. 창과 안내판은 붙어 있어야 하는 물건이라
+ *   따로 적으면 반드시 어긋난다 — `render/intro.ts` 가 `SHOT` 에서 시각을 파생시키는
+ *   것과 같은 이유다.
+ *
+ *   0.12 는 실측으로 정한 겹침이다. 안내판 아래 9cm 가 창 위 끝을 물어서, 판이
+ *   창틀에 **얹혀 있는** 것으로 읽힌다. 띄우면 벽에 따로 붙은 간판이 된다.
+ */
 const LED_Y = 15.36
-const LED_Z = FLOOR.B2 + 2.28
+const LED_Z = GLASS_Z1 + 0.12
 const LED_W = 3.4
 const LED_H = 0.42
 
@@ -577,13 +602,15 @@ export const buildEndingStage = (): EndingStage => {
    * 분명히 한다. 이게 없으면 바깥 그림이 차체를 뚫고 떠 있는 것처럼 보인다.
    */
   const frameMat = new MeshBasicMaterial({ color: new Color(0x2a3038) })
+  // 창이 1.04 → 1.80m 로 커진 만큼 띠도 얇아진다 — 같은 0.10 이면 굵어 보인다
   for (const z of [GLASS_Z0, GLASS_Z1]) {
-    const bar = new Mesh(new PlaneGeometry(HALF_W * 2, 0.10), frameMat)
+    const bar = new Mesh(new PlaneGeometry(HALF_W * 2, 0.06), frameMat)
     bar.position.set(0, z, -GLASS_Y + 0.02)
     root.add(bar)
   }
 
   const led = panel(LED_W, LED_H, ledOk, 0)
+
   led.position.set(0, LED_Z, -LED_Y)
   root.add(led)
 
@@ -604,7 +631,8 @@ export const buildEndingStage = (): EndingStage => {
    */
   const SHELL_BASE = new Color(0xd6d1c8)
   const shellMat = new MeshBasicMaterial({ color: SHELL_BASE.clone(), side: DoubleSide })
-  const CEIL_Z = FLOOR.B2 + 2.62
+  /** 창 위 끝에서 파생시킨다 — 창이 커지면 천장도 같이 올라가야 벽이 남는다 */
+  const CEIL_Z = GLASS_Z1 + 0.53
   /**
    * ★ 셸은 창(±6m)보다 **넓다.**
    *
