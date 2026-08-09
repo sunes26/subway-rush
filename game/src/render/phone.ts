@@ -26,7 +26,7 @@
 import {
   BoxGeometry, CanvasTexture, CapsuleGeometry, Group, LinearFilter, Matrix4, Mesh,
   MeshBasicMaterial, PlaneGeometry, Quaternion, SkinnedMesh, SRGBColorSpace, Vector3,
-  type Material, type Object3D, type Texture,
+  type Object3D, type Texture,
 } from 'three'
 import { CHAR_SCALE } from './actors'
 import { toonMat } from './toon'
@@ -189,82 +189,43 @@ export type Phone = Readonly<{
 const SIZE = { w: 0.082, h: 0.168, d: 0.010 } as const
 
 /**
- * ★ **쥐는 손을 폰 그룹에 붙인다.**
+ * ★ **폰을 얹는 손을 폰 그룹에 붙인다.**
  *
  * ■ 왜 팔이 아니라 폰에 붙이는가
  *
- * 이 리그의 팔은 `LowerArmR` 에서 끝난다 — **손 본이 없다.** 그래서 손가락을
- * 폰에 감는 애니메이션이 원리적으로 불가능하고, 지금까지는 "팔뚝 끝이 손"이라는
- * 전제로 폰을 그 자리에 놓기만 했다. 그러면 아무리 좌표를 맞춰도 화면에는
- * **둥근 팔뚝 끝이 폰에 닿아 있는 것**까지만 보인다. "쥐었다"가 안 읽힌다.
+ * 이 리그의 팔은 `LowerArmR` 에서 끝난다 — **손 본이 없다.** 그래서 손을 팔에
+ * 붙이면 폰과의 관계를 매 프레임 좌표로 맞춰야 하고, 그 방식으로는 자세가 조금
+ * 바뀔 때마다 폰이 손에서 떨어진다(그 부류의 버그를 이미 두 번 겪었다).
  *
- * 그래서 손을 **폰의 자식**으로 만든다. 그러면 폰이 어디로 가고 어떻게 돌든
- * 손은 같이 간다 — 접촉이 좌표 맞추기가 아니라 **부모-자식 관계**로 보장된다.
- * 이 방향으로만 "손과 폰이 떨어졌다"는 부류의 버그가 구조적으로 사라진다.
+ * 손을 **폰의 자식**으로 두면 접촉이 좌표 맞추기가 아니라 **부모-자식 관계**로
+ * 보장된다. 폰이 어디로 가고 어떻게 돌든 손이 그 아래에 따라간다.
  *
- * ⚠ 손이 폰과 같이 도는 것은 물리적으로 맞다 — 쥐고 있으므로 한 덩어리다.
- *   `aim()` 이 얼굴 쪽으로 20% 만 트는 범위라 전완 방향과도 크게 안 어긋난다.
+ * ■ ★ 손가락을 만들지 않는다
  *
- * ■ ★ 손가락은 **−X 모서리**다 — 이건 측정해서 정했다
+ * 한때 손가락 셋과 엄지를 폰에 감았다. 모양은 났지만 필요한 것보다 정교했고,
+ * 화면 아래쪽을 가리지 않게 높이를 mm 단위로 맞춰야 했다 — 폰 화면 레이아웃이
+ * 바뀌면 그 값이 다시 다 틀어지는 구조다. 이 컷이 말해야 하는 것은
+ * **"폰이 손 위에 있다"** 하나이고, 그건 손 하나로 충분하다.
  *
- * 처음엔 "+X 가 화면의 오른쪽일 것"이라 보고 손가락을 +X 에 뒀다. 그런데 렌더에는
- * 엄지만 보이고 손가락이 없었다. 손가락을 빨강·엄지를 파랑으로 칠해 찍어 보니
- * **+X 가 화면의 왼쪽**이었고, 그 왼쪽은 팔뚝이 폰으로 들어오는 쪽이다 —
- * 손가락 셋이 통째로 팔뚝 덩어리 뒤에 묻혀 있었다.
- *
- * 그래서 손가락은 팔뚝 반대쪽(−X)에 둔다. 팔뚝이 안 가리므로 셋이 다 보이고,
- * 엄지는 팔뚝 쪽(+X)에 남는다 — 손목이 있는 쪽에 엄지가 오는 것이 실제 손이다.
- *
- * ⚠ 이 부호는 `aim()` 이 만드는 회전에 달려 있다. 카메라나 겨냥 비율을 크게
- *   바꾸면 다시 재야 한다. 추측하지 말고 색을 칠해서 찍으면 한 번에 나온다.
- *
- * ■ 높이는 읽어야 할 글자를 피해서 정했다 (전부 로컬 y, 원점 = 쥐는 점)
- *
- *   0.062 ~ 0.074   「다음 열차 · 20분 26초 후」   ← 가려선 안 된다
- *   0.091           「3분 후」                     ← 가려선 안 된다
- *   ~0.056          손가락 상단                    ← 6mm 아래에서 끝낸다
- *
- * 손가락을 화면 가운데로 올려 붙이면 그 순간 정보가 사라진다. 손을 크게 그리는
- * 것보다 **글자를 안 가리는 것**이 먼저다.
+ * 그래서 캡슐 하나다. 폰의 아래 모서리가 손 안으로 7mm 들어가 있어 어느
+ * 각도에서도 사이가 안 벌어지고, 손이 화면 위로 올라오지 않으므로 글자를
+ * 가릴 일이 구조적으로 없다.
  */
 const HAND = {
+  /** 손 반지름 — 3등신 SD 의 손이라 폰 폭(0.082)에 맞먹는다 */
+  r: 0.023,
   /**
-   * 손가락 — `[로컬 y, 앞면을 넘어오는 길이]`.
-   *
-   * ⚠ 처음엔 셋을 같은 길이(0.042)로 뒀다. 그러면 앞면에서 **끝이 일자로 맞아**
-   *   손가락이 아니라 빗살처럼 보인다. 가운데가 가장 길고 위아래가 짧은 것이
-   *   실제 손 모양이다 — 길이를 다르게 준 이유는 그것뿐이다.
-   *
-   * ⚠ 그리고 짧으면(0.042) 팔뚝 끝의 둥근 덩어리에 묻혀 **셋이 한 덩어리**가 된다.
-   *   앞면을 절반 넘게 건너와야 폰 위에 얹힌 것으로 읽힌다.
+   * 캡슐의 직선부 길이. 반지름과 합쳐 **폰 폭(0.082)보다 짧아야** 한다 —
+   * 0.040 이면 전체가 0.086 이라 폰 모서리 밖으로 둥근 끝이 튀어나와,
+   * 팔뚝에 안 가리는 쪽에서 **혹처럼** 하나 붙어 보였다.
    */
-  finger: [[0.007, 0.050], [0.026, 0.057], [0.045, 0.049]],
-  fingerR: 0.0105,
-  thumbR: 0.0115,
+  len: 0.030,
+  /**
+   * 폰 아래 모서리(로컬 y −0.006) 기준으로 손 중심을 얼마나 내릴지.
+   * 손 윗면이 모서리보다 **위**에 오게 잡는다 — 그 겹침이 "얹혀 있다"를 만든다.
+   */
+  drop: 0.014,
 } as const
-
-/**
- * 두 점을 잇는 캡슐 — 손가락·엄지를 좌표로 놓기 위한 것이다.
- *
- * 회전을 오일러 각으로 찍으면 값이 무슨 뜻인지 아무도 모르게 된다. 시작점과
- * 끝점을 주면 방향은 계산으로 나오고, 나중에 위치를 옮길 때도 점만 옮기면 된다.
- */
-const capsuleBetween = (
-  a: readonly [number, number, number],
-  b: readonly [number, number, number],
-  r: number,
-  mat: Material,
-): Mesh => {
-  const from = new Vector3(...a)
-  const to = new Vector3(...b)
-  const dir = to.clone().sub(from)
-  const len = dir.length()
-  const m = new Mesh(new CapsuleGeometry(r, Math.max(len - r * 2, 0.001), 4, 8), mat)
-  m.position.copy(from).addScaledVector(dir, 0.5)
-  // 캡슐의 긴 축은 +Y 다. 그 축을 dir 로 돌린다
-  m.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), dir.normalize())
-  return m
-}
 
 export const buildPhone = (): Phone => {
   const root = new Group()
@@ -323,50 +284,18 @@ export const buildPhone = (): Phone => {
   root.add(screen)
 
   /**
-   * ── 쥐는 손 (`HAND` 주석 참고)
+   * ── 폰을 얹는 손 (`HAND` 주석 참고)
    *
    * 색은 **박지 않는다.** 주인공은 GLB 리그이고 피부색은 그 파일의 재질에 있다.
    * 여기에 색을 적어 두면 캐릭터를 다시 굽는 날 손만 다른 색이 된다 —
    * `attachTo` 에서 리그의 재질에서 읽어 온다. 기본값은 못 읽었을 때만 쓴다.
    */
   const skin = toonMat(0xece7de)
-  const hand = new Group()
+  const hand = new Mesh(new CapsuleGeometry(HAND.r, HAND.len, 4, 10), skin)
   hand.name = 'intro-phone-hand'
-
-  /** 손바닥 — 폰 **뒷면**(+Z)에 붙는다. 앞에서는 폰에 가려 모서리만 보인다 */
-  const palm = new Mesh(new BoxGeometry(0.060, 0.076, 0.030), skin)
-  palm.position.set(-0.006, 0.030, SIZE.d / 2 + 0.014)
-  hand.add(palm)
-
-  /**
-   * 손가락 — 뒷면에서 **오른쪽 모서리를 넘어** 앞면으로 나온다.
-   *
-   * 앞면을 가로지르는 길이는 모서리에서 2.7cm 정도다. 폰 폭이 8.2cm 이므로
-   * 화면의 오른쪽 3분의 1 만 걸치고, 그 자리 그 높이에는 글자가 없다.
-   */
-  const zBack = SIZE.d / 2 + 0.012
-  const zFront = -(SIZE.d / 2 + 0.013)
-  for (const [y, len] of HAND.finger) {
-    hand.add(capsuleBetween(
-      [-(SIZE.w / 2) + 0.004, y, zBack],
-      [-(SIZE.w / 2) + len, y, zFront],
-      HAND.fingerR, skin,
-    ))
-  }
-
-  /**
-   * 엄지 — 왼쪽 아래에서 **위로 비스듬히** 올라온다.
-   *
-   * 손가락과 같은 방향으로 두면 갈퀴처럼 보인다. 엄지는 다른 손가락과 마주보는
-   * 각으로 붙어야 "쥐었다"가 된다 — 그래서 세로 성분이 크다. 상단(0.048)이
-   * 「20분 26초 후」(0.062) 아래에서 끝난다.
-   */
-  hand.add(capsuleBetween(
-    [SIZE.w / 2 + 0.002, 0.006, zBack],
-    [SIZE.w / 2 - 0.020, 0.052, zFront - 0.003],
-    HAND.thumbR, skin,
-  ))
-
+  // 캡슐의 긴 축은 +Y 다. 폰 폭 방향(X)으로 눕힌다
+  hand.rotation.z = Math.PI / 2
+  hand.position.set(0, -(SIZE.h / 2 - GRIP_UP) - HAND.drop, 0.001)
   root.add(hand)
 
   /**

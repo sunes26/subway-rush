@@ -567,8 +567,8 @@ export const poseAt = (tMs: number): IntroPose => {
        * 창밖이 안 들어온다. 반대로 내려다보는 각을 12° 까지 눕혀 봤더니 천장과
        * 평평한 옆판만 늘고 창밖은 오히려 줄었다 — 19° 가 그 사이다.
        */
-      [SEAT.x - 0.34, SEAT.y - 0.58, 1.44],
-      [SEAT.x - 0.20, SEAT.y - 0.46, 1.34],
+      [SEAT.x - 0.28, SEAT.y - 0.56, 1.44],
+      [SEAT.x - 0.10, SEAT.y - 0.46, 1.36],
       /**
        * 겨냥점은 폰(z 1.02)과 머리(z 1.12) **사이**다. 폰만 겨냥하면 시선이 너무
        * 내려가 머리가 화면 위로 잘린다 — 어깨와 머리 일부가 남아야 OTS 다.
@@ -593,7 +593,7 @@ export const poseAt = (tMs: number): IntroPose => {
        * 겨냥점은 폰(z 1.09)보다 조금 위다. 폰을 정확히 겨냥하면 시선이 내려가
        * 창밖이 프레임 위로 빠진다 — 폰은 화면 가운데 아래에 남으면 된다.
        */
-      [SEAT.x + 0.24, SEAT.y - 0.24, 1.19],
+      [SEAT.x + 0.24, SEAT.y - 0.20, 1.15],
       seg(t, SHOT.interior, PUSH_END), dx,
     )
     return { ...p, eye: p.eye + shake * 0.015, pitch: p.pitch + shake * 0.004 - brakeDip(t) }
