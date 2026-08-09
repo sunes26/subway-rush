@@ -74,7 +74,23 @@ export const BUS = {
  * 그래서 창 리듬을 깨지 않는 유일한 자리가 기존 분할선 사이다. 새 구멍을 뚫는
  * 대신 있는 칸을 쓰는 것이라 실루엣·창 배열이 그대로 남는다.
  */
-export const DOOR = { xMin: -61.0, xMax: -59.6 } as const
+/**
+ * ■ ★ 문을 **동쪽 베이**로 옮겼다 — 하차 지점과 스폰이 너무 멀었다
+ *
+ * 예전 문(−61.0 ~ −59.6, 중심 −60.3)에서 내리면 하차 지점이 (−60.2, 22.6)이고,
+ * 게임이 시작되는 스폰은 (−58, 24)다. 동 2.2m · 북 1.4m 떨어져 있고 버스와의
+ * 거리도 0.87m → 2.27m 로 **2.6배**가 된다.
+ *
+ * 그 사이를 카메라가 어떻게 보간해도 **화면의 같은 자리가 버스를 훑는다** —
+ * 실측으로 문(−60.6)에서 앞머리(−55.4)까지 5.85m 를 지나가고 마지막엔 버스가
+ * 프레임에서 빠졌다. "내린 버스가 다른 버스로 바뀌었다"는 지적의 정체가 이것이다.
+ * 카메라 문제가 아니라 **무대 배치** 문제였다.
+ *
+ * 실측 멀리언에 −59.6 ~ −58.2 칸이 이미 있다. 그쪽으로 옮기면 문 중심이 −58.9,
+ * 하차 지점이 (−58.8, 22.6)이 되어 스폰까지 **동 0.8m** 만 남는다.
+ * 창 리듬은 그대로다 — 새 구멍을 뚫는 게 아니라 있는 칸을 쓰는 것이다.
+ */
+export const DOOR = { xMin: -59.6, xMax: -58.2 } as const
 export const DOOR_X = (DOOR.xMin + DOOR.xMax) / 2
 
 /**
@@ -124,8 +140,25 @@ const IN = {
   xE: BUS.xMax - 0.10,
 } as const
 
-/** 문짝이 붙는 면 — 옆판 **바로 바깥**. 여기가 뜨면 문이 공중에 뜬다 */
-const SKIN_OUT = BUS.skinN + 0.02
+/**
+ * 문짝이 놓이는 면 — **개구부 안쪽**이다.
+ *
+ * ■ ★ 한동안 옆판 **바깥**(`skinN + 0.02`)이었다
+ *
+ * 외피에 문 구멍이 없던 시절의 편법이다. 문짝을 차체 표면에 띄워 붙여야 밖에서
+ * 보이니까 그랬다. 대가는 컸다 — 정면에서 보면 **차체에 판을 덧댄** 것으로 읽히고,
+ * 그 앞을 지나는 주인공이 차체 옆면에 붙어 보였다. 실측으로도 9개 면이 옆판을
+ * +0.03~0.067 넘고 있었다.
+ *
+ * 이제 외피에 실제 구멍이 있다(`tools/hq_punch_bus_door.py` · 함몰 깊이 0.28).
+ * 그래서 문짝을 **구멍 안**으로 넣는다. 실물 시내버스의 미닫이문도 옆판 안쪽에서
+ * 옆으로 빠진다.
+ *
+ * 0.10 은 옆판(21.58)에서 안쪽, 함몰 뒷벽(21.30)에서 0.18 앞이다 — 두께 0.05 짜리
+ * 문짝이 어느 쪽에도 닿지 않는다.
+ */
+const DOOR_INSET = 0.10
+const SKIN_IN = BUS.skinN - DOOR_INSET
 
 /**
  * 모서리를 죽인 상자. **날 선 박스 하나가 통째로 프로토타입처럼 보이게 만든다.**
@@ -202,6 +235,24 @@ export type BusInterior = Readonly<{
   root: Group
   /** 뒷문을 연다 (0 닫힘 ~ 1 열림) */
   setDoor(open: number): void
+  /**
+   * 문짝을 **뺀** 실내(바닥·천장·벽·좌석·봉…)를 켜고 끈다.
+   *
+   * ■ 왜 필요한가 — 밖으로 나간 뒤에도 실내가 그려지고 있었다
+   *
+   * 하차 컷(3.5s) 이후 외피는 켜고 승객은 껐는데 **실내만 안 껐다.** 밖에서 보는데
+   * 실내가 계속 그려지니 외피 위로 삐져나왔다. 증상 셋이 전부 여기서 나왔다:
+   *   · 천장(0xf0ede6)이 차체 위 **밝은 베이지 덩어리**로
+   *   · 바닥(z 0.45) 위의 주인공이 차체 옆면에 **떠 있는 사람**으로
+   *   · 실내 벽·좌석이 창 너머로 비쳐 차체가 뚫린 것처럼
+   *
+   * ⚠ `pick()` 은 `station.root`·`player.root` 만 훑어서 **이 그룹을 못 본다.**
+   *   그래서 레이는 실내를 통과해 건너편 유리를 맞혔고, 한동안 "외피에 구멍이
+   *   있다"고 잘못 읽었다. 도구가 안 보는 물체가 있다는 것을 같이 기억할 것.
+   *
+   * 문짝은 **남긴다** — 하차 연출의 "문이 열린다"가 그것 하나로 성립한다.
+   */
+  setShell(on: boolean): void
   dispose(): void
 }>
 
@@ -363,27 +414,33 @@ export const buildBusInterior = (): BusInterior => {
    * (−61.0 · −59.6) 사이에 정확히 들어가므로 창 배열도 그대로다.
    */
   const doorTop = BUS.winTop
-  const doorH = doorTop - 0.06
-  const yOut = tz(SKIN_OUT)
+  /**
+   * ★ 문 부품은 **개구부 아래 끝(0.35)에서 시작한다.**
+   *
+   * 예전엔 문틀·몰딩이 z 0.03~0.08 부터 올라왔다. 외피에 구멍이 없던 시절에는
+   * 차체 표면에 얹혀 있으니 어디서 시작해도 "문 모양"으로 읽혔다. 지금은 구멍이
+   * z 0.35 부터라, 그 아래로 내려간 부품이 **스커트 위에 검은 막대로 남는다**
+   * (실측 캡처 t=3800: 몰딩 둘이 개구부 밑으로 0.27m 뻗어 있었다).
+   *
+   * 문짝 아래 판만 0.35 로 올리고 문틀·몰딩을 안 고친 것이 원인이다.
+   * 이제 셋이 같은 값을 쓴다 — 개구부와 정확히 같은 높이 대역이다.
+   */
+  const doorBottom = 0.35
+  const doorH = doorTop - doorBottom
+  const yIn = tz(SKIN_IN)
   const dw = DOOR.xMax - DOOR.xMin
 
-  /**
-   * 열렸을 때 드러나는 구멍 — 실내 그늘.
+  /*
+   * ★ 여기 있던 **가짜 개구부 평면을 걷어냈다.**
    *
-   * ⚠ **상자로 만들면 안 된다.** 상자는 안쪽 면도 있어서, 버스 **안에서** 보면
-   *   창 자리에 시커먼 판이 걸린다. 실제로 그랬다 — ① 샷 오른쪽 절반이 통째로
-   *   검은 사각형이었고, 창밖이 하나도 안 보였다(마젠타로 칠해 범인을 확인했다).
-   *
-   *   바깥(북)만 향하는 **평면 한 장**이면 안에서는 뒷면이 컬링돼 사라진다.
+   * 외피에 구멍이 없던 시절, "열렸을 때 드러나는 그늘"을 어두운 평면 한 장으로
+   * 흉내 냈다. 이제 외피에 실제 구멍과 0.28m 함몰이 있으므로(`BUS_TRIM` 재사용)
+   * 그 평면은 진짜 함몰 **앞을 가리는** 판이 된다. 없는 것이 맞다.
    */
-  const hole = new Mesh(new PlaneGeometry(dw - 0.04, doorH - 0.06), toonMat(0x14161a))
-  hole.position.set(DOOR_X, (doorH + 0.06) / 2, yOut + 0.05)
-  hole.rotation.y = Math.PI                 // +y(북)를 향한다
-  root.add(hole)
   // 문틀
-  root.add(box(0.08, doorH, 0.09, C.trim, DOOR.xMin, doorH / 2 + 0.03, yOut))
-  root.add(box(0.08, doorH, 0.09, C.trim, DOOR.xMax, doorH / 2 + 0.03, yOut))
-  root.add(box(dw + 0.16, 0.08, 0.09, C.trim, DOOR_X, doorTop, yOut))
+  root.add(box(0.08, doorH, 0.09, C.trim, DOOR.xMin, doorBottom + doorH / 2, yIn))
+  root.add(box(0.08, doorH, 0.09, C.trim, DOOR.xMax, doorBottom + doorH / 2, yIn))
+  root.add(box(dw + 0.16, 0.08, 0.09, C.trim, DOOR_X, doorTop, yIn))
   /**
    * 내릴 때 잡는 세로봉 — 문 **동쪽**.
    *
@@ -411,24 +468,42 @@ export const buildBusInterior = (): BusInterior => {
   const leafOf = (dir: -1 | 1): Group => {
     const g = new Group()
     const cx = DOOR_X + dir * leafW / 2
-    const lower = BUS.winBottom - 0.06
+    /**
+     * ⚠ 아래 판을 **z 0.06 부터** 세웠더니 차체 밑단보다 낮게 내려와, 밖에서 보면
+     *   버스에 파란 판을 덧대 인도까지 늘어뜨린 그림이 됐다(실측 캡처 t=3500).
+     *   실물 저상버스의 문도 발판(0.35) 언저리에서 끝난다. 차체 안에 들어가므로
+     *   실루엣을 안 깨뜨린다.
+     */
+    const lower = BUS.winBottom - doorBottom
     // 아래 판 — 양면 다 차체 색이라 상자로 둬도 된다
-    g.add(box(leafW, lower, 0.05, 0x1c6bc7, cx, 0.06 + lower / 2, yOut))
+    g.add(box(leafW, lower, 0.05, 0x1c6bc7, cx, doorBottom + lower / 2, yIn))
     const glass = new Mesh(new PlaneGeometry(leafW - 0.02, doorTop - BUS.winBottom - 0.02),
       toonMat(0x171c24))
-    glass.position.set(cx, (BUS.winBottom + doorTop) / 2, yOut - 0.01)
+    glass.position.set(cx, (BUS.winBottom + doorTop) / 2, yIn - 0.01)
     glass.rotation.y = Math.PI
     g.add(glass)
     // 문짝 가운데 세로 몰딩 — 두 짝이 맞물린 자리
-    g.add(box(0.035, doorH - 0.1, 0.055, C.trim, DOOR_X + dir * 0.018, doorH / 2 + 0.03, yOut - 0.02))
+    g.add(box(0.035, doorH - 0.08, 0.055, C.trim, DOOR_X + dir * 0.018,
+      doorBottom + doorH / 2, yIn - 0.02))
     return g
   }
   const dL = leafOf(-1)
   const dR = leafOf(1)
   root.add(dL, dR)
 
+  /**
+   * 문짝을 뺀 나머지를 한 그룹으로 묶는다. 만들 때마다 `shell.add` 로 넣는 대신
+   * **다 만든 뒤 옮긴다** — 추가 지점이 서른 곳 가까이라 한 곳만 빠뜨리면
+   * 그것만 밖에서 보인다.
+   */
+  const shell = new Group()
+  shell.name = 'intro-bus-shell'
+  for (const c of [...root.children]) if (c !== dL && c !== dR) shell.add(c)
+  root.add(shell)
+
   return {
     root,
+    setShell(on) { shell.visible = on },
     setDoor(open) {
       const k = Math.max(0, Math.min(1, open))
       // 옆으로 빠진다 — 실제 시내버스 미닫이문과 같다

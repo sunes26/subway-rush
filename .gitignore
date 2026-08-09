@@ -16,6 +16,8 @@ render/_*
 render/web/_cards.html
 
 # game
+# 루트에도 있다 — vitest 캐시가 여기 쌓인다
+node_modules/
 game/node_modules/
 game/test-results/
 test-results/

@@ -1,0 +1,42 @@
+/*
+ * 엔딩 컷 오버레이.
+ *
+ * 화면에만 존재하는 것 둘 — 붉은 기와 한 마디. 나머지(객실·창밖·안내판)는 전부
+ * 실물 지오메트리다(`render/ending-stage.ts`). 인트로가 실내를 DOM 마스크에서
+ * 실물로 옮기며 배운 것을 그대로 따른다: **카메라가 정면으로 보는 것은 물건이어야 한다.**
+ * 여기 남은 둘은 카메라가 보는 물건이 아니라 화면에 얹히는 겹이라 DOM 이 맞고, 더 싸다.
+ */
+
+#outro{position:absolute;inset:0;pointer-events:none;display:none;z-index:41}
+#outro.on{display:block}
+
+/*
+ * 붉은 기 — WRONG WAY.
+ *
+ * ★ **화면을 붉게 칠하지 않는다.** 꽉 채운 빨강은 피격이나 경보로 읽히고, 이 엔딩은
+ *   둘 다 아니다. 가장자리에서만 스며드는 비네트라야 "속이 철렁한다"에 가깝다.
+ *   가운데는 건드리지 않으므로 주인공의 얼굴과 안내판은 끝까지 선명하다.
+ */
+#outro .veil{position:absolute;inset:0;opacity:0;transition:opacity .5s linear;
+  background:radial-gradient(ellipse at 50% 52%,
+    rgba(150,26,26,0) 34%,rgba(150,26,26,.35) 72%,rgba(96,12,12,.62) 100%)}
+
+/*
+ * 한 마디.
+ *
+ * 결과판과 **같은 자리에 두지 않는다** — 판은 화면 가운데에 뜨고 이건 아래쪽 1/4 다.
+ * 컷이 끝나며 판이 올라올 때 글자끼리 겹치지 않고, 위치가 달라서 "다른 층의 말"로 읽힌다.
+ * 판정어가 아니라 속말이라 고딕(sans)이고, LED 초록이 아니라 흰색이다.
+ */
+#outro .say{position:absolute;left:0;right:0;bottom:16%;text-align:center;
+  font-family:var(--sans,system-ui,sans-serif);font-weight:700;
+  font-size:clamp(26px,3.6vw,46px);letter-spacing:.01em;
+  color:#f4f1ea;text-shadow:0 2px 18px rgba(0,0,0,.75),0 0 3px rgba(0,0,0,.9);
+  opacity:0;transform:translateY(10px);
+  transition:opacity .34s ease,transform .34s cubic-bezier(.2,.9,.3,1)}
+#outro.say-on .say{opacity:1;transform:none}
+
+@media (prefers-reduced-motion:reduce){
+  #outro .say{transition-duration:.01ms}
+  #outro .veil{transition-duration:.01ms}
+}

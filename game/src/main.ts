@@ -9,7 +9,7 @@ import { createSfx } from './audio/sfx'
 import { createInput, EMPTY_INPUT, type InputFrame } from './core/input'
 import { resolveSeed } from './core/rng'
 import { CAMERA, FPV, MAX_FRAME_MS, MAX_STEPS_PER_FRAME, MOVE, STEP_MS } from './data/tuning'
-import { FLOOR, GATES, GATE_BODY, GATE_LAMP_Z, TRAFFIC_LIGHT,
+import { FLOOR, GATES, GATE_BODY, GATE_LAMP_Z, TRAFFIC_LIGHT, Y_OFFSET_OPP,
   ZONE_NAMES } from './data/world'
 import { byId, FISHCAKE_ID, GIFT_STALL_ID, GRANDPA_ID, type InteractKind } from './data/interactables'
 import { CHAR_SCALE, loadActors, type Actors } from './render/actors'
@@ -35,6 +35,9 @@ import { createScreens } from './ui/screens'
 import { createCollection } from './ui/collection'
 import { createIntro } from './ui/intro'
 import { actorAt, busDx, DOORS_MS, INTRO_MS, poseAt, SHOT } from './render/intro'
+import { buildEndingStage, type EndingStage } from './render/ending-stage'
+import { anchorXOf, OUTRO_MS, outroAt, outroKindOf, type OutroKind } from './render/outro'
+import { createOutro } from './ui/outro'
 import { buildBusInterior, type BusInterior } from './render/bus-interior'
 import { buildWestRoad } from './render/west-road'
 import { loadPassengers, type Passengers } from './render/passengers'
@@ -97,9 +100,20 @@ const sfx = createSfx()
 const hud = createHud(uiRoot)
 /** 상호작용 오버레이 — 프롬프트·진행링·사유·대화·QTE. HUD와 분리한 이유는 ui/dialog.ts 헤더 참고 */
 const dialog = createDialog(uiRoot)
-const screens = createScreens(uiRoot)
+/**
+ * 결과 화면의 버튼 셋. **전부 이미 있던 함수에 연결만 한다** — 새 경로가 없다.
+ *
+ * ⚠ `restart`·`toTitle`·`collection` 은 아래에서 선언된다. 화살표로 감싸는 이유가
+ *   그것이다 — 호출 시점(버튼을 누를 때)에는 전부 초기화돼 있다.
+ */
+const screens = createScreens(uiRoot, {
+  restart: () => { restart() },
+  collection: () => { collection.toggle() },
+  title: () => { toTitle() },
+})
 const collection = createCollection(uiRoot)
 const intro = createIntro(uiRoot)
+const outro = createOutro(uiRoot)
 
 /**
  * UI-15 설정(ESC) — **일시정지 겸 설정**.
@@ -190,6 +204,9 @@ const toTitle = (): void => {
 
 const restart = (): void => {
   recordedEnding = null
+  lastEndedId = null
+  // 컷이 도는 중에 다시하기를 누를 수 있다 — 무대·오버레이·카메라를 반드시 되돌린다
+  if (outroAtMs !== null) endOutro()
   collection.close()
   const seed = (state.seed * 1664525 + 1013904223) >>> 0
   state = initialState(seed, FREEPLAY)   // 재시작해도 자유 탐색 스위치는 유지한다
@@ -297,6 +314,64 @@ let lumaValue = -1
 /** 단계별 눈 검사(QA)용 자유 카메라. `null` 이면 평소대로 릭이 카메라를 몬다 */
 let freeCamAt: { pos: [number, number, number]; look: [number, number, number] } | null = null
 
+// ─────────────────── 엔딩 컷 ───────────────────
+
+/**
+ * 엔딩 컷 — **인트로와 완전히 같은 구조다.** 시작 시각을 벽시계로 들고,
+ * 순수 함수(`render/outro.ts`)가 그 경과로 카메라·포즈·창밖을 낸다.
+ *
+ * ★ 시뮬은 이미 `ended` 이고 컷은 그 위에 얹힌다 — 상태를 한 글자도 안 건드린다.
+ *   그래서 헤드리스 테스트와 밸런싱 스윕은 이 코드를 아예 안 지난다.
+ *   `ADVANCE` 가 `ended` 에서 일찍 빠져나가므로 열차·인파·시계가 전부 멈춰 있고,
+ *   움직이는 것은 우리가 움직이는 것뿐이다. 그 정지가 오히려 도움이 된다:
+ *   객실은 실제로 정지한 좌표에 있고, 달리는 느낌은 **창밖이 흐르는 것**으로 낸다.
+ */
+let outroAtMs: number | null = null
+let outroKind: OutroKind | null = null
+/**
+ * 컷 동안 **숨기는 객실 전경** — 배경을 조각내던 것들.
+ *
+ * 엔딩에서 창밖은 화면의 주인공인데, 평소 객실 구조가 그 앞을 세로로 여러 번 자른다.
+ * 실측으로 하나씩 꺼 보며 어느 병합 메시가 무엇인지 확인했다(`merged:` 는 존을
+ * 머티리얼별로 합친 덩어리라 부품 단위로는 못 끈다 — `render/station.ts`):
+ *
+ *   `TR_INNER` (576 tri)   좌우 세로 기둥 + 상단 가로 손잡이봉  ← 시야를 3등분하던 주범
+ *   `TR_DOOR`  (768 tri)   차문. 창을 세로로 쪼갠다. 끄면 통창이 된다
+ *   `TR_LIGHT`             천장 조명 판. **안내판을 가리던 범인이다** — 아래 참고
+ *
+ * ★ `TR_LIGHT` 를 넣은 경위를 남긴다. 창을 1.04 → 1.80m 로 키우면서 안내판이
+ *   B2+2.28 → 2.64 로 올라갔는데, 그 순간 화면에서 **사라졌다.** 프레임 안에 있고
+ *   불투명도도 1 인데 안 보여서 오래 헤맸다. 카메라에서 레이를 쏴 보니 답이 나왔다:
+ *
+ *     TR_LIGHT  2.21m  (y 14.62 · 높이 B2+2.32)   ← 카메라와 안내판 사이
+ *     안내판    2.74m  (y 15.36 · 높이 B2+2.64)
+ *
+ *   조명 판은 천장에 붙어 **객실 안쪽으로 0.74m 나와 있다.** 안내판이 낮았을 때는
+ *   조명보다 화면에서 아래에 있어 안 겹쳤는데(16.7° 대 21.2°), 올라가면서 23.3° 가
+ *   되어 조명 뒤로 들어갔다. 어차피 차체 셸을 끄면서 천장은 무대가 새로 세우므로,
+ *   거기 붙어 있던 조명만 남겨 둘 이유가 없다.
+ *
+ * 안 끄는 것:
+ *   `TR_JOINT` (1836) 차량 연결부 — 화면에 안 들어온다
+ *   `TR_SEAT`         좌석. **남긴다** — 여기가 열차 안이라는 유일한 기준선이다
+ *
+ * ⚠ **삭제가 아니라 숨김이다.** 원래 값을 들고 있다가 컷이 끝나면 그대로 되돌린다.
+ *   `TR_BODY`(차체 셸)도 끄는데, 끄면 벽·천장이 같이 사라지므로 무대가 그 자리를
+ *   대신 세운다(`render/ending-stage.ts` 의 셸).
+ */
+const CUT_HIDDEN = /^merged:(B_)?TR_(INNER|DOOR|WINDOW|BODY|LIGHT)$/
+
+/** 숨기기 전의 `visible` — 컷이 끝나면 이 값으로 되돌린다 */
+let cutHidden: { o: Object3D; was: boolean }[] = []
+
+/** 컷을 켠 엔딩 id — 같은 판에서 두 번 켜지지 않게 한다(`recordIfEnded` 와 같은 수법) */
+let lastEndedId: string | null = null
+/** E2E 전용 — 컷 시계를 못 박는다(`introHold` 와 같은 이유) */
+let outroHold: number | null = null
+let endStage: EndingStage | null = null
+/** 평소의 간접광 배율 — 컷이 이 값에 `dim` 을 곱하고, 끝나면 이 값으로 되돌린다 */
+let baseIndirect = 1
+
 /**
  * 버스 실내 — 인트로에만 존재한다.
  *
@@ -382,6 +457,56 @@ const endIntro = (): void => {
   state = { ...state, phase: 'playing' }
 }
 
+/**
+ * 엔딩 컷을 켠다 — **`ended` 로 넘어가는 그 프레임에 한 번**.
+ *
+ * 컷이 없는 엔딩(못 탄 판·즉사·탄 채로 무너진 판)은 `outroKindOf` 가 `null` 을 주고,
+ * 그러면 지금까지처럼 결과판이 곧바로 뜬다. 무너진 판에 연출을 얹으면 위로가 된다.
+ */
+const beginOutro = (kind: OutroKind): void => {
+  outroKind = kind
+  outroAtMs = performance.now()
+  if (!endStage) { endStage = buildEndingStage(); stage.scene.add(endStage.root) }
+  endStage.setVisible(true)
+  // 컷은 **몸을 보여줘야 한다** — 1인칭이면 자기 몸이 꺼져 있다(`applyView`)
+  player?.setVisible(true)
+  // 배경을 조각내던 전경을 치운다 — 원래 값은 들고 간다
+  cutHidden = []
+  stage.scene.traverse((o) => {
+    if (!CUT_HIDDEN.test(o.name)) return
+    cutHidden.push({ o, was: o.visible })
+    o.visible = false
+  })
+  outro.show(kind)
+  screens.setHold(true)
+  // HUD 는 `ended` 에서 스스로 숨는다(`ui/hud.ts`) — 여기서 따로 끌 것이 없다
+}
+
+const startOutro = (s: GameState): void => {
+  const kind = outroKindOf(s.endingId, s.boarded)
+  if (kind !== null) beginOutro(kind)
+}
+
+/**
+ * 컷을 끝내고 결과판으로 넘긴다. 끝까지 본 경우와 건너뛴 경우가 **같은 코드**를
+ * 지난다 — 인트로(`endIntro`)와 같은 이유다.
+ */
+const endOutro = (): void => {
+  outroAtMs = null
+  outroKind = null
+  outroHold = null
+  endStage?.setVisible(false)
+  outro.hide()
+  // 실내 감광 복원 — 빠뜨리면 다음 판의 역 전체가 어둡다
+  stage.setIndirect(baseIndirect)
+  // 치웠던 전경 복원 — 빠뜨리면 다음 판의 열차에 기둥과 문이 없다
+  for (const h of cutHidden) h.o.visible = h.was
+  cutHidden = []
+  // 시점 설정(1인칭이면 몸을 다시 끈다)과 화각을 원래대로 되돌린다
+  applyView()
+  screens.setHold(false)
+}
+
 const escIsFree = (s: GameState): boolean =>
   !collection.isOpen() && s.act.dialogId === null && !s.qte.active &&
   !s.swap.active && s.act.busyId === null && !s.preach.active
@@ -438,6 +563,18 @@ const handleMeta = (f: InputFrame): void => {
    */
   if (state.phase === 'intro') {
     if (f.pressCancel || f.pressStart) endIntro()
+    return
+  }
+  /**
+   * 엔딩 컷도 **언제나 건너뛸 수 있다** — 인트로와 같은 이유이고, 같은 자리다
+   * (설정보다 먼저 판정해야 ESC 가 설정을 열어 버리지 않는다).
+   *
+   * ★ 다만 `R`(다시하기)은 **먹지 않고 흘려보낸다.** 컷을 보다 말고 R 을 누른
+   *   사람은 결과판을 보고 싶은 게 아니라 **다시 하고 싶은 것**이다. 여기서
+   *   가로채 컷만 끊으면 R 을 두 번 눌러야 한다. `restart()` 가 컷을 정리한다.
+   */
+  if (outroAtMs !== null && !f.pressRestart) {
+    if (f.pressCancel || f.pressStart) endOutro()
     return
   }
   if (f.pressCancel && escIsFree(state)) { settings.open(); return }
@@ -531,6 +668,17 @@ const frame = (now: number): void => {
   if (steps > 0) pending = EMPTY_PENDING
 
   /**
+   * 엔딩 컷 시작 — **`ended` 로 넘어간 그 프레임에.**
+   *
+   * `recordIfEnded` 와 같은 수법으로 한 번만 켠다(`endingId` 가 곧 그 신호다).
+   * 매 프레임 판정하면 컷이 끝난 뒤 곧바로 다시 시작해 영원히 안 끝난다.
+   */
+  if (state.phase === 'ended' && state.endingId !== lastEndedId) {
+    lastEndedId = state.endingId
+    startOutro(state)
+  }
+
+  /**
    * 렌더 보간 — 시뮬은 고정 60Hz, 렌더는 가변이다.
    * 보간 없이 시뮬 위치를 그대로 그리면 프레임마다 위치가 계단처럼 튄다.
    * 한 프레임에 스텝이 0회 또는 2회 도는 경우가 섞이면 그게 그대로 화면 덜컹거림이 된다.
@@ -563,6 +711,94 @@ const frame = (now: number): void => {
     stage.camera.fov = FPV.fovDeg
     stage.camera.near = 0.08
     stage.camera.updateProjectionMatrix()
+  } else if (outroAtMs !== null && outroKind !== null) {
+    /**
+     * 엔딩 컷 — 인트로와 **같은 자리에서 같은 방식으로** 카메라를 가로챈다.
+     * 릭을 아예 안 돌리는 이유도 같다(위 주석): 릭의 앵커·오클루전 감쇠 상태가
+     * 컷 5초를 엉뚱한 값으로 채우면 다시하기 직후 카메라가 그 값에서 기어 나온다.
+     */
+    const t = outroHold ?? now - outroAtMs
+    if (t >= OUTRO_MS) { endOutro() } else {
+      const yOff = state.boardedTrain2 ? Y_OFFSET_OPP : 0
+      /**
+       * 컷의 기준은 **탄 문 옆의 창**이다 — 사람이 선 자리가 아니라.
+       * 열차는 출발하며 조금 미끄러진 자리에서 얼고 사람도 밀리므로, 둘을 따로 두면
+       * 카메라가 문틀에 걸린다(`render/outro.ts anchorXOf` 주석 참고).
+       */
+      const boardedTrain = state.boardedTrain2 ? state.train2 : state.train
+      const ax = anchorXOf(state.boardedDoorX ?? state.player.pos.x, boardedTrain.x)
+      /**
+       * ★ **탄 자리**를 넘긴다 — 거기서 앵커까지 걸어오게 하려고.
+       *
+       * `state.player.pos` 는 컷이 도는 동안 **안 변한다.** 컷은 좌표를 상태에 쓰지
+       * 않고 아래 `at` 로 리그에만 넘기기 때문이다. 그래서 매 프레임 읽어도 늘
+       * "판이 끝난 그 자리"이고, 걸어오는 출발점으로 그대로 쓸 수 있다.
+       */
+      const f = outroAt(outroKind, t, ax, yOff, state.player.pos)
+
+      /**
+       * 주인공 — 시뮬은 멈춰 있으므로(`ended`) 리그에 넘길 상태를 만들어 준다.
+       * 인트로가 `actorAt` 으로 하는 것과 글자 그대로 같은 수법이다.
+       */
+      if (player) {
+        // 서는 자리는 컷이 정한다(`outro.ts STAND_Y`) — 문 바로 안쪽이면 카메라를 못 뺀다
+        const at = { x: f.actor.x, y: f.actor.y, z: state.player.pos.z }
+        player.setVisible(true)
+        if (f.actor.clip) player.play(f.actor.clip)
+        player.sync({
+          ...state,
+          // `boarding` 이면 리그가 `Board` 를 강제한다 — 컷의 클립 선택을 덮어쓴다
+          phase: 'playing',
+          /**
+           * ★ `moving` 을 **클립에서 되읽는다.** 리그는 `sync()` 안에서 `p.moving` 을
+           *   보고 스스로 클립을 고르므로(`player-rig.ts`), 여기서 `false` 로 못 박으면
+           *   바로 위 `play('Walk')` 를 그 자리에서 `Idle` 로 덮어쓴다 — 앵커로 걸어가는
+           *   동안 사람이 미끄러지듯 이동하게 된다.
+           */
+          player: {
+            ...state.player, pos: at, facing: f.actor.facing,
+            moving: f.actor.clip === 'Walk', sprinting: false,
+          },
+        }, dtSec, at)
+        // ★ `sync()` 뒤에 얹는다 — 안의 `mixer.update()` 가 본 회전을 덮어쓴다
+        if (!poseRig) poseRig = makePoseRig(player.root)
+        poseRig.apply({ sit: 0, phone: 0, brace: f.actor.brace, slump: f.actor.slump })
+      }
+
+      endStage?.sync({
+        x: ax,
+        // 탄 열차가 반대 방면이면 무대도 그쪽으로 — 두 승강장은 y 만 다르다
+        yOff,
+        tunnel: f.stage.tunnel,
+        scroll: f.stage.scroll,
+        led: f.stage.led,
+        wrong: outroKind === 'wrongway',
+        glow: f.stage.glow,
+        flash: f.stage.flash,
+        dim: f.stage.dim,
+      })
+
+      /**
+       * 실내 감광 — **`setIndirect` 가 이 프로젝트의 그 손잡이다**(`render/scene.ts`).
+       *
+       * 처음엔 GLB 라이트맵 강도를 낮추려 했는데, 실측해 보니 이 씬에는 라이트맵을
+       * 가진 재질이 **한 장도 없었다**(`stationStats().lightmaps === 0`). 객실 밝기는
+       * 전부 씬 광원 5개에서 오고, 그 다섯을 한 번에 낮추는 API 가 이미 있다.
+       *
+       * `setMood` 가 매 프레임 이 배율을 다시 먹이므로 한 번만 설정하면 유지된다.
+       * 되돌리는 것은 `endOutro()` 가 한다 — 안 되돌리면 다음 판의 역 전체가 어둡다.
+       */
+      stage.setIndirect(baseIndirect * f.stage.dim)
+      outro.sync(t, f.stage.red)
+
+      // 흔들림은 카메라 자리에만 더한다 — 바라보는 점은 그대로라 시선이 안 흔들린다
+      stage.camera.position.set(f.cam.x + f.cam.shakeX, f.cam.eye + f.cam.shakeZ, -f.cam.y)
+      stage.camera.rotation.set(0, 0, 0)
+      stage.camera.lookAt(f.cam.lx, f.cam.lz, -f.cam.ly)
+      stage.camera.near = 0.08
+      stage.camera.fov = f.cam.fov
+      stage.camera.updateProjectionMatrix()
+    }
   } else if (introAt !== null) {
     const t = introHold ?? now - introAt
     if (t >= INTRO_MS) { endIntro() } else {
@@ -638,6 +874,8 @@ const frame = (now: number): void => {
       riders?.setBusDx(busDx(t))
       riders?.update(dtSec)
       if (busIn) {
+        // ★ 밖으로 나가면 실내를 끈다 — 문짝만 남는다(`bus-interior.ts` 의 `setShell`)
+        busIn.setShell(inside)
         busIn.root.position.x = busDx(t)
         busIn.setDoor((t - DOORS_MS) / 620)
       }
@@ -726,7 +964,12 @@ const frame = (now: number): void => {
    *   주인공이 스폰(−58, 24)으로 돌아간다 — 카메라는 버스 안을 보고 있으므로
    *   화면에서는 **그냥 사라진 것처럼** 보인다. 실제로 그랬다.
    */
-  if (introAt === null) player?.sync(state, dtSec, renderPos)
+  /**
+   * 인트로·엔딩 컷은 **자기 프레임 안에서 이미 `sync` 했다**(포즈까지 얹어서).
+   * 여기서 한 번 더 부르면 믹서가 본 회전을 다시 덮어써 무릎 짚기도 안도도 사라진다 —
+   * 실제로 `pose.ts` 헤더가 경고하는 그 순서 문제다.
+   */
+  if (introAt === null && outroAtMs === null) player?.sync(state, dtSec, renderPos)
   // 손에 든 물건은 **1인칭에서만** 뜬다 — 3인칭에서는 카메라에 붙은 물건이 허공에 떠 보인다
   held?.sync(state, dtSec, cameraRig.mode() === 'fp')
   // P1 렌더는 상태를 **읽기만** 한다 — 판정은 전부 systems/ 에 있다
@@ -739,7 +982,22 @@ const frame = (now: number): void => {
    */
   const observing = sample.observe && state.phase === 'playing'
   const wantFov = observing ? FPV.fovDeg - 12 : FPV.fovDeg
-  if (Math.abs(stage.camera.fov - wantFov) > 0.05) {
+  /**
+   * ★ **컷 중에는 손대지 않는다.** 위 `player?.sync` 와 같은 종류의 사고였다.
+   *
+   * 이 블록은 분기 밖이라 인트로·엔딩 컷에서도 매 프레임 돌았고, 컷이 방금 세운
+   * 화각을 곧바로 `FPV.fovDeg`(74) 쪽으로 끌어당겼다. 렌더는 이 뒤에 일어나므로
+   * **화면에 나가는 화각은 컷이 적은 값이 아니었다.** 실측(엔딩 컷 ②, 적은 값 57):
+   *
+   *   60fps  → dtSec 0.017 이라 프레임마다 14% 씩 끌려 **59.3** 에서 평형
+   *   느린 판 → dtSec 0.5 면 `min(1, …)` 이 1 이라 한 프레임에 **74** 로 튄다
+   *
+   * 그래서 같은 코드가 브라우저에서는 그럴듯하고 E2E(소프트웨어 래스터)에서는
+   * 전혀 다른 그림을 냈다 — 안내판이 E2E 에서만 화면 밖으로 밀려 사라진 것도
+   * 이것 때문이다. 오래 헤맨 자리라 이유를 남긴다.
+   */
+  const inCut = introAt !== null || outroAtMs !== null
+  if (!inCut && Math.abs(stage.camera.fov - wantFov) > 0.05) {
     // 한 번에 튀면 멀미가 난다 — 시정수 0.12s 로 민다
     stage.camera.fov += (wantFov - stage.camera.fov) * Math.min(1, dtSec / 0.12)
     stage.camera.updateProjectionMatrix()
@@ -880,7 +1138,8 @@ const boot = async (): Promise<void> => {
     // 라이트맵이 붙은 존이 있으면 런타임 간접광을 줄인다. 라이트맵이 이미
     // 간접 성분을 담고 있어서 그대로 두면 이중 계산으로 역이 하얗게 날아간다.
     // 아틀라스가 없으면(사이드카 없이 익스포트한 빌드) 1.0 그대로 — 예전 룩.
-    stage.setIndirect(station.stats.lightmaps > 0 ? 0.06 : 1)
+    baseIndirect = station.stats.lightmaps > 0 ? 0.06 : 1
+    stage.setIndirect(baseIndirect)
   } else {
     console.error('[station] GLB 로드 실패 — 그레이박스로 진행합니다', stationResult.reason)
     world.root.visible = true
@@ -965,6 +1224,8 @@ declare global {
        * 샷의 프레임이 잡힐지 알 수 없다. **보고 싶은 시각을 직접 지정한다.**
        */
       seekIntro(tMs: number): void
+      /** 엔딩 컷을 강제로 켜고 그 시각에 못 박는다 (E2E·눈 검사). `seekIntro` 와 같은 이유 */
+      seekOutro(kind: OutroKind, tMs: number): void
       /** 다음 프레임의 화면 중앙 평균 밝기를 요청한다 (E2E) */
       wantLuma(): void
       /** 마지막으로 잰 값. 아직이면 −1 */
@@ -1113,6 +1374,18 @@ window.__game = {
   seekIntro: (tMs) => {
     if (introAt === null) startIntro()
     introHold = tMs
+  },
+  /**
+   * 엔딩 컷을 강제로 켜고 그 시각에 **못 박는다** — `seekIntro` 와 같은 이유다
+   * (벽시계로 스크럽하면 스크린샷을 찍기까지 흐른 시간만큼 다른 샷이 잡힌다).
+   *
+   * 판 전체를 3분 돌리지 않고 세 컷을 확인하는 유일한 길이다. 기존 `__game` 훅에
+   * 한 줄 얹은 것이라 릴리즈 빌드에 새로 생기는 것이 없다.
+   */
+  seekOutro: (kind, tMs) => {
+    if (outroAtMs === null) beginOutro(kind)
+    else outroKind = kind
+    outroHold = tMs
   },
   mode: () => cameraRig.mode(),
   toggleView: () => { cameraRig.toggleMode(); applyView() },

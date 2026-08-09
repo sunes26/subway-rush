@@ -8,7 +8,7 @@
 import { EMPTY_TALLY } from '../../src/state/reducer'
 import { describe, expect, it } from 'vitest'
 import { ENDINGS, FAIL_HINTS, resolveEnding } from '../../src/data/endings'
-import { TOTAL_TIME_MS } from '../../src/data/tuning'
+import { TOTAL_TIME_MS, TRAIN } from '../../src/data/tuning'
 import { FLOOR } from '../../src/data/world'
 import type { EndingId, GameState } from '../../src/state/types'
 import { put, start, tap, wait, yawTo } from './_pilot'
@@ -32,9 +32,31 @@ describe('S12-1 엔딩 6종이 각각 재현된다', () => {
     expect(at({ boarded: true, timeLeftMs: 55_000 })).toBe('E-02')
   })
 
-  it('E-04 문틈 낑김 — 잔여 1초 이하', () => {
-    expect(at({ boarded: true, timeLeftMs: 900 })).toBe('E-04')
-    expect(at({ boarded: true, timeLeftMs: -500 })).toBe('E-04')
+  /**
+   * ★ 조건이 바뀌었다 — **전체 남은 시간이 아니라 「문이 닫히기까지 남은 시간」**이다.
+   *
+   * 예전엔 `timeLeftMs <= 1000` 이었다. 그건 3분 예산을 다 썼는지를 물을 뿐이고,
+   * 게이트 페널티로도 깎이며 위치 트리거로 열차가 앞당겨 오면 뜻이 아예 달라진다.
+   * 이제 `boardedCloseInMs`(탑승 순간 문이 닫히기까지 남은 ms)로 잰다.
+   * 자세한 이유는 `data/endings.ts` E-04 주석 · `TRAIN.justInTimeMs`.
+   */
+  it('E-04 문틈 낑김 — 탑승 순간 문 닫힘까지 2초 이하', () => {
+    expect(at({ boarded: true, boardedCloseInMs: TRAIN.justInTimeMs })).toBe('E-04')
+    expect(at({ boarded: true, boardedCloseInMs: 300 })).toBe('E-04')
+    // 닫히기 시작한 뒤 밀고 들어간 경우 — 음수도 같은 부등식이 덮는다
+    expect(at({ boarded: true, boardedCloseInMs: -500 })).toBe('E-04')
+  })
+
+  it('E-04 는 여유 있게 탄 판을 집어가지 않는다', () => {
+    // 문이 아직 2초 넘게 열려 있었다 → 아슬아슬이 아니다 (잔여 시간이 많으니 E-02)
+    expect(at({ boarded: true, timeLeftMs: 40_000, boardedCloseInMs: TRAIN.justInTimeMs + 1 }))
+      .toBe('E-02')
+    /**
+     * **예전 조건과 갈리는 지점이다.** 3분 예산은 다 썼지만(잔여 0.9초) 문은 아직
+     * 6.8초 열려 있었다 — 위치 트리거로 열차를 일찍 부른 판이 정확히 이렇게 된다.
+     * 예전 식(`timeLeftMs <= 1000`)이면 「문틈 낑김」이 떴다. 문에 낀 적이 없는데도.
+     */
+    expect(at({ boarded: true, timeLeftMs: 900, boardedCloseInMs: 6800 })).toBe('E-01')
   })
 
   it('E-14 동전 부자 — 탑승 + 획득 동전 3,000원 이상', () => {

@@ -40,6 +40,18 @@ export type PoseInput = Readonly<{
   sit: number
   /** 0 팔 내림 · 1 휴대폰을 들어 본다 */
   phone: number
+  /**
+   * 0 곧게 섬 · 1 무릎에 손을 짚고 숨을 몰아쉼 (엔딩 — JUST IN TIME).
+   *
+   * 클립에 없는 자세다. `Stumble` 은 **휘청이는 한 순간**이라 끝나면 원래대로
+   * 돌아오고, 우리가 보여줘야 하는 것은 그 뒤의 **머무는 자세**다.
+   */
+  brace?: number
+  /**
+   * 0 곧게 섬 · 1 머리를 감싸 쥠 (엔딩 — WRONG WAY).
+   * `Hit` 로 충격 한 순간을 치고, 그 뒤에 이 자세가 남는다.
+   */
+  slump?: number
 }>
 
 export type PoseRig = Readonly<{
@@ -124,6 +136,48 @@ const PHONE: Readonly<Partial<Record<BoneName, Turn>>> = {
   Head: { axis: [1, 0, 0], angle: 0.26 },
 }
 
+/**
+ * 무릎 짚기 — **숨을 몰아쉬는 자세다.** (엔딩 · JUST IN TIME)
+ *
+ * 상체를 접고 팔을 앞아래로 뻗어 손이 무릎 근처에 오게 한다. 다리는 조금만 굽힌다 —
+ * 많이 굽히면 앉은 자세(`SIT`)로 읽히고, 그러면 "지쳐서 멈춰 섰다"가 아니라
+ * "자리에 앉았다"가 된다. 서 있는 채로 몸을 접는 것이 이 자세의 전부다.
+ */
+const BRACE: Readonly<Partial<Record<BoneName, Turn>>> = {
+  Spine: { axis: [1, 0, 0], angle: 0.92 },
+  // 고개는 숙이되 등만큼은 아니다. 시선이 바닥을 향하면 얼굴이 통째로 사라진다
+  Head: { axis: [1, 0, 0], angle: -0.34 },
+  UpperArmL: { axis: ARM_FWD_L, angle: 0.62 },
+  UpperArmR: { axis: ARM_FWD_R, angle: 0.62 },
+  LowerArmL: { axis: FOREARM_FWD_L, angle: 0.34 },
+  LowerArmR: { axis: FOREARM_FWD_R, angle: 0.34 },
+  UpperLegL: { axis: LEG_FWD, angle: 0.30 },
+  UpperLegR: { axis: LEG_FWD, angle: 0.30 },
+  LowerLegL: { axis: LEG_FWD, angle: -0.38 },
+  LowerLegR: { axis: LEG_FWD, angle: -0.38 },
+}
+
+/**
+ * 머리 감싸 쥐기 — **아차 싶은 자세다.** (엔딩 · WRONG WAY)
+ *
+ * 위팔을 크게 들고 아래팔을 접어 손이 머리 옆으로 온다. 손 본이 없어 아래팔 끝이
+ * 곧 손이므로(`PHONE` 주석과 같은 사정), 각도는 **아래팔 끝이 관자놀이 높이에
+ * 오는지**를 기준으로 잡았다. 등을 조금 숙이고 무릎을 살짝 꺾어 몸에서 힘이
+ * 빠지게 한다 — 그 미세한 꺾임이 없으면 만세를 부르는 그림이 된다.
+ */
+const SLUMP: Readonly<Partial<Record<BoneName, Turn>>> = {
+  Spine: { axis: [1, 0, 0], angle: 0.34 },
+  Head: { axis: [1, 0, 0], angle: 0.30 },
+  UpperArmL: { axis: ARM_FWD_L, angle: 1.42 },
+  UpperArmR: { axis: ARM_FWD_R, angle: 1.42 },
+  LowerArmL: { axis: FOREARM_FWD_L, angle: 1.70 },
+  LowerArmR: { axis: FOREARM_FWD_R, angle: 1.70 },
+  UpperLegL: { axis: LEG_FWD, angle: 0.22 },
+  UpperLegR: { axis: LEG_FWD, angle: 0.22 },
+  LowerLegL: { axis: LEG_FWD, angle: -0.30 },
+  LowerLegR: { axis: LEG_FWD, angle: -0.30 },
+}
+
 export const makePoseRig = (root: Object3D): PoseRig => {
   const bones = new Map<BoneName, Object3D>()
   const rest = new Map<BoneName, Quaternion>()
@@ -150,14 +204,19 @@ export const makePoseRig = (root: Object3D): PoseRig => {
 
   return {
     ok: bones.size === NAMES.length,
-    apply({ sit, phone }) {
+    apply({ sit, phone, brace = 0, slump = 0 }) {
       const s01 = Math.max(0, Math.min(1, sit))
       const p01 = Math.max(0, Math.min(1, phone))
-      if (s01 <= 0 && p01 <= 0) return
+      const b01 = Math.max(0, Math.min(1, brace))
+      const l01 = Math.max(0, Math.min(1, slump))
+      // 넷 다 0 이면 클립이 낸 자세를 그대로 둔다 — 인트로 이전 동작과 완전히 같다
+      if (s01 <= 0 && p01 <= 0 && b01 <= 0 && l01 <= 0) return
       for (const [name, bone] of bones) {
         acc.identity()
         turn(SIT[name], s01)
         turn(PHONE[name], p01)
+        turn(BRACE[name], b01)
+        turn(SLUMP[name], l01)
         /**
          * ★ **항상 안정 자세(rest)에서 다시 만든다.** 클립이 낸 회전에 곱하지 않는다.
          *

@@ -20,14 +20,37 @@ import { formatClock } from '../core/math'
 import { loadSave } from '../core/save'
 import { ENDINGS, resolveEnding, type EndingDef } from '../data/endings'
 import { QUEUE_MARKERS } from '../data/world'
-import type { EndingId, GameState } from '../state/types'
+import type { GameState } from '../state/types'
+import { badgeOf, TONE_MARK, WHAT_HAPPENED } from './ending-copy'
 // 스타일은 `css/screens.css` 가 단일 원천이다 — UI 킷(/uikit.html)이 같은 파일을 읽는다.
 import CSS from './css/screens.css?inline'
+
+/**
+ * 결과 화면의 버튼이 부를 것들.
+ *
+ * ★ **화면이 게임을 몰라도 되게 한다.** `screens.ts` 가 `restart()` 를 직접
+ *   구현하면 UI 파일이 시뮬 상태를 만지게 된다 — 지금 이 파일은 `GameState` 를
+ *   읽기만 한다. 셋 다 `main.ts` 에 이미 있는 함수라 새로 만든 경로가 없다.
+ */
+export type ScreenActions = Readonly<{
+  restart(): void
+  collection(): void
+  title(): void
+}>
 
 export type Screens = Readonly<{
   sync(s: GameState): void
   hideLoading(): void
   setLoading(text: string): void
+  /**
+   * 엔딩 컷이 도는 동안 결과판을 **미뤄 둔다**(`render/outro.ts`).
+   *
+   * 시뮬은 이미 `ended` 다 — 컷은 그 위에 얹히는 5초짜리 연출이라 상태를 안 건드린다.
+   * 그래서 "아직 보여주지 마라"를 상태가 아니라 여기로 말한다. 새 `Phase` 를 만들면
+   * 리듀서·HUD·헤드리스 테스트가 전부 그 값을 알아야 하고, 그건 연출 하나 때문에
+   * 시뮬 전체를 건드리는 일이다.
+   */
+  setHold(on: boolean): void
 }>
 
 /**
@@ -36,56 +59,6 @@ export type Screens = Readonly<{
  * (열차 스케줄은 `systems/train.ts` 가 이번 편성 하나만 다룬다).
  */
 const NEXT_TRAIN = '20분 26초'
-
-/**
- * 최종 상태 셋. **`실패` 라는 한글 라벨은 쓰지 않는다.**
- *
- * 열차를 놓친 것과 단소에 맞아 끝난 것은 둘 다 목표 미달성이지만, `실패` 는
- * 플레이어를 채점하는 말이라 남는 감정이 자책뿐이다. `GAME OVER` 는 상태를
- * 말할 뿐이고, 그 위에 얹히는 문구가 체념이든 황당함이든 자유로워진다.
- *
- * 색이 아니라 **글자가 상태를 말한다** — 색만으로 구분하면 색각 이상이나
- * 저대비 환경에서 세 상태가 같은 화면이 된다. 색은 거들 뿐이다.
- */
-const STATUS = { success: 'SUCCESS', fail: 'GAME OVER', hidden: 'SPECIAL' } as const
-
-/**
- * **무슨 일이 일어났는가** — 엔딩마다 한 줄. 농담보다 먼저 온다.
- *
- * 예전 판은 제목과 대사만 있어서, 처음 보는 사람은 `다음 열차` + `승강장 의자가
- * 비어 있다` 를 읽고도 자기가 열차를 놓친 건지 탄 건지 몰랐다. 재치 있는 문구가
- * 설명을 대신하면 안 된다 — 사실 → 수치 → 속마음, 세 겹으로 쌓는다.
- *
- * `data/endings.ts` 는 건드리지 않는다. 이건 표현 계층의 문장이다.
- */
-/**
- * ★ **선행을 칭찬하지 않는다.** 예전엔 E-12 를 `오늘은 남을 도왔습니다` 로 적었는데,
- *   그건 사건 서술이 아니라 플레이어의 행동에 의미를 붙이는 문장이다. 이 게임은
- *   공익광고가 아니고, 도덕성을 평가하지 않는다. 일어난 일만 적는다.
- *
- * ★ 여기도 **조건을 흘리면 안 된다.** 히든 계열이 특히 그렇다.
- *   `모든 조건을 채우고` 는 조건이 존재한다는 사실 자체를 알려 주고,
- *   `세 사람을 도왔습니다` 는 몇 명을 도와야 하는지까지 알려 준다.
- *   일어난 일만 적고 개수·임계값·규칙은 적지 않는다.
- */
-const WHAT_HAPPENED: Readonly<Record<EndingId, string>> = {
-  'E-01': '열차에 탑승했습니다.',
-  'E-02': '여유 있게 열차에 탑승했습니다.',
-  'E-03': '여유 있게 열차에 탑승했습니다.',
-  'E-04': '닫히는 문 사이로 간신히 탑승했습니다.',
-  'E-05': '흠잡을 데 없이 탑승했습니다.',
-  'E-06': '눈앞에서 열차를 놓쳤습니다.',
-  'E-08': '반대 방향 열차에 탑승했습니다.',
-  'E-09': '요금을 내지 않고 통과하다 적발됐습니다.',
-  'E-11': '우산으로 인파를 밀어냈습니다.',
-  'E-12': '열차가 떠났습니다.',
-  'E-13': '볼일을 보는 사이 열차가 떠났습니다.',
-  'E-14': '동전을 모아 열차에 탑승했습니다.',
-  'E-15': '할아버지가 선물을 돌려주셨습니다.',
-  'E-16': '도망치지 못했습니다.',
-  'E-17': '개찰구에서 붙잡혔습니다.',
-  'E-18': '차에 치였습니다.',
-}
 
 /** 화면에 띄우는 결과값 한 칸. `wide` 면 두 칸을 합쳐 한 줄로 쓴다. */
 type Fact = Readonly<{ label: string; value: string; wide?: boolean }>
@@ -113,30 +86,52 @@ const atFirstQueue = (s: GameState): boolean =>
  *
  *   남는 것은 **플레이하며 이미 겪어 안 것**뿐이다 — 남은 시간, 다음 열차,
  *   획득 동전, 내가 선 승차위치. 히든 계열은 값 없이 제목과 한마디로 끝낸다.
+ *
+ * ── 탑승 계열에 **잔액**이 붙는다 (디렉터 지시) ──
+ *
+ *   열차를 탄 판에는 남은 시간과 함께 카드 잔액을 적는다. 위 규칙을 깨는 게 아니다:
+ *   잔액은 **다음 판의 정답이 아니다.** 얼마를 남기면 뭐가 열린다는 규칙이 없고
+ *   (성공 등급은 잔액을 안 본다), 플레이 중 HUD 에 내내 떠 있던 값이라 새 정보도
+ *   아니다. 판이 끝난 자리에서 "오늘 하루가 이렇게 남았다"를 말하는 기록일 뿐이다.
+ *
+ *   ★ **탄 판에만** 붙인다. 못 탄 판·즉사 판에 잔액을 적으면 그건 위로가 되고,
+ *     이 화면은 플레이어를 위로하지 않는다(`tests/unit/ending-tone.test.ts`).
  */
 const factsFor = (e: EndingDef, s: GameState): readonly Fact[] => {
   const left: Fact = { label: '남은 시간', value: formatClock(Math.max(0, s.timeLeftMs)) }
   const next: Fact = { label: '다음 열차', value: NEXT_TRAIN }
+  const bal: Fact = { label: '잔액', value: won(s.cardBalance) }
 
   switch (e.id) {
-    // ── 시간이 곧 이 엔딩인 것들 ──
+    // ── 탄 판 — 시간과 잔액, 이 판이 남긴 두 가지 ──
     case 'E-01': case 'E-02': case 'E-04':
-      return [left]
+      return [left, bal]
     case 'E-03':
       // 승차위치는 조건이 아니라 **내가 선 자리**다 — 바닥에 적혀 있고 직접 밟았다
-      return atFirstQueue(s) ? [{ label: '승차위치', value: '3-1' }, left] : [left]
+      return atFirstQueue(s) ? [{ label: '승차위치', value: '3-1' }, left, bal] : [left, bal]
+
+    /**
+     * 반대편에 탄 판도 **같은 기록을 받는다.**
+     *
+     * 예전엔 아무것도 안 보여 줬다. 원인이 명백한 실패라 수치가 곧 정답이 된다는
+     * 이유였는데, 남은 시간과 잔액은 방향과 아무 상관이 없다 — 다음 판에 알려 주는
+     * 게 없다. 오히려 **여기에만 기록이 없으면** 탄 판 중 이것만 없던 일이 된다.
+     * 잘못 탄 것도 오늘 아침에 실제로 있었던 일이다.
+     */
+    case 'E-08':
+      return [left, bal]
 
     // ── 열차를 놓친 것들 — 다음 열차는 승강장에 서면 어차피 보인다 ──
     case 'E-06':
       return [next]
 
-    // ── 동전은 주우면서 이미 셌다 ──
+    // ── 동전은 주우면서 이미 셌다. 여기선 번 돈이 곧 이 엔딩이라 잔액보다 앞에 온다 ──
     case 'E-14':
       return [{ label: '획득 동전', value: won(s.tally.coinsEarned) }, left]
 
     /**
      * 나머지는 **아무것도 안 보여 준다.**
-     * 부정승차·오답 선물·단소·반대편처럼 원인이 명백한 실패에 수치를 얹으면
+     * 부정승차·오답 선물·단소처럼 원인이 명백한 실패에 수치를 얹으면
      * 그 수치가 곧 다음 판의 정답이 된다. 히든 계열은 더더욱 — "내가 뭘 해서
      * 이게 나온 거지" 를 남겨 두는 것이 이 엔딩들의 값이다.
      */
@@ -156,7 +151,7 @@ const factsFor = (e: EndingDef, s: GameState): readonly Fact[] => {
 const shown = (s: GameState): EndingDef =>
   (s.endingId ? ENDINGS.find((e) => e.id === s.endingId) : undefined) ?? resolveEnding(s)
 
-export const createScreens = (mount: HTMLElement): Screens => {
+export const createScreens = (mount: HTMLElement, actions: ScreenActions): Screens => {
   const style = document.createElement('style')
   style.textContent = CSS
   document.head.appendChild(style)
@@ -169,6 +164,31 @@ export const createScreens = (mount: HTMLElement): Screens => {
   const el = document.createElement('div')
   el.id = 'screen'
   mount.appendChild(el)
+
+  /**
+   * 결과 버튼 — **위임으로 받는다.** 판은 매번 다시 그려지므로 버튼마다 리스너를
+   * 달면 렌더할 때마다 끊긴다. 컨테이너 하나만 듣는다.
+   */
+  el.addEventListener('click', (ev) => {
+    const b = (ev.target as HTMLElement | null)?.closest('[data-act]') as HTMLElement | null
+    const act = b?.dataset['act']
+    if (act === 'restart') actions.restart()
+    else if (act === 'collection') actions.collection()
+    else if (act === 'title') actions.title()
+  })
+
+  /**
+   * `T` — 타이틀로. R·C·ESC 는 `core/input.ts` 가 이미 읽고 `main.ts` 가 분기하지만,
+   * 타이틀 복귀는 여태 설정 화면 안에만 있었다. 게임 입력 표를 늘리는 대신
+   * **결과 화면이 떠 있을 때만** 듣는 리스너를 여기 둔다 — 그 조건은 `el` 의
+   * 클래스로 알 수 있으므로 상태를 따로 들고 있을 필요가 없다.
+   */
+  window.addEventListener('keydown', (ev) => {
+    if (ev.code !== 'KeyT') return
+    if (!/\b(success|fail|hidden)\b/.test(el.className)) return
+    ev.preventDefault()
+    actions.title()
+  })
 
   let lastKey = ''
 
@@ -226,16 +246,32 @@ export const createScreens = (mount: HTMLElement): Screens => {
   }
 
   /**
-   * 엔딩 — 같은 판, 다른 내용. **사실 → 수치 → 속마음** 순으로 쌓는다.
+   * 엔딩 — **배지가 먼저다.**
    *
-   *   1단  제목
-   *   2단  무슨 일이 있었는가 (한 줄 사실)
-   *   3단  상태 + 관련 값 최대 2개
-   *   4단  속마음 한 줄
-   *   5단  입력
+   *   1단  결과 배지        ← 판이 어떻게 끝났는지. 화면에서 가장 큰 글자
+   *   2단  코드 + 제목       ← 무엇이 나왔는지
+   *   3단  설명 한 줄        ← 무슨 일이 있었는지 (사실)
+   *   4단  한마디 한 줄      ← 속마음
+   *   5단  값 (있을 때만)
+   *   6단  버튼 3개
    *
-   * 상태는 `상태 실패` 처럼 **글자로** 적는다. 색만 바꾸면 색각 이상이나
-   * 저대비 환경에서 성공과 실패가 같은 화면이 된다.
+   * ■ 왜 배지를 위로 올렸나
+   *
+   * 예전 판은 제목이 크고 배지가 그 오른쪽에 작은 대괄호로 붙어 있었다. 그런데
+   * **처음 보는 사람이 먼저 알아야 하는 것은 제목이 아니라 결과다** — 「다음 열차」
+   * 라는 제목만으로는 탄 건지 놓친 건지 모른다. 배지를 맨 위로 올려 크게 두면
+   * 그 한 글자 덩어리로 판이 끝난 방식이 즉시 읽힌다.
+   *
+   * ■ 색만으로 말하지 않는다
+   *
+   * 배지는 글자다(`SUCCESS`·`GAME OVER`·`SPECIAL`). 색은 거들 뿐이라 색각 이상이나
+   * 저대비 환경에서도 셋이 안 뭉갠다. 여기에 톤별 마크(○ ✕ ★)를 하나 더 얹어
+   * **모양으로도** 갈라 둔다.
+   *
+   * ■ 값은 남기되 아래로 내렸다
+   *
+   * 잔여 시간·잔액은 탄 판에서만 의미가 있고, 결과를 읽는 데 필요한 정보는
+   * 아니다. 지우지 않고 마지막 줄로 내려 위계를 낮춘다.
    */
   const ending = (s: GameState): string => {
     const e = shown(s)
@@ -250,20 +286,21 @@ export const createScreens = (mount: HTMLElement): Screens => {
             <span><span class="line2">2</span>2호선 신도림 방면</span>
             <span class="eid">${e.id}</span>
           </div>
-          <div class="title-row s2">
-            <div class="name">${e.tone === 'hidden' ? '★ ' : ''}${e.title}</div>
-            <div class="status">[ ${STATUS[e.tone]} ]</div>
+          <div class="verdict s2">
+            <span class="mark" aria-hidden="true">${TONE_MARK[e.tone]}</span>
+            <span class="word">${badgeOf(e.id, e.tone)}</span>
           </div>
-          <div class="what s3">${WHAT_HAPPENED[e.id]}</div>
-          ${facts.length === 0 ? '' : `<div class="facts s4">${facts.map((f) => `
+          <div class="name s3">${e.title}</div>
+          <div class="what s4">${WHAT_HAPPENED[e.id]}</div>
+          <div class="say s5">${e.line}</div>
+          ${facts.length === 0 ? '' : `<div class="facts s6">${facts.map((f) => `
             <dl${f.wide ? ' class="wide"' : ''}>
               ${f.label ? `<dt>${f.label}</dt>` : ''}<dd>${f.value}</dd>
             </dl>`).join('')}</div>`}
-          <div class="say s5">${e.line}</div>
-          <div class="keys s6">
-            <span><b>R</b> 다시하기</span>
-          <span><b>C</b> 도감</span>
-            <span><b>ESC</b> 설정</span>
+          <div class="acts s7">
+            <button type="button" data-act="restart" class="primary"><b>R</b> 다시 하기</button>
+            <button type="button" data-act="collection"><b>C</b> 도감 보기</button>
+            <button type="button" data-act="title"><b>T</b> 타이틀로</button>
           </div>
         </div>
       </div>`
@@ -286,14 +323,23 @@ export const createScreens = (mount: HTMLElement): Screens => {
   }
 
   let prevPhase: GameState['phase'] | '' = ''
+  /** 엔딩 컷이 도는 동안 참 — 결과판도 배경 blur 도 그동안은 안 나온다 */
+  let hold = false
 
   return {
     hideLoading() { loading.style.display = 'none' },
     setLoading(text: string) { loading.textContent = text },
+    setHold(on) {
+      if (hold === on) return
+      hold = on
+      // 키를 비워 다음 `sync` 가 반드시 다시 그리게 한다 — 상태는 그대로이므로 키만으론 안 바뀐다
+      lastKey = ''
+    },
     sync(s) {
       // 엔딩 화면이 읽는 값이 바뀌면 다시 그린다. 안 넣으면 첫 렌더 시점 값이 굳는다.
       const key = `${s.phase}:${s.endingId ?? ''}:${s.seed}:${s.boarded}:` +
-        `${s.timeLeftMs}:${s.tally.coinsEarned},${s.tally.pushes}`
+        // 잔액도 결과판이 읽는 값이다 — 빠뜨리면 첫 렌더 시점 값이 굳는다
+        `${s.timeLeftMs}:${s.tally.coinsEarned},${s.tally.pushes},${s.cardBalance}`
       if (key === lastKey) return
       lastKey = key
       if (prevPhase === 'title' && s.phase === 'playing') flash()
@@ -316,12 +362,18 @@ export const createScreens = (mount: HTMLElement): Screens => {
        *   play   손대지 않는다
        *   ended  약한 blur + dim — 공간감은 남기고 정보 전달만 끊는다
        */
+      /**
+       * ★ 컷이 도는 동안(`hold`)에는 **끝난 티를 아예 내지 않는다.**
+       *   blur 를 걸면 창밖 일출이 뿌옇게 뭉개지고, 그 순간 컷은 배경이 된다.
+       *   컷이 끝나야 세계가 정보 전달을 그만두고 결과판으로 넘어간다.
+       */
+      const done = s.phase === 'ended' && !hold
       document.body.classList.toggle('at-title', s.phase === 'title')
-      document.body.classList.toggle('run-ended', s.phase === 'ended')
+      document.body.classList.toggle('run-ended', done)
       if (s.phase === 'title') {
         el.className = 'on'
         el.innerHTML = title()
-      } else if (s.phase === 'ended') {
+      } else if (done) {
         el.innerHTML = ending(s)
       } else {
         el.className = ''

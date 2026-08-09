@@ -175,6 +175,7 @@ export const initialState = (seed: number, freeplay = false): GameState => {
     boarded: false,
     boardedDoorX: null,
     boardedAtMs: null,
+    boardedCloseInMs: null,
     boardedTrain2: false,
     endingId: null,
     fx: [],
@@ -416,6 +417,7 @@ export const reducer = (s: GameState, a: Action): GameState => {
         : {
             ...s,
             boarded: true, boardedDoorX: a.doorX, boardedAtMs: s.elapsedMs,
+            boardedCloseInMs: a.closeInMs,
             boardedTrain2: !!a.opp, phase: 'boarding',
           }
 

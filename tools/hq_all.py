@@ -67,7 +67,9 @@ ORDER = [
     "hq_signs.py",
     "hq_descent.py",
     "hq_cove.py",
-    "hq_punch_openings.py",      # ← 천장 층을 다 얹은 뒤 계단 개구부를 뚫는다
+    "hq_punch_openings.py",
+    # 버스 북측 문 개구부 — 개구부 패스끼리 붙여 둔다
+    "hq_punch_bus_door.py",      # ← 천장 층을 다 얹은 뒤 계단 개구부를 뚫는다
     "hq_entrance.py",            # ← 지상 출입구 계단통 내부 마감
     "hq_street.py",              # ← 지상 가로 — 도로 양쪽 건물군 · 횡단보도 신호등
     "hq_fixups.py",              # ← 플레이 중 눈으로 잡힌 결함 (개구부 뒤에 와야 한다)

@@ -95,7 +95,13 @@ export const trainTriggerSystem = (s: GameState): Action[] => {
   if (!rectContains(TRAIN_TRIGGER_ZONE, s.player.pos.x, s.player.pos.y)) return []
   return [
     { t: 'TRAIN_TRIGGER' },
-    { t: 'FX', kind: 'toast', text: '안내방송 — "잠시 후 열차가 도착합니다"', lifeMs: 2400, value: 0 },
+    /**
+     * **방면을 말한다.** "잠시 후 열차가 도착합니다"는 어느 쪽 열차인지를 안 알려 준다 —
+     * 승강장이 둘인 역에서 그 안내는 정보가 아니다. 실제 안내방송도 행선을 먼저 말한다.
+     * 반대편(`trainTriggerSystem2`)이 「신촌 방면」이라고 말하는 것과 짝이 맞아야,
+     * 플레이어가 방송만 듣고도 자기가 어느 승강장에 서 있는지 알 수 있다.
+     */
+    { t: 'FX', kind: 'toast', text: '안내방송 — "잠시 후 신도림 방면 열차가 도착합니다"', lifeMs: 2400, value: 0 },
   ]
 }
 
@@ -127,7 +133,13 @@ export const trainTriggerSystem2 = (s: GameState): Action[] => {
   if (!rectContains(TRAIN_TRIGGER_ZONE_OPP, s.player.pos.x, s.player.pos.y)) return []
   return [
     { t: 'TRAIN_TRIGGER2' },
-    { t: 'FX', kind: 'toast', text: '안내방송 — "반대 방면 열차가 곧 도착합니다"', lifeMs: 2400, value: 0 },
+    /**
+     * 「반대 방면」이 아니라 **「신촌 방면」**이다. 역 안내방송은 행선을 말하지
+     * "당신 기준으로 반대쪽"이라고 말하지 않는다 — 그건 게임이 플레이어에게 하는 말이지
+     * 세계가 하는 말이 아니다. 사인(`z3fork-b` 「신촌 방면」)과 같은 이름을 써야
+     * **방송을 듣고 잘못 탄 것을 스스로 알아챌 수 있다.** 그게 E-08 의 재료다.
+     */
+    { t: 'FX', kind: 'toast', text: '안내방송 — "잠시 후 신촌 방면 열차가 도착합니다"', lifeMs: 2400, value: 0 },
   ]
 }
 
@@ -198,6 +210,16 @@ export const nearestDoorX = (px: number): number => {
  *
  * `boardedDoorX` 는 어느 문으로 탔는지의 기록일 뿐이라 가장 가까운 문으로 남긴다.
  */
+/**
+ * 지금 타면 문이 닫히기 시작할 때까지 몇 ms 남는가. 음수면 이미 닫히는 중이다.
+ *
+ * **`s.boarded` 가 아직 거짓일 때만 부른다.** 탄 뒤에는 `withBoarding` 이 시계를
+ * 닫힘 쪽으로 밀어 버려서(`TRAIN.boardDwellMs`) 이 값이 항상 1초 근처로 뭉개진다 —
+ * 재야 하는 것은 **밀리기 전의 자연 시계**, 즉 "원래 스케줄에서 얼마나 늦게 왔는가"다.
+ * `trainSystem` 은 `s.boarded` 를 확인한 뒤에만 여기 도달하므로 그 조건이 지켜진다.
+ */
+const closeInMsOf = (clock: number): number => TRAIN.closeStartMs - clock
+
 export const trainSystem = (s: GameState): Action[] => {
   if (s.phase !== 'playing' || s.boarded) return []
   if (!doorsPassable(s.train)) return []
@@ -206,7 +228,7 @@ export const trainSystem = (s: GameState): Action[] => {
   if (p.z > FLOOR.B2 + 1) return []
   if (p.y < TRAIN.cabinBoardY || p.y > CABIN_Y1) return []
 
-  return [{ t: 'BOARD', doorX: nearestDoorX(p.x) }]
+  return [{ t: 'BOARD', doorX: nearestDoorX(p.x), closeInMs: closeInMsOf(trainClock(s)) }]
 }
 
 /** 반대 방면 안전문 — PSD_Y_OPP 만 다르다 */
@@ -236,7 +258,7 @@ export const trainSystem2 = (s: GameState): Action[] => {
   if (p.y < TRAIN.cabinBoardY + Y_OFFSET_OPP || p.y > CABIN_Y1 + Y_OFFSET_OPP) return []
 
   return [
-    { t: 'BOARD', doorX: nearestDoorX(p.x), opp: true },
+    { t: 'BOARD', doorX: nearestDoorX(p.x), closeInMs: closeInMsOf(trainClock2(s)), opp: true },
     { t: 'FLAG', id: 'OPPOSITE_SIDE', on: true },
   ]
 }
