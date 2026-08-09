@@ -4,12 +4,13 @@
  * 시뮬은 고정 60Hz, 렌더는 가변. 프레임이 튀어도 물리와 밸런스가 튀지 않는다.
  */
 
-import { Frustum, Matrix4, Raycaster, Vector2, Vector3 } from 'three'
+import { Frustum, Matrix4, type Object3D, Quaternion, Raycaster, Vector2, Vector3 } from 'three'
 import { createSfx } from './audio/sfx'
 import { createInput, EMPTY_INPUT, type InputFrame } from './core/input'
 import { resolveSeed } from './core/rng'
 import { CAMERA, FPV, MAX_FRAME_MS, MAX_STEPS_PER_FRAME, MOVE, STEP_MS } from './data/tuning'
-import { FLOOR, GATES, GATE_BODY, GATE_LAMP_Z, ZONE_NAMES } from './data/world'
+import { FLOOR, GATES, GATE_BODY, GATE_LAMP_Z, TRAFFIC_LIGHT,
+  ZONE_NAMES } from './data/world'
 import { byId, FISHCAKE_ID, GIFT_STALL_ID, GRANDPA_ID, type InteractKind } from './data/interactables'
 import { CHAR_SCALE, loadActors, type Actors } from './render/actors'
 import { createCameraRig } from './render/camera-rig'
@@ -32,6 +33,13 @@ import { createDialog } from './ui/dialog'
 import { createHud } from './ui/hud'
 import { createScreens } from './ui/screens'
 import { createCollection } from './ui/collection'
+import { createIntro } from './ui/intro'
+import { actorAt, busDx, DOORS_MS, INTRO_MS, poseAt, SHOT } from './render/intro'
+import { buildBusInterior, type BusInterior } from './render/bus-interior'
+import { buildWestRoad } from './render/west-road'
+import { loadPassengers, type Passengers } from './render/passengers'
+import { makePoseRig, type PoseRig } from './render/pose'
+import { buildPhone, type Phone } from './render/phone'
 import { createSettings } from './ui/settings'
 import { RES_SCALES, type Settings } from './core/settings'
 import { createAmbience } from './audio/ambience'
@@ -91,6 +99,7 @@ const hud = createHud(uiRoot)
 const dialog = createDialog(uiRoot)
 const screens = createScreens(uiRoot)
 const collection = createCollection(uiRoot)
+const intro = createIntro(uiRoot)
 
 /**
  * UI-15 설정(ESC) — **일시정지 겸 설정**.
@@ -275,6 +284,111 @@ const recordIfEnded = (s: GameState): void => {
  * 설정은 그 **아무도 안 쓸 때**만 가져간다 — 우선순위를 뒤집으면 대화 도중 ESC 가
  * 설정을 열어 버리고, 플레이어는 취소하려다 일시정지를 만난다.
  */
+// ─────────────────── 인트로 ───────────────────
+
+/** 인트로 시작 시각. `null` 이면 인트로가 아니다 */
+let introAt: number | null = null
+/**
+ * E2E 전용 — 인트로 시계를 이 값에 **못 박는다**.
+ *
+ * 벽시계로 스크럽하면 스크린샷을 찍기까지 흐른 시간만큼 다른 샷이 잡힌다
+ * (소프트웨어 래스터에서 한 프레임이 수백 ms 다). 시각을 고정하면 몇 프레임이
+ * 걸리든 같은 그림이 나온다.
+ */
+let introHold: number | null = null
+/** 지금 인트로의 **버스 안** 구간인가 — 차량 렌더를 끊는 데 쓴다 */
+let introInBus = false
+/** 프레임 밝기 계측(E2E) — 다음 렌더 직후 한 번 읽는다 */
+let lumaWant = false
+let lumaValue = -1
+/** 단계별 눈 검사(QA)용 자유 카메라. `null` 이면 평소대로 릭이 카메라를 몬다 */
+let freeCamAt: { pos: [number, number, number]; look: [number, number, number] } | null = null
+
+/**
+ * 버스 실내 — 인트로에만 존재한다.
+ *
+ * 게임 중에는 한 번도 안 보이는 물건이라 부팅 때 짓지 않는다. 처음 인트로가
+ * 돌 때 한 번 만들고 그 뒤로는 재사용한다(재시작할 때마다 다시 지으면 그때마다
+ * 지오메트리를 새로 올린다).
+ *
+ * 외피는 station GLB 가 이미 갖고 있다. 카메라가 그 안에 들어가면 앞면이 컬링돼
+ * 저절로 투명해지므로, 우리가 만들 것은 **안에서 보이는 것들**뿐이다.
+ */
+let busIn: BusInterior | null = null
+/** 인트로 전용 서쪽 도로 연장 — 버스가 달릴 거리를 만든다 */
+let westRoad: { root: Object3D; dispose(): void } | null = null
+/**
+ * 인트로 버스 승객. 기존 NPC 를 그대로 태운다.
+ *
+ * **인트로가 처음 돌 때 불러온다.** 부팅에 얹으면 안 볼 수도 있는 것을 매번 기다리게
+ * 되고, GLB 는 이미 액터 로딩으로 캐시에 들어와 있어 다시 받지 않는다.
+ */
+let riders: Passengers | null = null
+let ridersLoading = false
+/**
+ * 버스 외피 네 조각(`merged:BUS_*`). 실내가 24m 서쪽에서 다가오는 동안에는
+ * **숨긴다** — 안 그러면 우리가 탄 버스가 저 앞에 주차된 버스를 향해 달린다.
+ */
+const busExterior = (): Object3D[] =>
+  ['BUS_BODY', 'BUS_GLASS', 'BUS_TRIM', 'BUS_ROOF']
+    .map((m) => station?.root.getObjectByName(`merged:${m}`))
+    .filter((o): o is Object3D => !!o)
+/**
+ * 포즈(착석 · 휴대폰). 리그가 로드된 뒤 한 번 만든다 — 본을 이름으로 찾는
+ * 작업이라 매 프레임 할 일이 아니다.
+ */
+let poseRig: PoseRig | null = null
+/** 손에 쥔 휴대폰. 팔뚝 본에 매단다 */
+let phone: Phone | null = null
+
+const startIntro = (): void => {
+  introAt = performance.now()
+  state = { ...state, phase: 'intro' }
+  intro.show()
+  if (!busIn) { busIn = buildBusInterior(); stage.scene.add(busIn.root) }
+  if (!westRoad) { westRoad = buildWestRoad(); stage.scene.add(westRoad.root) }
+  westRoad.root.visible = true
+  if (!riders && !ridersLoading) {
+    ridersLoading = true
+    void loadPassengers(BASE)
+      .then((p) => { riders = p; stage.scene.add(p.root) })
+      // 승객이 없어도 인트로는 끝까지 돈다 — 배경이지 사건이 아니다
+      .catch((e: unknown) => { console.error('[intro] 승객 로드 실패', e) })
+  }
+  riders?.setVisible(true)
+  // QA — 실내가 외피를 가리는지 A/B 로 가른다
+  busIn.root.visible = !/[?&]nointerior/.test(location.search)
+  busIn.setDoor(0)
+  player?.setVisible(true)
+}
+
+/**
+ * 인트로를 끝내고 조작권을 넘긴다. 끝까지 본 경우와 건너뛴 경우가 **같은 코드**를
+ * 지난다 — 건너뛰기 전용 경로를 따로 두면 거기서만 안 돌아오는 상태가 생긴다.
+ */
+const endIntro = (): void => {
+  introAt = null
+  intro.hide()
+  introHold = null
+  introInBus = false
+  phone?.setVisible(false)
+  if (westRoad) westRoad.root.visible = false
+  riders?.setVisible(false)
+  for (const o of busExterior()) o.visible = true
+  if (busIn) busIn.root.visible = false
+  /**
+   * ★ 화각을 **반드시** 되돌린다.
+   *
+   * 인트로는 질주 구간에서 화각을 74° → 85° 로 열었다가 끝에서 정확히 74° 로
+   * 닫는다. 그런데 **건너뛰면 그 닫는 프레임을 안 지난다** — 85° 인 채로 조작권이
+   * 넘어간다. 그리고 카메라 릭은 이걸 못 고친다: 릭은 자기 내부 `fov` 변수와
+   * 목표값을 비교하는데 둘 다 74 라 "바꿀 것이 없다"고 판단하고 카메라를
+   * 손대지 않는다. 실제로 화각이 벌어진 채 판이 끝까지 간다.
+   */
+  applyView()
+  state = { ...state, phase: 'playing' }
+}
+
 const escIsFree = (s: GameState): boolean =>
   !collection.isOpen() && s.act.dialogId === null && !s.qte.active &&
   !s.swap.active && s.act.busyId === null
@@ -318,9 +432,24 @@ const handleMeta = (f: InputFrame): void => {
     if (f.pressCancel) settings.close()
     return
   }
+  /**
+   * 인트로는 **언제나 건너뛸 수 있고, 그 판정이 설정보다 먼저다.**
+   *
+   * 이 게임은 3분짜리를 반복해 엔딩 17종을 모으는 구조다. 매번 6.6초를 강제로
+   * 보여 주면 그 구조가 곧 벌이 된다. ESC·ENTER 어느 쪽이든 받는다 — 급한 사람이
+   * 어느 키를 누를지 정해 놓고 기다릴 이유가 없다.
+   *
+   * ★ 순서가 중요하다. 아래 `settings.open()` 보다 뒤에 두면 ESC 가 설정을 열어
+   *   버려서 화면에 적어 둔 `ESC 건너뛰기` 가 거짓말이 된다. 인트로에서 ESC 는
+   *   건너뛰기 전용이다.
+   */
+  if (state.phase === 'intro') {
+    if (f.pressCancel || f.pressStart) endIntro()
+    return
+  }
   if (f.pressCancel && escIsFree(state)) { settings.open(); return }
 
-  if (state.phase === 'title' && f.pressStart) state = { ...state, phase: 'playing' }
+  if (state.phase === 'title' && f.pressStart) startIntro()
   if (state.phase === 'ended' && f.pressRestart) restart()
 }
 
@@ -423,17 +552,147 @@ const frame = (now: number): void => {
   }
 
   const dtSec = Math.min(dt, 100) / 1000
-  cameraRig.update(state, sample, dtSec, renderPos)
-  stage.setMood(state.zone, dtSec)
-  station?.sync(state, dtSec, lightIsGreen(state), lightRemainSec(state))
+  /**
+   * 인트로 동안에는 **카메라 릭을 아예 안 돌린다.**
+   *
+   * 릭을 돌린 뒤 위에 덮어쓰는 방법도 되지만, 릭은 내부에 앵커·오클루전 같은
+   * 상태를 들고 감쇠시킨다. 그 상태가 인트로 6.6초를 엉뚱한 값으로 채우면
+   * 조작권이 넘어온 순간 카메라가 그 값에서부터 기어 나온다. 아예 안 건드리면
+   * 릭은 스폰 기준 초기값 그대로 있다가 이어받는다.
+   *
+   * 좌표 변환은 `camera-rig.ts` 의 1인칭 분기와 **글자 그대로 같은 식**이다 —
+   * 여기서 한 글자라도 달라지면 마지막 프레임이 어긋난다.
+   */
+  if (freeCamAt) {
+    const { pos, look } = freeCamAt
+    stage.camera.position.set(pos[0], pos[2], -pos[1])
+    stage.camera.lookAt(look[0], look[2], -look[1])
+    stage.camera.fov = FPV.fovDeg
+    stage.camera.near = 0.08
+    stage.camera.updateProjectionMatrix()
+  } else if (introAt !== null) {
+    const t = introHold ?? now - introAt
+    if (t >= INTRO_MS) { endIntro() } else {
+      /**
+       * 3인칭 구간에서는 **주인공과 버스 실내를 직접 몰아준다.**
+       *
+       * 시뮬은 인트로 동안 한 발짝도 안 움직인다(`ADVANCE` 가 `playing` 에서만
+       * 진행한다). 그래서 리그에 넘길 상태를 `actorAt` 값으로 만들어 준다 —
+       * 리그의 클립 선택 규칙(`moving`→Walk · `sprinting`→Sprint)을 그대로 쓰려고
+       * 위치만 바꾼 가짜 상태를 넘긴다. 리그를 고쳐 인트로 전용 경로를 내면
+       * 게임에서 쓰는 경로와 두 벌이 된다.
+       */
+      const a = actorAt(t)
+      introInBus = a.visible
+      const at = { x: a.x, y: a.y, z: a.z }
+      player?.setVisible(a.visible)
+      if (a.visible) {
+        player?.sync({
+          ...state,
+          phase: 'playing',
+          player: {
+            ...state.player, pos: at, facing: a.facing,
+            moving: a.clip !== 'Idle', sprinting: a.clip === 'Run', grounded: true,
+          },
+        }, dtSec, at)
+        /**
+         * ★ `sync()` **뒤에** 접는다. `sync` 안의 `mixer.update()` 가 본 회전을
+         *   덮어쓰므로, 앞에서 부르면 아무 일도 안 한 것처럼 보인다.
+         */
+        if (player && !poseRig) poseRig = makePoseRig(player.root)
+        poseRig?.apply({ sit: a.sit, phone: a.phone })
+        /**
+         * 휴대폰은 **팔뚝 본의 자식**이다 — 포즈가 팔을 들면 같이 따라 올라간다.
+         * 붙일 대상은 리그가 로드된 뒤에야 존재하므로 여기서 한 번 건다.
+         */
+        if (player && !phone) {
+          const arm = player.root.getObjectByName('LowerArmR')
+          if (arm) { phone = buildPhone(); phone.attachTo(arm) }
+        }
+        phone?.setVisible(a.phone > 0.02)
+        /**
+         * 자세는 본에서 떼어낸다 — 안 그러면 폰이 전완을 따라 눕는다.
+         * 화면이 향할 곳은 **이번 프레임의 카메라와 얼굴 사이**라, 카메라를 옮기면
+         * 폰도 따라 열린다. 각도를 손으로 맞출 일이 없다.
+         */
+        if (a.phone > 0.02 && phone) {
+          const p2 = poseAt(t)
+          /**
+           * 카메라의 up 을 **계산으로** 낸다 — 이 시점의 `stage.camera` 행렬은
+           * 아직 **지난 프레임** 것이다(카메라는 아래에서 세운다). 그걸 읽으면
+           * 폰이 한 프레임 늦게 따라와 밀 때 미세하게 떤다.
+           *
+           * 인트로 카메라는 롤이 0 이다(`rotation.set(pitch, yaw − π/2, 0)`).
+           * 그러면 up 은 pitch·yaw 만으로 닫힌 형태로 나온다. 월드(x 동 · y 북 ·
+           * z 상)에서 up = (−sin p·cos y, −sin p·sin y, cos p) 이고, three 좌표는
+           * (x, z, −y) 이므로 아래처럼 옮겨 담는다.
+           */
+          const cp = Math.cos(p2.pitch), sp = Math.sin(p2.pitch)
+          const cy = Math.cos(p2.yaw), sy = Math.sin(p2.yaw)
+          phone.aim(
+            new Vector3(p2.x, p2.eye, -p2.y),
+            new Vector3(a.x, a.z + 1.12, -a.y),
+            new Vector3(-sp * cy, cp, sp * sy),
+          )
+        }
+      }
+      // 버스 안 구간에서만 외피를 숨긴다. ③ 부터는 그 버스를 정면으로 보여줘야 한다
+      const inside = t < SHOT.phone
+      for (const o of busExterior()) o.visible = !inside
+      if (westRoad) westRoad.root.visible = inside
+      // 승객은 버스와 **같이** 달린다. 하나라도 빠뜨리면 그것만 미끄러진다
+      riders?.setVisible(inside)
+      riders?.setBusDx(busDx(t))
+      riders?.update(dtSec)
+      if (busIn) {
+        busIn.root.position.x = busDx(t)
+        busIn.setDoor((t - DOORS_MS) / 620)
+      }
+
+      const p = poseAt(t)
+      stage.camera.position.set(p.x, p.eye, -p.y)
+      stage.camera.rotation.order = 'YXZ'
+      stage.camera.rotation.set(p.pitch, p.yaw - Math.PI / 2, 0)
+      stage.camera.near = 0.08
+      stage.camera.fov = p.fov
+      stage.camera.updateProjectionMatrix()
+      intro.sync(t)
+    }
+  } else {
+    cameraRig.update(state, sample, dtSec, renderPos)
+  }
+  /**
+   * 타이틀에서 배경을 살려 두는 시계.
+   *
+   * `ADVANCE` 가 `playing`/`boarding` 이 아니면 일찍 빠져나가므로(`reducer.ts`)
+   * 타이틀에서는 `lightMs` 가 얼어 있고, 그래서 신호등이 안 바뀌고 차들도 멈춘
+   * 신호를 보고 선다 — 정지 사진처럼 보이던 원인이다.
+   *
+   * ★ 고치는 자리는 그 게이트가 아니라 **여기**다. 게이트를 열면 타이틀에서
+   *   제한시간이 흐른다. 렌더에만 쓰는 값을 따로 만들어 넘기면 시뮬은 순수하게
+   *   남고 헤드리스 스윕·유닛 테스트도 그대로다.
+   */
+  const view = state.phase === 'title' || state.phase === 'intro'
+    ? { ...state, lightMs: now % TRAFFIC_LIGHT.cycleMs }
+    : state
+  stage.setMood(view.zone, dtSec)
+  station?.sync(view, dtSec, lightIsGreen(view), lightRemainSec(view))
   // 흐름은 **경과 시간** 기준이다. dt 누적으로 굴리면 프레임 흔들림이 그대로 위상 지터가 된다
   guideArrows.update(now / 1000, renderPos)
   // 보행 신호가 녹색이면 횡단보도를 지나는 이면도로 차가 선다(`cars.ts` 교차로 규약)
   if (traffic) {
-    // 지하에서는 통째로 끈다. 안 그러면 승강장에서도 차 8콜 · 38 k 삼각형이 얹힌다
-    // (실측: 차를 넣자 Z2~Z5 가 전부 같이 늘었다 — 존 밖인데 계속 그리고 있었다).
-    traffic.group.visible = renderPos.z > -3
-    traffic.update(dtSec, lightIsGreen(state), lightRemainSec(state))
+    /**
+     * 지하에서는 통째로 끈다. 안 그러면 승강장에서도 차 8콜 · 38 k 삼각형이 얹힌다
+     * (실측: 차를 넣자 Z2~Z5 가 전부 같이 늘었다 — 존 밖인데 계속 그리고 있었다).
+     *
+     * ★ 인트로에서 버스 안에 있는 동안에도 끈다. 서행 차선이 y 20.5 인데 버스는
+     *   y 19.1~21.7 이라 **차가 버스를 관통한다**. 게임 중에는 버스 안에서 볼 일이
+     *   없어 드러나지 않던 것이 인트로에서 정면으로 보인다(실측 스크린샷에서
+     *   승용차 한 대가 실내 한복판에 서 있었다). 차선을 옮기면 정류장 앞 차도가
+     *   비어 보이므로, 안 보이는 3.2초만 끄는 쪽이 싸다.
+     */
+    traffic.group.visible = renderPos.z > -3 && !(introAt !== null && introInBus)
+    traffic.update(dtSec, lightIsGreen(view), lightRemainSec(view))
     /**
      * 차에 치이면 그 자리에서 끝난다(E-18). 적신호 차단벽을 걷어낸 대신 들어온 규칙이다.
      *
@@ -453,6 +712,14 @@ const frame = (now: number): void => {
       Math.abs(state.player.pos.z - FLOOR.L0) < 1.2 &&
       carHits(traffic.bodies(), state.player.pos.x, state.player.pos.y, MOVE.radius)
     ) {
+      /**
+       * 차에 치이면 **쓰러진다** — `systems/knockdown.ts` 가 포물선 연출을 돌리고
+       * 끝나면 E-18 을 낸다. 판정만 여기서 하고 그 뒤는 그 시스템이 맡는다.
+       *
+       * (이 브랜치에도 무단횡단 즉사 엔딩을 따로 만들어 뒀었는데, upstream 이
+       *  같은 사건을 전용 연출까지 붙여 구현했다. 엔딩 시나리오·판정·모션은
+       *  upstream 것을 쓰기로 해서 이쪽을 걷어냈다.)
+       */
       state = applyAll(state, [
         { t: 'FX', kind: 'shake', text: '', lifeMs: 500, value: 1 },
         { t: 'KNOCKDOWN_START' },
@@ -460,7 +727,13 @@ const frame = (now: number): void => {
       hitCooldownMs = HIT_COOLDOWN_MS
     }
   }
-  player?.sync(state, dtSec, renderPos)
+  /**
+   * ★ 인트로 중에는 **건너뛴다.** 위 인트로 분기가 이미 `actorAt` 값으로 리그를
+   *   한 번 동기화했는데, 여기서 진짜 상태로 다시 동기화하면 그 값이 덮여
+   *   주인공이 스폰(−58, 24)으로 돌아간다 — 카메라는 버스 안을 보고 있으므로
+   *   화면에서는 **그냥 사라진 것처럼** 보인다. 실제로 그랬다.
+   */
+  if (introAt === null) player?.sync(state, dtSec, renderPos)
   // 손에 든 물건은 **1인칭에서만** 뜬다 — 3인칭에서는 카메라에 붙은 물건이 허공에 떠 보인다
   held?.sync(state, dtSec, cameraRig.mode() === 'fp')
   // P1 렌더는 상태를 **읽기만** 한다 — 판정은 전부 systems/ 에 있다
@@ -574,6 +847,26 @@ const frame = (now: number): void => {
   if (camTrace.length > 1200) camTrace.splice(0, 2)
 
   stage.renderer.render(stage.scene, stage.camera)
+  /**
+   * 프레임 평균 밝기 — **렌더 직후에만** 읽을 수 있다.
+   *
+   * `preserveDrawingBuffer` 가 꺼져 있어(기본값) 프레임이 넘어가면 버퍼가 비워진다.
+   * 그래서 캔버스를 `drawImage` 로 퍼 오면 **전부 검게** 나온다 — 실제로 그렇게
+   * 재다가 밝기 0 만 잔뜩 얻었고, 화이트아웃 검사가 통째로 무효였다.
+   * 여기서 `readPixels` 로 한 번 긁어 두면 E2E 가 나중에 꺼내 볼 수 있다.
+   */
+  if (lumaWant) {
+    lumaWant = false
+    const gl = stage.renderer.getContext()
+    const w = 96, h = 54
+    const buf = new Uint8Array(w * h * 4)
+    const size = stage.renderer.getDrawingBufferSize(new Vector2())
+    gl.readPixels(((size.x - w) / 2) | 0, ((size.y - h) / 2) | 0, w, h,
+      gl.RGBA, gl.UNSIGNED_BYTE, buf)
+    let sum = 0
+    for (let i = 0; i < buf.length; i += 4) sum += buf[i]! + buf[i + 1]! + buf[i + 2]!
+    lumaValue = sum / (buf.length / 4) / 3
+  }
 }
 
 // ─────────────────── 기동 ───────────────────
@@ -672,6 +965,25 @@ declare global {
       stepsReady(): boolean
       /** 1인칭 시선을 강제한다 (E2E용 — 포인터 락 없이 시점 검증) */
       look(yaw: number, pitch?: number): void
+      /**
+       * 인트로를 임의 시각으로 돌린다 (E2E — 6.6초를 실시간으로 기다리지 않는다).
+       *
+       * 소프트웨어 래스터에서는 한 프레임이 수백 ms 라, 벽시계로 기다리면 어느
+       * 샷의 프레임이 잡힐지 알 수 없다. **보고 싶은 시각을 직접 지정한다.**
+       */
+      seekIntro(tMs: number): void
+      /** 다음 프레임의 화면 중앙 평균 밝기를 요청한다 (E2E) */
+      wantLuma(): void
+      /** 마지막으로 잰 값. 아직이면 −1 */
+      luma(): number
+      /** 자유 카메라 — 단계별 눈 검사(QA)용. 월드 좌표로 세우고 한 점을 본다 */
+      freeCam(pos: [number, number, number], look: [number, number, number]): void
+      /** 인트로 한 프레임의 실측값 — 카메라·주인공이 실제로 어디 있는가 (E2E) */
+      introProbe(): {
+        cam: [number, number, number]; actor: [number, number, number]
+        dist: number; visible: boolean; phone: string; busOn: number
+        arm: Record<string, [number, number, number]>
+      }
       /** 지금 화면 안에 들어온 게이트 표지 수 (0~6) */
       visibleGates(): number
       mode(): 'fp' | 'tp'
@@ -759,6 +1071,56 @@ window.__game = {
   camTrace: () => camTrace.splice(0, camTrace.length),
   setInterp: (on: boolean) => { interpOn = on },
   look: (yaw, pitch = 0) => { forcedInput = { ...(forcedInput ?? {}), lookYaw: yaw, lookPitch: pitch } },
+  introProbe: () => {
+    const t = introHold ?? 0
+    const a = actorAt(t)
+    const c = stage.camera.position
+    return {
+      cam: [c.x, c.y, c.z] as [number, number, number],
+      actor: [a.x, a.y, a.z] as [number, number, number],
+      dist: Math.hypot(a.x - c.x, -a.y - c.z),
+      visible: player?.root.visible ?? false,
+      /** 버스 외피 네 조각이 지금 켜져 있는가 — 연속성 검사용 */
+      busOn: busExterior().filter((o) => o.visible).length,
+      phone: (() => {
+        if (!phone) return 'none'
+        const v = new Vector3()
+        phone.root.getWorldPosition(v)
+        return `${phone.root.visible} ${v.x.toFixed(2)},${v.y.toFixed(2)},${v.z.toFixed(2)}`
+      })(),
+      arm: (() => {
+        const out: Record<string, [number, number, number]> = {}
+        const v = new Vector3()
+        for (const n of ['ShoulderR', 'UpperArmR', 'LowerArmR',
+          'Chest', 'Spine', 'Hips', 'UpperLegR', 'LowerLegR', 'FootR', 'Head']) {
+          const o = player?.root.getObjectByName(n)
+          if (o) { o.getWorldPosition(v); out[n] = [+v.x.toFixed(3), +v.y.toFixed(3), +v.z.toFixed(3)] }
+        }
+        if (phone) { phone.root.getWorldPosition(v); out.phone = [+v.x.toFixed(3), +v.y.toFixed(3), +v.z.toFixed(3)] }
+        // 위팔 본의 로컬 축이 월드에서 어디를 가리키는가 — 회전축을 고르는 근거
+        for (const bn of ['UpperArmR', 'UpperArmL', 'LowerArmR']) {
+          const b = player?.root.getObjectByName(bn)
+          if (!b) continue
+          const q = b.getWorldQuaternion(new Quaternion())
+          for (const [k, ax] of [['x', new Vector3(1, 0, 0)], ['y', new Vector3(0, 1, 0)],
+            ['z', new Vector3(0, 0, 1)]] as const) {
+            const d = ax.clone().applyQuaternion(q)
+            out[`${bn}.${k}`] = [+d.x.toFixed(3), +d.y.toFixed(3), +d.z.toFixed(3)]
+          }
+        }
+        return out
+      })(),
+    }
+  },
+  freeCam: (pos, look) => {
+    freeCamAt = { pos, look }
+  },
+  wantLuma: () => { lumaWant = true; lumaValue = -1 },
+  luma: () => lumaValue,
+  seekIntro: (tMs) => {
+    if (introAt === null) startIntro()
+    introHold = tMs
+  },
   mode: () => cameraRig.mode(),
   toggleView: () => { cameraRig.toggleMode(); applyView() },
   visibleGates: () => {

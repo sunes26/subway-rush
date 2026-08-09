@@ -176,6 +176,7 @@ export const createHud = (mount: HTMLElement): Hud => {
   let lastLocked = false
   let lastCoord = ''
   let lastSig = ''
+  let lastPlaying = true
   const shown = new Map<number, HTMLElement>()
 
   return {
@@ -190,6 +191,18 @@ export const createHud = (mount: HTMLElement): Hud => {
       obsBody.textContent = body
     },
     sync(s, pointerLocked) {
+      /**
+       * 타이틀·엔딩에서는 HUD 를 통째로 숨긴다.
+       *
+       * 예전엔 두 화면이 HUD **위에** 겹쳐 떴다. 타이틀에 `3:00` 타이머·스태미너
+       * `100%`·`소지품 0/10` 이 다 보이는데 셋 다 아직 시작도 안 한 판의 값이고,
+       * 엔딩에서는 결과 카드와 같은 밝기로 겹쳐 어느 쪽을 읽어야 하는지 알 수 없었다.
+       * (실측: `tests/e2e/__shots__/00-title.png` · `ending-e06.png`)
+       *
+       * 미니맵·디버그·상호작용 표시는 전부 이 루트 안이라 같이 따라간다.
+       */
+      const playing = s.phase === 'playing' || s.phase === 'boarding'
+      if (playing !== lastPlaying) { el.className = playing ? '' : 'off'; lastPlaying = playing }
       lockHint.className =
         firstPerson && !pointerLocked && (s.phase === 'playing' || s.phase === 'boarding') ? 'on' : ''
       cross.className = firstPerson && pointerLocked ? 'on' : ''

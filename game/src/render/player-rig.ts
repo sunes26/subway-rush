@@ -7,7 +7,7 @@
 
 import {
   AnimationMixer, Group, LoopOnce, LoopRepeat, Mesh, MeshBasicMaterial,
-  CircleGeometry, type AnimationAction, type AnimationClip, type Object3D,
+  CircleGeometry, Vector3, type AnimationAction, type AnimationClip, type Object3D,
 } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js'
@@ -60,14 +60,71 @@ export const loadPlayerRig = async (url: string, outline: boolean, scale = 1): P
   // 스켈레톤을 공유해야 하는데, 그 복잡도를 P0 게이트 전에 지불할 이유가 없다.
   void outline
 
-  // 접지 그림자 — 쿼터뷰에서 높이를 읽게 해주는 유일한 단서
+  /**
+   * 접지 그림자 — 실제 그림자가 없는 씬에서 발이 바닥에 붙어 보이게 하는 단서.
+   *
+   * ■ ★ 계수는 **실측 보폭에서 나왔다** — 0.42 는 배율이 없던 시절의 값이다
+   *
+   *   한동안 `0.42 * scale` 이었다. `CHAR_SCALE` 1.6 이 나중에 곱해지면서
+   *   반지름 0.67 · **지름 1.34m** 가 됐다. 실측하면 그게 얼마나 큰지 나온다:
+   *
+   *     두 발 간격  걸을 때 0.316m · 뛸 때(최대 보폭) 0.815m
+   *     그림자      지름 1.30m        ← 걸을 때 발자국의 **4.1배**
+   *
+   *   그래서 인물 밑에 검은 웅덩이가 깔렸다. 사람이 아니라 물체가 떠 있는 것처럼
+   *   보인다. 원래 0.42 는 P0 쿼터뷰에서 **높이를 읽는 단서**로 크게 잡은 값인데,
+   *   지금은 1인칭이 기본이고 3인칭은 인트로에서만 쓴다 — 전제가 바뀌었다.
+   *
+   *   최대 보폭 0.815m 를 덮는 반지름은 0.41 이다. 배율을 따라가되 그 값이
+   *   나오도록 계수를 0.26 으로 잡는다(0.26 × 1.6 = 0.416).
+   */
   const shadow = new Mesh(
-    new CircleGeometry(0.42 * scale, 20),
+    new CircleGeometry(0.26 * scale, 20),
     new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.26, depthWrite: false }),
   )
   shadow.rotation.x = -Math.PI / 2
   shadow.position.y = 0.02
   root.add(shadow)
+
+  /**
+   * ★ 스킨드 메시의 **프러스텀 컬링을 끈다.**
+   *
+   * three 는 스킨드 메시도 `geometry.boundingSphere` 로 컬링하는데, 그 구는
+   * **본이 하나도 안 움직인 바인드 포즈** 기준이다. 이 에셋은 바인드 포즈가 원점에서
+   * 한참 떨어져 있어서(실측: 리그를 (−62.08, 21.22) 에 놓았는데 바운딩 박스 중심이
+   * (−57.82, 21.21) — 4.3m 차이) 카메라가 **실제로 보이는 자리**를 가까이서 잡으면
+   * 그 구가 시야 밖으로 판정돼 캐릭터가 통째로 사라진다.
+   *
+   * 실제로 그랬다 — 버스 안 1m 거리에서 접지 그림자만 남고 몸이 안 그려졌다
+   * (그림자는 일반 Mesh 라 컬링이 맞게 됐다). 1인칭이 기본이라 그동안 안 드러났다.
+   *
+   * 객체 하나라 컬링을 꺼도 비용이 없다. 근본 해결은 바인드 포즈를 원점에 맞춰
+   * 다시 익스포트하는 것이지만, 그건 에셋 작업이고 여기서 막을 수 있다.
+   */
+  model.traverse((o) => { o.frustumCulled = false })
+
+  /**
+   * ★ 모델이 리그 원점에서 **1.92m 떨어져** 그려지던 것을 되돌린다.
+   *
+   * 실측(`introProbe`): 리그를 월드 (−62.08, 21.22) 에 놓았는데 `Hips` 본이
+   * (−62.08, 19.30) 에 있었다 — 로컬 x 로 −1.92m. 에셋의 아마추어가 파일 원점에서
+   * 1.2 유닛 밀려 있고, 거기에 `CHAR_SCALE` 1.6 이 곱해진 값이다.
+   *
+   * 1인칭이 기본이라 그동안 아무도 못 봤다. 그런데 `V` 3인칭에서는 **캐릭터가 자기
+   * 위치에서 2m 옆에 서 있었고**, 인트로에서 좌석에 앉히자 옆 열에 앉았다.
+   *
+   * 숫자를 박지 않고 `Hips` 의 바인드 포즈 위치에서 **역산**한다 — 에셋을 다시
+   * 뽑아 오프셋이 달라져도 따라간다. 높이(y)는 건드리지 않는다: 엉덩이가 발보다
+   * 위에 있는 것은 오프셋이 아니라 사람의 생김새다.
+   */
+  const hips = model.getObjectByName('Hips')
+  if (hips) {
+    const w = new Vector3()
+    model.updateWorldMatrix(true, true)
+    hips.getWorldPosition(w)
+    model.position.x -= w.x - root.position.x
+    model.position.z -= w.z - root.position.z
+  }
 
   const mixer = new AnimationMixer(model)
   const clips = new Map<string, AnimationClip>()

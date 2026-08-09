@@ -5,6 +5,7 @@
  * (S12-7 양심 게이지 숫자 미표시 · S12-8 조롱 문구는 코드 리뷰 / 아래 어휘 검사)
  */
 
+import { EMPTY_TALLY } from '../../src/state/reducer'
 import { describe, expect, it } from 'vitest'
 import { ENDINGS, FAIL_HINTS, resolveEnding } from '../../src/data/endings'
 import { CHASE, TOTAL_TIME_MS } from '../../src/data/tuning'
@@ -45,7 +46,7 @@ describe('S12-1 엔딩 6종이 각각 재현된다', () => {
     const s = start(7, {
       boarded: true,
       timeLeftMs: 20_000,
-      tally: { coinsEarned: 3000, itemsUsed: [], secrets: [], pushes: 0 },
+      tally: { ...EMPTY_TALLY, coinsEarned: 3000, itemsUsed: [], secrets: [], pushes: 0 },
     })
     expect(resolveEnding(s).id).toBe('E-14')
   })
@@ -74,7 +75,7 @@ describe('S12-2~S12-3 우선순위', () => {
       boarded: true,
       timeLeftMs: 20_000,
       scores: { conscience: -5, style: 0, knowledge: 0 },
-      tally: { coinsEarned: 4500, itemsUsed: [], secrets: [], pushes: 0 },
+      tally: { ...EMPTY_TALLY, coinsEarned: 4500, itemsUsed: [], secrets: [], pushes: 0 },
     })
     expect(resolveEnding(s).id, 'E-14 priority 90 > E-10 80').toBe('E-14')
   })
@@ -223,7 +224,7 @@ describe('S12 엔딩 판정이 시뮬 종료와 연결된다', () => {
       { timeLeftMs: -99_999 },
       { timeLeftMs: TOTAL_TIME_MS },
       { scores: { conscience: 5, style: 9, knowledge: 12 } },
-      { tally: { coinsEarned: 99_999, itemsUsed: [], secrets: [], pushes: 0 } },
+      { tally: { ...EMPTY_TALLY, coinsEarned: 99_999, itemsUsed: [], secrets: [], pushes: 0 } },
     ]
     for (const p of wild) expect(() => resolveEnding(start(7, p))).not.toThrow()
   })

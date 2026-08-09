@@ -97,6 +97,20 @@ export const ENDINGS: readonly EndingDef[] = [
     /**
      * 🕊️ 히든 굿엔딩 — **열차를 놓친 사람에게 주는 유일한 보상이다.**
      * `!boarded` 가 조건에 들어가는 것이 핵심이다. GDD §9.4: *"실패했지만 역무원이 급행 안내."*
+     *
+     * ■ ★ 세 번째 항 `SEAT_YIELDED` 를 뺐다 — **그 플래그를 켜는 코드가 없다.**
+     *
+     * 리포 전체에서 그 문자열은 `state/types.ts` 의 선언과 여기 조건, **두 곳뿐**이다.
+     * 임산부 배려석 상호작용 자체가 게임에 없다 — `InteractKind` 12종 어디에도 없고
+     * NPC·좌표·대화 어느 것도 붙어 있지 않다. 나머지 다섯 플래그는 전부 발행처가
+     * 있는데(`interact.ts`·`staff.ts`·`train.ts`) 이것 하나만 0곳이다.
+     *
+     * 그래서 이 엔딩은 **실제 플레이로 도달할 수 없었다.** 유닛 테스트가 통과한 건
+     * 플래그를 배열에 직접 넣기 때문이다 — 판정기는 맞았지만 그 상태에 이르는
+     * 길이 없었다. 없는 조건을 지운다. 배려석 상호작용은 NPC·좌표·대화가 붙는
+     * 별건이고, 그 전까지 엔딩 하나를 죽여 둘 이유가 없다.
+     *
+     * 배려석이 생기면 항을 여기 되돌리면 된다. 선언은 `types.ts` 에 남겨 뒀다.
      */
     id: 'E-12',
     priority: 85,
@@ -106,8 +120,7 @@ export const ENDINGS: readonly EndingDef[] = [
     when: (s) =>
       !s.boarded &&
       s.flags.includes('WALLET_RETURNED') &&
-      s.flags.includes('GRANDPA_HELPED') &&
-      s.flags.includes('SEAT_YIELDED'),
+      s.flags.includes('GRANDPA_HELPED'),
   },
   {
     id: 'E-11',
