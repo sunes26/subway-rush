@@ -697,6 +697,7 @@ const frame = (now: number): void => {
         scroll: f.stage.scroll,
         led: f.stage.led,
         wrong: outroKind === 'wrongway',
+        glow: f.stage.glow,
       })
       outro.sync(t, f.stage.red)
 

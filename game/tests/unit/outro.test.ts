@@ -123,9 +123,30 @@ describe('컷마다 자기 몫의 몸짓이 있다', () => {
     expect(outroAt('wrongway', OUTRO_MS, PX).actor.slump).toBeGreaterThan(0.9)
   })
 
-  it('WRONG WAY 는 터널을 안 걷는다 — 잘못 탄 사람에게 일출은 보상이다', () => {
-    expect(outroAt('wrongway', OUTRO_MS, PX).stage.tunnel).toBe(1)
-    expect(outroAt('wrongway', OUTRO_MS, PX).stage.red).toBeGreaterThan(0)
+  /**
+   * ★ 순서가 이 엔딩의 전부다. **안내판을 먼저 읽고, 그 다음에 창밖이 바뀐다.**
+   *   반대로 두면 그냥 무서운 배경이 지나간 것이 되고, 「신촌」이 원인이 아니게 된다.
+   */
+  it('WRONG WAY 는 안내판이 먼저, 지옥이 나중이다', () => {
+    const atLed = outroAt('wrongway', SHOT.turn - 200, PX).stage
+    expect(atLed.led, '안내판은 이미 켜져 있다').toBeGreaterThan(0.9)
+    expect(atLed.tunnel, '창밖은 아직 터널이다').toBe(1)
+
+    const last = outroAt('wrongway', OUTRO_MS, PX).stage
+    expect(last.tunnel, '지옥이 드러났다').toBeLessThan(0.02)
+    expect(last.glow, '붉은 빛이 객실로 들어온다').toBeGreaterThan(0.9)
+    expect(last.red).toBeGreaterThan(0)
+  })
+
+  /**
+   * 창밖 빛이 **객실 안으로 들어오는가.** unlit 판만 바꾸면 "창에 붙인 사진"이 된다 —
+   * 배경과 인물이 같은 공간에 있다는 증거는 이 값 하나뿐이다(`ending-stage.ts` 광원).
+   */
+  it('세 컷 모두 끝에서 창밖 빛이 들어와 있다', () => {
+    for (const kind of ['success', 'jit', 'wrongway'] as const) {
+      expect(outroAt(kind, OUTRO_MS, PX).stage.glow, kind).toBeGreaterThan(0.9)
+      expect(outroAt(kind, 0, PX).stage.glow, kind).toBe(0)
+    }
   })
 
   it('성공 계열은 터널이 걷히고 붉은 기가 없다', () => {

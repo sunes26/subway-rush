@@ -26,8 +26,9 @@
  */
 
 import {
-  CanvasTexture, Color, DoubleSide, Group, LinearFilter, Mesh, MeshBasicMaterial,
-  PlaneGeometry, RepeatWrapping, SRGBColorSpace, type Texture,
+  CanvasTexture, Color, DirectionalLight, DoubleSide, Group, LinearFilter, Mesh,
+  MeshBasicMaterial, PlaneGeometry, PointLight, RepeatWrapping, SRGBColorSpace,
+  TextureLoader, type Texture,
 } from 'three'
 import { TRAIN } from '../data/tuning'
 import { FLOOR } from '../data/world'
@@ -37,9 +38,18 @@ import { FLOOR } from '../data/world'
  * 진짜 차창(`TR_dwin_`) 뒤에 이 판이 놓여야 창을 통해 보인다.
  */
 const GLASS_Y = TRAIN.bodyYMax + 0.06
-/** 창 높이 — 실제 차창 띠에 맞춘다. 아래는 좌석 등받이 위, 위는 선 사람 눈 위 */
-const GLASS_Z0 = FLOOR.B2 + 1.02
-const GLASS_Z1 = FLOOR.B2 + 2.06
+/**
+ * 창 높이 — **실제 차창보다 크게 잡는다.**
+ *
+ * 처음엔 1.04m(실제 차창 띠)였다. 그런데 창 폭이 32m 라 종횡비가 **30:1** 이 되고,
+ * 거기 어떤 풍경을 넣어도 하늘·건물·물이 각각 20~40px 짜리 줄무늬로 뭉갠다(실측).
+ * 이 컷에서 "탁 트였다"를 만드는 것은 구도가 아니라 **창의 세로 크기**다.
+ * 1.60m 면 카메라 자리(창에서 2.6~2.9m)에서 화면 세로의 절반쯤을 창이 차지한다.
+ *
+ * 고증보다 컷을 택한 자리다. 5초 동안 이 창은 객차 부품이 아니라 **화면**이다.
+ */
+const GLASS_Z0 = FLOOR.B2 + 0.80
+const GLASS_Z1 = FLOOR.B2 + 2.40
 const GLASS_Z = (GLASS_Z0 + GLASS_Z1) / 2
 const GLASS_H = GLASS_Z1 - GLASS_Z0
 /**
@@ -63,9 +73,13 @@ export type EndingStage = Readonly<{
    * @param tunnel 터널 불투명도 1 → 0 (내려가면 일출이 드러난다)
    * @param scroll 창밖이 흐른 누적 거리(m 상당). 속도가 곧 이 값의 증가율이다
    * @param led    안내판 불투명도 0 → 1
-   * @param wrong  참이면 안내판이 **신촌**(반대 방면)을 띄운다
+   * @param wrong  참이면 안내판이 **신촌**을 띄우고 창밖이 **지옥**이 된다
+   * @param glow   창밖 빛이 객실로 들어오는 정도 0 → 1. **이 값이 이 컷의 절반이다**
    */
-  sync(o: { x: number; yOff: number; tunnel: number; scroll: number; led: number; wrong: boolean }): void
+  sync(o: {
+    x: number; yOff: number; tunnel: number; scroll: number
+    led: number; wrong: boolean; glow: number
+  }): void
   setVisible(on: boolean): void
 }>
 
@@ -93,6 +107,43 @@ const texOf = (c: HTMLCanvasElement, repeatX = 1): Texture => {
    */
   t.colorSpace = SRGBColorSpace
   return t
+}
+
+/**
+ * 배경 한 장 — **이미지가 있으면 그것을, 없으면 그려서 쓴다.**
+ *
+ * 절차 생성으로는 색과 실루엣까지가 한계다. 레퍼런스 수준(구름 결·물 반사·첨탑
+ * 디테일)은 그림 파일이라야 나온다. 그렇다고 파일이 없을 때 창이 까맣게 비면
+ * 컷 자체가 죽으므로, **둘을 같은 자리에 놓고 있는 쪽을 쓴다.**
+ *
+ *   `game/public/textures/<name>.webp` 가 있으면 → 그 그림
+ *   없으면(404)                                → `draw()` 가 그린 캔버스
+ *
+ * 로드는 비동기라 첫 프레임은 캔버스로 시작했다가 도착하면 갈아탄다. 컷이 5.2초라
+ * 그 사이에 거의 항상 도착하고, 늦어도 그림이 바뀔 뿐 깨지지 않는다.
+ *
+ * ⚠ 파일 규격: 가로로 이어 붙였을 때 **좌우 끝이 맞물려야** 한다(`RepeatWrapping`).
+ *   끝 색이 다르면 20m 마다 세로 줄이 지나간다.
+ */
+const loadOrDraw = (name: string, draw: () => HTMLCanvasElement, repeatX: number): Texture => {
+  const tex = texOf(draw(), repeatX)
+  new TextureLoader().load(
+    `${import.meta.env.BASE_URL}textures/${name}.webp`,
+    (img) => {
+      img.wrapS = RepeatWrapping
+      img.wrapT = RepeatWrapping
+      img.repeat.set(repeatX, 1)
+      img.colorSpace = SRGBColorSpace
+      // 캔버스가 쓰던 자리를 그대로 물려받는다 — 흐른 거리(offset)까지 이어야 안 튄다
+      img.offset.copy(tex.offset)
+      tex.image = img.image
+      tex.needsUpdate = true
+    },
+    undefined,
+    // 없으면 그린 것을 그대로 쓴다. 에셋이 아직 없는 상태가 **정상**이다
+    () => {},
+  )
+  return tex
 }
 
 /**
@@ -182,6 +233,95 @@ const drawDawn = (): HTMLCanvasElement => {
   return c
 }
 
+/**
+ * 지옥 — **반대 방면의 창밖.**
+ *
+ * 처음엔 여기를 터널 그대로 뒀다. "잘못 탄 사람에게 일출은 보상이다"가 이유였는데,
+ * 절반만 맞았다: 보상을 안 주는 것과 **아무 일도 안 일어나는 것**은 다르다.
+ * 어두운 터널은 정상 주행과 구분되지 않아서, 절망이 안내판 글자 하나에만 얹혀 있었다.
+ * 창밖이 바뀌어야 "이 열차가 어디로 가는가"가 화면에 있다.
+ *
+ * ★ 실사를 흉내 내지 않는다. 절차 생성으로 낼 수 있는 것은 **색과 실루엣**뿐이고,
+ *   그 둘만 제대로 잡으면 5초 컷에서는 충분하다 — 흐르는 창밖은 어차피 정지해서
+ *   뜯어볼 수 없다. 이미지 에셋이 들어오면 이 함수는 폴백으로 물러난다.
+ */
+const drawHell = (): HTMLCanvasElement => {
+  const [c, g] = canvas(1024, 256)
+
+  // 하늘 — 위가 더 어둡다. 빛이 **아래(용암)** 에서 온다는 것을 색으로 먼저 말한다
+  const sky = g.createLinearGradient(0, 0, 0, 256)
+  sky.addColorStop(0, '#120301')
+  sky.addColorStop(0.34, '#4a0d06')
+  sky.addColorStop(0.62, '#9e1e08')
+  sky.addColorStop(0.80, '#e84a10')
+  sky.addColorStop(1, '#ffb24a')
+  g.fillStyle = sky
+  g.fillRect(0, 0, 1024, 256)
+
+  // 연기 — 가로로 늘어난 덩어리 몇 개. 하늘이 평평하면 그라디언트로 읽힌다
+  g.fillStyle = 'rgba(20,3,2,.55)'
+  for (let i = 0; i < 22; i++) {
+    const x = (i * 137) % 1024
+    const y = 12 + ((i * 53) % 90)
+    g.beginPath()
+    g.ellipse(x, y, 90 + ((i * 31) % 70), 16 + ((i * 17) % 14), 0, 0, Math.PI * 2)
+    g.fill()
+  }
+
+  // 첨탑 실루엣 — 뾰족할수록 자연물이 아니게 보인다
+  g.fillStyle = '#1a0503'
+  for (let x = -40; x < 1064; x += 46) {
+    const h = 52 + ((x * 37) % 96)
+    const w = 26 + ((x * 13) % 22)
+    g.beginPath()
+    g.moveTo(x, 196)
+    g.lineTo(x + w / 2, 196 - h)
+    g.lineTo(x + w, 196)
+    g.closePath()
+    g.fill()
+  }
+
+  // 지옥문 — **한 장에 하나만.** 둘이면 5초 안에 두 번 지나가 정체가 드러난다
+  const gx = 300
+  g.fillStyle = '#160402'
+  g.fillRect(gx, 96, 150, 100)
+  g.beginPath(); g.arc(gx + 75, 96, 75, Math.PI, 0); g.fill()
+  const inner = g.createLinearGradient(0, 110, 0, 196)
+  inner.addColorStop(0, '#ffdf9a')
+  inner.addColorStop(1, '#ff5a12')
+  g.fillStyle = inner
+  g.fillRect(gx + 26, 118, 98, 78)
+  g.beginPath(); g.arc(gx + 75, 118, 49, Math.PI, 0); g.fill()
+
+  // 쇠사슬 — 위에서 늘어진 고리 두 줄. 지옥 특유의 "매달린 것"이 화면에 필요하다
+  g.strokeStyle = '#2a0d07'
+  g.lineWidth = 5
+  for (const [x0, sag] of [[130, 46], [760, 38]] as const) {
+    g.beginPath()
+    for (let i = 0; i <= 20; i++) {
+      const x = x0 + i * 9
+      g.lineTo(x, 8 + Math.sin((i / 20) * Math.PI) * sag)
+    }
+    g.stroke()
+  }
+
+  // 용암 — 아래쪽. 갈라진 틈이 밝고 그 사이 바닥은 검다
+  g.fillStyle = '#0d0301'
+  g.fillRect(0, 196, 1024, 60)
+  for (let i = 0; i < 40; i++) {
+    const x = (i * 79) % 1024
+    const y = 200 + ((i * 29) % 50)
+    const w = 30 + ((i * 41) % 90)
+    const grd = g.createLinearGradient(x, y, x + w, y)
+    grd.addColorStop(0, 'rgba(255,90,18,0)')
+    grd.addColorStop(0.5, '#ff8a2a')
+    grd.addColorStop(1, 'rgba(255,90,18,0)')
+    g.fillStyle = grd
+    g.fillRect(x, y, w, 3 + ((i * 7) % 4))
+  }
+  return c
+}
+
 /** 차내 안내판 — 「이번 역」과 「다음 역」. 이 한 장이 WRONG WAY 의 전부다 */
 const drawLed = (wrong: boolean): HTMLCanvasElement => {
   const [c, g] = canvas(512, 64)
@@ -226,19 +366,26 @@ export const buildEndingStage = (): EndingStage => {
   root.visible = false
 
   /**
-   * 반복 횟수는 **창 폭(32m)에 맞춘다.** 1회로 두면 512px 그림이 32m 로 늘어나
-   * 보수등이 뭉갠 얼룩이 된다(실측). 터널은 4m 마다(8회), 강은 12.8m 마다(2.5회)
-   * 되풀이한다 — 가까운 것일수록 촘촘해야 흐르는 속도가 눈에 잡힌다.
+   * 반복 횟수는 **창 폭(32m)에 맞춘다.**
+   *
+   * 1회로 두면 그림이 32m 로 늘어나 얼룩이 되고, 너무 잦으면 5초 안에 같은 그림이
+   * 여러 번 지나가 정체가 드러난다. 풍경(일출·지옥)은 20m 마다 한 번(1.6회) —
+   * 컷이 흐르는 거리가 그보다 짧아 **이음매가 화면에 안 들어온다.**
+   * 터널은 4m 마다(8회): 가까운 것일수록 촘촘해야 속도가 눈에 잡힌다.
    */
-  const dawnTex = texOf(drawDawn(), 2.5)
+  const dawnTex = loadOrDraw('ending-dawn', drawDawn, 1.6)
+  const hellTex = loadOrDraw('ending-hell', drawHell, 1.6)
   const tunnelTex = texOf(drawTunnel(), 8)
   const ledOk = texOf(drawLed(false))
   const ledWrong = texOf(drawLed(true))
 
-  // 뒤(일출) → 앞(터널) 순으로 겹친다. 터널이 걷히면 뒤가 드러난다
-  const dawn = panel(GLASS_W, GLASS_H, dawnTex, 1)
-  dawn.position.set(0, GLASS_Z, -GLASS_Y - 0.02)
-  root.add(dawn)
+  /**
+   * 뒤(풍경) → 앞(터널) 두 장. 터널이 걷히면 뒤가 드러난다.
+   * 뒤에 무엇이 오는지는 `wrong` 이 정한다 — 성공이면 일출, 반대 방면이면 지옥.
+   */
+  const back = panel(GLASS_W, GLASS_H, dawnTex, 1)
+  back.position.set(0, GLASS_Z, -GLASS_Y - 0.02)
+  root.add(back)
 
   const tunnel = panel(GLASS_W, GLASS_H, tunnelTex, 1)
   tunnel.position.set(0, GLASS_Z, -GLASS_Y)
@@ -260,26 +407,74 @@ export const buildEndingStage = (): EndingStage => {
   led.position.set(0, LED_Z, -LED_Y)
   root.add(led)
 
+  /**
+   * ★ **창밖 빛을 객실 안으로 들여보낸다. 이 컷에서 가장 중요한 물건이다.**
+   *
+   * 창밖 판은 `MeshBasicMaterial`(unlit)이라 아무리 밝게 그려도 **빛이 0** 이다.
+   * 그래서 배경만 바꿨을 때 "창에 붙인 사진"으로 보였다 — 배경과 인물이 같은 공간에
+   * 있다는 증거가 화면에 없었기 때문이다. 레퍼런스 이미지에서 감동을 만드는 것의
+   * 절반은 하늘이 아니라 **인물 뒷목과 어깨에 걸린 역광**이다.
+   *
+   * 객실 재질은 `MeshToonMaterial`(`render/toon.ts`)이라 광원에 반응한다. 창 바깥에
+   * 광원 하나를 두고 컷과 함께 강도를 올리면, 좌석·손잡이봉·주인공이 **같이** 물든다.
+   *
+   * ⚠ `scene.ts setMood` 가 쥔 5개 광원은 손대지 않는다 — 그쪽은 매 프레임 존 기준으로
+   *   자기 값을 되돌리므로 여기서 만지면 싸움이 난다. 이 광원은 무대 소유다.
+   */
+  const sunLight = new DirectionalLight(0xffb066, 0)
+  sunLight.position.set(0, GLASS_Z + 0.4, -GLASS_Y - 4)
+  sunLight.target.position.set(0, FLOOR.B2 + 1.0, -(TRAIN.bodyYMin + 0.4))
+  root.add(sunLight)
+  root.add(sunLight.target)
+
+  /**
+   * 지옥은 **아래에서** 비친다. 용암이 바닥에 있으니 당연한데, 이 방향 하나가
+   * "붉은 필터"와 "붉은 공간"을 가른다 — 위에서 붉게 비추면 그냥 조명색이다.
+   */
+  const lavaLight = new PointLight(0xff3b12, 0, 26, 1.4)
+  lavaLight.position.set(0, FLOOR.B2 + 0.35, -GLASS_Y + 0.6)
+  root.add(lavaLight)
+
   const ledMat = led.material as MeshBasicMaterial
+  const backMat = back.material as MeshBasicMaterial
   const tunnelMat = tunnel.material as MeshBasicMaterial
 
   return {
     root,
-    setVisible(on) { root.visible = on },
-    sync({ x, yOff, tunnel: tunnelK, scroll, led: ledK, wrong }) {
+    setVisible(on) {
+      root.visible = on
+      // 꺼질 때 광원도 확실히 끈다 — 다시하기 뒤 역이 주황색으로 물들면 안 된다
+      if (!on) { sunLight.intensity = 0; lavaLight.intensity = 0 }
+    },
+    sync({ x, yOff, tunnel: tunnelK, scroll, led: ledK, wrong, glow }) {
       root.position.x = x
       // 월드 y 는 three z 로 부호가 뒤집혀 들어간다(`train-rig.ts` 와 같은 규약)
       root.position.z = -yOff
       tunnelMat.opacity = tunnelK
       ledMat.opacity = ledK
-      const want = wrong ? ledWrong : ledOk
-      if (ledMat.map !== want) { ledMat.map = want; ledMat.needsUpdate = true }
+
+      const wantLed = wrong ? ledWrong : ledOk
+      if (ledMat.map !== wantLed) { ledMat.map = wantLed; ledMat.needsUpdate = true }
+      const wantBack = wrong ? hellTex : dawnTex
+      if (backMat.map !== wantBack) { backMat.map = wantBack; backMat.needsUpdate = true }
+
+      // 빛은 창밖이 드러난 만큼만 들어온다 — 터널이 걷히는 곡선과 같이 움직인다
+      sunLight.intensity = wrong ? 0 : glow * 1.15
+      /**
+       * 2.4 였을 때 인물이 통째로 분홍색으로 날아가 **형태가 죽었다**(실측).
+       * 툰 재질은 3단 램프라 일정 밝기를 넘으면 전부 최상단 계단으로 붙는다 —
+       * 세게 줄수록 붉어지는 게 아니라 **평평해진다.** 1.7 이 색은 확실히 얹히면서
+       * 실루엣이 남는 지점이다.
+       */
+      lavaLight.intensity = wrong ? glow * 1.7 : 0
+
       /**
        * 창밖이 흐르는 방향은 **진행의 반대**다. 열차가 +x 로 가면 바깥은 −x 로 흐른다.
-       * 터널이 강보다 빨리 흐른다 — 가까운 것이 빨리 지나가는 그 차이가 거리감이다.
+       * 터널이 풍경보다 빨리 흐른다 — 가까운 것이 빨리 지나가는 그 차이가 거리감이다.
        */
       tunnelTex.offset.x = scroll * 0.11
       dawnTex.offset.x = scroll * 0.018
+      hellTex.offset.x = scroll * 0.022
     },
   }
 }

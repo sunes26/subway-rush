@@ -96,6 +96,14 @@ export type OutroStage = Readonly<{
   scroll: number
   /** 차내 안내판 불투명도 */
   led: number
+  /**
+   * 창밖 빛이 객실로 들어오는 정도 0~1.
+   *
+   * `tunnel` 의 거울상이 아니다 — 터널이 걷히는 것보다 **조금 늦게, 조금 더 길게**
+   * 오른다. 빛이 먼저 들어오면 아직 안 보이는 것이 비추는 꼴이 되고, 정확히 같이
+   * 움직이면 두 값이 하나라는 뜻이라 따로 둘 이유가 없다.
+   */
+  glow: number
   /** 화면 전체에 얹는 붉은 기 0~1 (WRONG WAY 전용) */
   red: number
 }>
@@ -244,14 +252,25 @@ const stageAt = (kind: OutroKind, t: number): OutroStage => {
 
   if (kind === 'wrongway') {
     /**
-     * 바깥은 **터널 그대로 둔다.** 잘못 탄 사람에게 한강 일출을 보여 주면 그건 보상이다.
-     * 대신 안내판이 ② 끝에서 켜지고, 그것을 읽은 뒤 화면에 붉은 기가 돈다.
+     * 바깥이 **지옥으로 바뀐다.**
+     *
+     * 한때 여기를 터널 그대로 뒀다. "잘못 탄 사람에게 일출은 보상이다"가 이유였고
+     * 그 절반은 지금도 맞다 — 일출은 안 준다. 그런데 보상을 안 주는 것과 **아무 일도
+     * 안 일어나는 것**은 다르다. 어두운 터널은 정상 주행과 구분이 안 돼서, 절망이
+     * 안내판 글자 하나에만 얹혀 있었다.
+     *
+     * 순서가 중요하다: **안내판을 먼저 읽고**(led) 그 다음에 창밖이 바뀐다(tunnel).
+     * 글자가 먼저 와야 "신촌이구나"가 원인이 되고, 창밖은 그 결과로 읽힌다.
+     * 반대로 두면 그냥 무서운 배경이 지나간 것이 된다.
      */
+    const reveal = easeInOut(seg(t, SHOT.turn + 150, SHOT.turn + 1200))
     return {
-      tunnel: 1,
+      tunnel: 1 - reveal,
       scroll,
       led: seg(t, SHOT.turn - 700, SHOT.turn - 200),
-      red: seg(t, SHOT.turn + 200, SHOT.turn + 1100) * 0.34,
+      glow: reveal,
+      // 붉은 기는 **보조**다. 실제 어둠과 붉음은 무대의 광원이 만든다
+      red: seg(t, SHOT.turn + 400, SHOT.turn + 1300) * 0.22,
     }
   }
 
@@ -264,6 +283,8 @@ const stageAt = (kind: OutroKind, t: number): OutroStage => {
     tunnel: 1 - easeInOut(seg(t, SHOT.turn - 500, SHOT.outside - 600)),
     scroll,
     led: seg(t, 900, 1600) * 0.85,
+    // 빛은 조금 늦게 들어와 조금 더 오래 남는다 — 해가 뜨는 속도가 그렇다
+    glow: easeInOut(seg(t, SHOT.turn - 200, SHOT.outside - 200)),
     red: 0,
   }
 }
