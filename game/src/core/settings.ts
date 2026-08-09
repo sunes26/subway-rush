@@ -37,14 +37,24 @@ export type Settings = Readonly<{
   invertY: boolean
   res: ResKey
   screen: ScreenMode
+  /**
+   * 화면 밝기 **배율**. 1.0 이 기본 노출(`renderer.toneMappingExposure` 기준값)이다.
+   * 감도(`sens`)와 같은 이유로 절대값이 아니라 배율로 둔다 — 나중에 기준 노출을
+   * 튜닝해도 사용자가 맞춰 둔 "이만큼 더 밝게"가 유지된다.
+   */
+  brightness: number
 }>
 
 export const DEFAULT_SETTINGS: Settings = {
   master: 1, bgm: 1, sfx: 1, sens: 1, invertY: false, res: 'high', screen: 'windowed',
+  brightness: 1,
 }
 
 export const SENS_MIN = 0.25
 export const SENS_MAX = 3
+
+export const BRIGHTNESS_MIN = 0.6
+export const BRIGHTNESS_MAX = 1.6
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v))
 
@@ -64,6 +74,7 @@ export const normalize = (v: unknown): Settings => {
     bgm: num(v['bgm'], DEFAULT_SETTINGS.bgm, 0, 1),
     sfx: num(v['sfx'], DEFAULT_SETTINGS.sfx, 0, 1),
     sens: num(v['sens'], DEFAULT_SETTINGS.sens, SENS_MIN, SENS_MAX),
+    brightness: num(v['brightness'], DEFAULT_SETTINGS.brightness, BRIGHTNESS_MIN, BRIGHTNESS_MAX),
     invertY: typeof v['invertY'] === 'boolean' ? v['invertY'] : DEFAULT_SETTINGS.invertY,
     res: res === 'high' || res === 'mid' || res === 'low' ? res : DEFAULT_SETTINGS.res,
     screen: screen === 'windowed' || screen === 'fullscreen' ? screen : DEFAULT_SETTINGS.screen,

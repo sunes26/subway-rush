@@ -33,6 +33,8 @@ export type Stage = Readonly<{
    * 라이트맵이 없는 빌드(사이드카 없이 익스포트)에서는 1.0 그대로 — 예전 룩이 나온다.
    */
   setIndirect(scale: number): void
+  /** 설정의 "밝기" 슬라이더 배율. 1.0 이 `BASE_EXPOSURE` 그대로다. */
+  setExposure(mult: number): void
   dispose(): void
 }>
 
@@ -48,11 +50,14 @@ const MOOD: Record<ZoneId, { bg: number; fog: number; density: number; sun: numb
   Z5: { bg: 0x0d0f13, fog: 0x24282f, density: 0.0115, sun: 0.62, amb: 0.18 },
 }
 
+/** 노출 기준값 — 설정의 밝기 슬라이더는 이 값에 배율만 곱한다 */
+const BASE_EXPOSURE = 0.88
+
 export const createStage = (canvas: HTMLCanvasElement): Stage => {
   const renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' })
   renderer.outputColorSpace = SRGBColorSpace
   renderer.toneMapping = ACESFilmicToneMapping
-  renderer.toneMappingExposure = 0.88
+  renderer.toneMappingExposure = BASE_EXPOSURE
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
 
   const scene = new Scene()
@@ -165,6 +170,9 @@ export const createStage = (canvas: HTMLCanvasElement): Stage => {
     },
     setIndirect(scale) {
       indirect = scale
+    },
+    setExposure(mult) {
+      renderer.toneMappingExposure = BASE_EXPOSURE * Math.min(1.6, Math.max(0.6, mult))
     },
     dispose() {
       renderer.dispose()
