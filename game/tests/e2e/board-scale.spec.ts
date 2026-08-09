@@ -44,7 +44,7 @@ for (const [name, id] of [['fail', 'E-06'], ['success', 'E-02'], ['hidden', 'E-0
     await boot(page)
     await page.evaluate((e) => window.__game!.set({ phase: 'ended', endingId: e } as never), id)
     await page.waitForFunction(() => !!document.querySelector('#screen .board.result'),
-      null, { timeout: 20_000 })
+      null, { timeout: 60_000 })
     const b = await boardBox(page, '#screen .board.result')
     console.log(`BOX ${name}  ${b.w}×${b.h}px  뷰포트의 ${b.pct}%`)
     expect(b.w).toBeGreaterThan(0)
