@@ -708,10 +708,12 @@ const frame = (now: number): void => {
         led: f.stage.led,
         wrong: outroKind === 'wrongway',
         glow: f.stage.glow,
+        flash: f.stage.flash,
       })
       outro.sync(t, f.stage.red)
 
-      stage.camera.position.set(f.cam.x, f.cam.eye, -f.cam.y)
+      // 흔들림은 카메라 자리에만 더한다 — 바라보는 점은 그대로라 시선이 안 흔들린다
+      stage.camera.position.set(f.cam.x + f.cam.shakeX, f.cam.eye + f.cam.shakeZ, -f.cam.y)
       stage.camera.rotation.set(0, 0, 0)
       stage.camera.lookAt(f.cam.lx, f.cam.lz, -f.cam.ly)
       stage.camera.near = 0.08

@@ -86,10 +86,11 @@ export type EndingStage = Readonly<{
    * @param led    안내판 불투명도 0 → 1
    * @param wrong  참이면 안내판이 **신촌**을 띄우고 창밖이 **지옥**이 된다
    * @param glow   창밖 빛이 객실로 들어오는 정도 0 → 1. **이 값이 이 컷의 절반이다**
+   * @param flash  번개 — 창밖 빛의 순간 배율(1 = 평소). 새 광원을 안 만든다
    */
   sync(o: {
     x: number; yOff: number; tunnel: number; scroll: number
-    led: number; wrong: boolean; glow: number
+    led: number; wrong: boolean; glow: number; flash: number
   }): void
   setVisible(on: boolean): void
 }>
@@ -133,10 +134,13 @@ const texOf = (c: HTMLCanvasElement, repeatX = 1): Texture => {
  * 로드는 비동기라 첫 프레임은 캔버스로 시작했다가 도착하면 갈아탄다. 컷이 5.2초라
  * 그 사이에 거의 항상 도착하고, 늦어도 그림이 바뀔 뿐 깨지지 않는다.
  *
- * ⚠ 파일 규격: 가로로 이어 붙였을 때 **좌우 끝이 맞물려야** 한다(`RepeatWrapping`).
- *   끝 색이 다르면 20m 마다 세로 줄이 지나간다.
+ * @param band 잘라 쓸 띠의 **중심**이 원본 위에서 몇 % 지점인가(0~1).
+ *   이미지마다 지평선 높이가 달라서 상수 하나로는 안 된다 — 일출은 해와 다리가,
+ *   지옥은 지옥문과 번개가 띠에 들어와야 한다. 실측으로 정한다.
  */
-const loadOrDraw = (name: string, draw: () => HTMLCanvasElement, repeatX: number): Texture => {
+const loadOrDraw = (
+  name: string, draw: () => HTMLCanvasElement, repeatX: number, band: number,
+): Texture => {
   const tex = texOf(draw(), repeatX)
   new TextureLoader().load(
     `${import.meta.env.BASE_URL}textures/${name}.webp`,
@@ -160,8 +164,14 @@ const loadOrDraw = (name: string, draw: () => HTMLCanvasElement, repeatX: number
       const src = img.image as { width: number; height: number }
       const want = (HALF_W * 2) / GLASS_H          // 창의 종횡비 (7.5)
       const bandY = Math.min(1, src.width / (want * src.height))
+      /**
+       * UV 의 y 원점은 **아래**다. `band` 는 읽기 쉽게 위에서 잰 값이라 뒤집어 쓴다.
+       * 띠가 위아래로 넘치지 않게 [0, 1−bandY] 로 물린다.
+       */
+      const fromBottom = 1 - band
+      const offY = Math.max(0, Math.min(1 - bandY, fromBottom - bandY / 2))
       img.repeat.set(repeatX, bandY)
-      img.offset.set(tex.offset.x, Math.max(0, 0.30 - bandY / 2))
+      img.offset.set(tex.offset.x, offY)
 
       // 캔버스가 쓰던 자리를 그대로 물려받는다 — 흐른 거리(offset.x)까지 이어야 안 튄다
       tex.image = img.image
@@ -379,12 +389,47 @@ const drawLed = (wrong: boolean): HTMLCanvasElement => {
   return c
 }
 
+/**
+ * 텍스처는 **부팅 때 만든다 — 컷이 시작될 때가 아니라.**
+ *
+ * 한때 `buildEndingStage()` 안에서 만들었다. 그러면 그림 파일 요청이 **컷이 시작되는
+ * 바로 그 순간** 나가는데, 하필 그때가 메인 스레드가 가장 바쁜 시점이라(카메라 전환 ·
+ * 포즈 계산 · 무대 생성) 5.2초 안에 디코드가 못 끝났다. 실측: 파일을 900KB 에서
+ * 84KB 로 줄여도 컷 내내 폴백 그림이 나왔다 — 크기 문제가 아니라 **타이밍** 문제였다.
+ *
+ * 모듈 최상위에 두면 `main.ts` 가 이 파일을 import 하는 순간(=부팅) 요청이 나가고,
+ * 실제 컷은 아무리 빨라도 몇 분 뒤라 항상 준비돼 있다. 판마다 다시 만들 이유도 없다.
+ *
+ * 풍경(일출·지옥)은 **반복하지 않는다(1회).** 창이 12m 라 한 장이 그 폭을 그대로
+ * 덮는다 — 이음매가 존재하지 않으므로 그림의 좌우 끝을 맞출 필요도 없다.
+ * 터널만 4m 마다(3회) 되풀이한다: 케이블·보수등은 원래 일정 간격으로 지나간다.
+ *
+ * 띠 중심(원본 위에서 %)은 **실측으로 정한 값이다.**
+ *   일출 0.70 — 해가 위에서 68%, 다리·스카이라인이 78%. 그 둘을 다 문다
+ *   지옥 0.58 — 지옥문이 55%, 용암이 75%. 0.70 이면 지옥문 윗부분과 번개가 잘린다
+ */
+const dawnTex = loadOrDraw('ending-dawn', drawDawn, 1, 0.70)
+const hellTex = loadOrDraw('ending-hell', drawHell, 1, 0.58)
+const tunnelTex = texOf(drawTunnel(), 3)
+const ledOk = texOf(drawLed(false))
+const ledWrong = texOf(drawLed(true))
+
 // ─────────────────────────── 조립 ───────────────────────────
 
-const panel = (w: number, h: number, tex: Texture, opacity: number): Mesh => {
+const panel = (w: number, h: number, tex: Texture, opacity: number, gain = 1): Mesh => {
   const m = new Mesh(
     new PlaneGeometry(w, h),
-    new MeshBasicMaterial({ map: tex, transparent: true, opacity, side: DoubleSide, depthWrite: false }),
+    new MeshBasicMaterial({
+      map: tex, transparent: true, opacity, side: DoubleSide, depthWrite: false,
+      /**
+       * ★ `gain > 1` 은 **노출차**다. 어두운 실내에서 밝은 바깥을 보면 창이 하얗게
+       *   뜬다 — 그게 "탁 트였다"의 정체다. 그런데 객실 밝기는 조명이 아니라 GLB 에
+       *   **구워진 라이트맵**에서 오므로(`setIndirect` 는 이미 0.06) 실내를 어둡게
+       *   만들 수가 없다. 그래서 반대로 창을 올린다. ACES 톤매핑이 위쪽을 눌러 주므로
+       *   1.3 이어도 흰색으로 날아가지 않고 밝기만 붙는다.
+       */
+      color: new Color(gain, gain, gain),
+    }),
   )
   // 창밖은 조명을 안 받는다 — 바깥은 우리 역의 형광등과 무관하다(`MeshBasicMaterial`)
   return m
@@ -395,28 +440,12 @@ export const buildEndingStage = (): EndingStage => {
   root.name = 'ending-stage'
   root.visible = false
 
-  /**
-   * 반복 횟수는 **창 폭(32m)에 맞춘다.**
-   *
-   * 풍경(일출·지옥)은 **반복하지 않는다(1회).** 창이 12m 로 줄면서 한 장이 그 폭을
-   * 그대로 덮을 수 있게 됐다 — 이음매가 아예 존재하지 않으므로 그림의 좌우 끝을
-   * 맞출 필요도 없다. 컷 전체에서 흐르는 거리가 한 장의 7~9% 라 이음매가 화면
-   * 가장자리(±6m)까지 밀려올 일도 없다.
-   *
-   * 터널만 4m 마다(3회) 되풀이한다: 가까운 것일수록 촘촘해야 속도가 눈에 잡히고,
-   * 케이블·보수등은 원래 일정 간격으로 지나가는 것이라 반복이 정상이다.
-   */
-  const dawnTex = loadOrDraw('ending-dawn', drawDawn, 1)
-  const hellTex = loadOrDraw('ending-hell', drawHell, 1)
-  const tunnelTex = texOf(drawTunnel(), 3)
-  const ledOk = texOf(drawLed(false))
-  const ledWrong = texOf(drawLed(true))
 
   /**
    * 뒤(풍경) → 앞(터널) 두 장. 터널이 걷히면 뒤가 드러난다.
    * 뒤에 무엇이 오는지는 `wrong` 이 정한다 — 성공이면 일출, 반대 방면이면 지옥.
    */
-  const back = panel(GLASS_W, GLASS_H, dawnTex, 1)
+  const back = panel(GLASS_W, GLASS_H, dawnTex, 1, 1.3)
   back.position.set(0, GLASS_Z, -GLASS_Y - 0.02)
   root.add(back)
 
@@ -479,7 +508,7 @@ export const buildEndingStage = (): EndingStage => {
       // 꺼질 때 광원도 확실히 끈다 — 다시하기 뒤 역이 주황색으로 물들면 안 된다
       if (!on) { sunLight.intensity = 0; lavaLight.intensity = 0 }
     },
-    sync({ x, yOff, tunnel: tunnelK, scroll, led: ledK, wrong, glow }) {
+    sync({ x, yOff, tunnel: tunnelK, scroll, led: ledK, wrong, glow, flash }) {
       root.position.x = x
       // 월드 y 는 three z 로 부호가 뒤집혀 들어간다(`train-rig.ts` 와 같은 규약)
       root.position.z = -yOff
@@ -499,15 +528,21 @@ export const buildEndingStage = (): EndingStage => {
        * 세게 줄수록 붉어지는 게 아니라 **평평해진다.** 1.7 이 색은 확실히 얹히면서
        * 실루엣이 남는 지점이다.
        */
-      lavaLight.intensity = wrong ? glow * 1.7 : 0
+      lavaLight.intensity = wrong ? glow * 1.7 * flash : 0
 
       /**
        * 창밖이 흐르는 방향은 **진행의 반대**다. 열차가 +x 로 가면 바깥은 −x 로 흐른다.
        * 터널이 풍경보다 빨리 흐른다 — 가까운 것이 빨리 지나가는 그 차이가 거리감이다.
        */
       tunnelTex.offset.x = scroll * 0.11
-      dawnTex.offset.x = scroll * 0.018
-      hellTex.offset.x = scroll * 0.022
+      /**
+       * 풍경 속도. 0.018/0.022 였을 때 컷 내내 그림의 8% 밖에 안 흘러 **멈춘 것처럼**
+       * 보였다. 0.030/0.040 이면 13~17% — 흐르는 게 눈에 잡히면서도, 한 장이 안 끝난다
+       * (끝이 화면에 들어오는 한계는 offset 0.24 다. 시야 우단 +3.1m 와 판 끝 +6m 의 차).
+       * 지옥이 33% 빠르다 — 같은 열차인데 더 급해 보이는 것이 이 엔딩의 불안이다.
+       */
+      dawnTex.offset.x = scroll * 0.030
+      hellTex.offset.x = scroll * 0.040
     },
   }
 }

@@ -57,6 +57,14 @@ export type OutroCam = Readonly<{
   x: number
   y: number
   eye: number
+  /**
+   * 카메라 흔들림(m) — x·eye 에 그대로 더한다. WRONG WAY 에서만 0 이 아니다.
+   *
+   * ★ **지속 흔들림이 아니다.** 안내판을 읽은 직후 0.45초, 진폭 2cm 로 감쇠하고 끝난다.
+   *   판이 끝난 뒤 보는 화면이라 계속 흔들면 멀미만 남는다 — 놀란 한 순간이면 된다.
+   */
+  shakeX: number
+  shakeZ: number
   /** 바라보는 지점 (월드) */
   lx: number
   ly: number
@@ -106,6 +114,13 @@ export type OutroStage = Readonly<{
   glow: number
   /** 화면 전체에 얹는 붉은 기 0~1 (WRONG WAY 전용) */
   red: number
+  /**
+   * 번개 — 창밖 빛의 **순간 배율** (1 = 평소). WRONG WAY 전용.
+   *
+   * 새 광원을 만들지 않는다. 이미 있는 용암 광원의 강도를 짧게 튀길 뿐이라
+   * 정리할 것도, 성능에 얹히는 것도 없다.
+   */
+  flash: number
 }>
 
 export type OutroFrame = Readonly<{ cam: OutroCam; actor: OutroActor; stage: OutroStage }>
@@ -117,7 +132,23 @@ const mix = (a: OutroCam, b: OutroCam, k: number): OutroCam => ({
   x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k), eye: lerp(a.eye, b.eye, k),
   lx: lerp(a.lx, b.lx, k), ly: lerp(a.ly, b.ly, k), lz: lerp(a.lz, b.lz, k),
   fov: lerp(a.fov, b.fov, k),
+  shakeX: 0, shakeZ: 0,
 })
+
+/**
+ * 놀란 한 순간의 흔들림. **안내판을 읽은 직후 0.45초**에 몰려 있고 지수로 잦아든다.
+ * 두 축의 주파수를 서로 안 맞게 둬(38Hz · 27Hz) 규칙적인 진동으로 안 읽히게 한다 —
+ * `render/intro.ts busShake` 가 노면 진동에 쓴 것과 같은 수법이다.
+ */
+const shakeAt = (t: number): { x: number; z: number } => {
+  const u = seg(t, SHOT.turn, SHOT.turn + 450)
+  if (u <= 0 || u >= 1) return { x: 0, z: 0 }
+  const fall = (1 - u) ** 2
+  return {
+    x: Math.sin(t / 26) * 0.020 * fall,
+    z: Math.sin(t / 37) * 0.014 * fall,
+  }
+}
 
 /**
  * 창의 y. 무대(`ending-stage.ts`)의 창밖 판과 **같은 식으로 구한다** —
@@ -164,6 +195,7 @@ export const outroAt = (kind: OutroKind, tMs: number, px: number, yOff = 0): Out
 
   // ── ① 몸: 살짝 옆에서. 인물 뒤가 창이라 실루엣이 산다
   const bodyA: OutroCam = {
+    shakeX: 0, shakeZ: 0,
     x: px + 0.46, y: 12.52 + yOff, eye: z + EYE,
     lx: px + 0.40, ly: STAND_Y + yOff, lz: z + 0.92, fov: 51,
   }
@@ -172,26 +204,31 @@ export const outroAt = (kind: OutroKind, tMs: number, px: number, yOff = 0): Out
 
   // ── ② 시선: 창으로 올라간다. 주인공은 화면 왼쪽 아래에 남는다
   const turnTo: OutroCam = {
+    shakeX: 0, shakeZ: 0,
     x: px + 0.34, y: 12.80 + yOff, eye: z + EYE,
     lx: px + 0.30, ly: GLASS_Y + yOff, lz: z + 1.50, fov: 52,
   }
 
   // ── ③ 바깥: 창이 화면을 채운다
   const outsideTo: OutroCam = {
+    shakeX: 0, shakeZ: 0,
     x: px + 0.26, y: 12.76 + yOff, eye: z + EYE + 0.04,
     lx: px + 0.24, ly: GLASS_Y + yOff, lz: z + 1.52, fov: 55,
   }
   /** WRONG WAY 는 ③ 에서 사람에게 돌아온다 — 바깥이 준 답을 받는 얼굴이 필요하다 */
   const backToBody: OutroCam = {
+    shakeX: 0, shakeZ: 0,
     x: px + 0.52, y: 12.50 + yOff, eye: z + EYE - 0.06,
     lx: px + 0.34, ly: STAND_Y + yOff, lz: z + 0.94, fov: 50,
   }
 
-  const cam =
+  const base =
     t < SHOT.body ? mix(bodyA, bodyB, easeInOut(seg(t, 0, SHOT.body)))
     : t < SHOT.turn ? mix(bodyB, turnTo, easeInOut(seg(t, SHOT.body, SHOT.turn)))
     : mix(turnTo, kind === 'wrongway' ? backToBody : outsideTo,
         easeInOut(seg(t, SHOT.turn, SHOT.outside)))
+  const sh = kind === 'wrongway' ? shakeAt(t) : { x: 0, z: 0 }
+  const cam: OutroCam = { ...base, shakeX: sh.x, shakeZ: sh.z }
 
   const a = actorAt(kind, t)
   return { cam, actor: { ...a, y: a.y + yOff }, stage: stageAt(kind, t) }
@@ -269,6 +306,12 @@ const stageAt = (kind: OutroKind, t: number): OutroStage => {
       scroll,
       led: seg(t, SHOT.turn - 700, SHOT.turn - 200),
       glow: reveal,
+      /**
+       * 번개 두 번. 지옥이 드러난 **뒤에** 친다 — 드러나기 전에 치면 터널에서
+       * 번개가 번쩍이는 꼴이 된다. 짧고(90ms) 세게(2.6배), 그리고 안 반복한다.
+       */
+      flash: [SHOT.turn + 700, SHOT.turn + 1500]
+        .reduce((m, at) => Math.max(m, t >= at && t < at + 90 ? 2.6 : 1), 1),
       // 붉은 기는 **보조**다. 실제 어둠과 붉음은 무대의 광원이 만든다
       red: seg(t, SHOT.turn + 400, SHOT.turn + 1300) * 0.22,
     }
@@ -286,6 +329,7 @@ const stageAt = (kind: OutroKind, t: number): OutroStage => {
     // 빛은 조금 늦게 들어와 조금 더 오래 남는다 — 해가 뜨는 속도가 그렇다
     glow: easeInOut(seg(t, SHOT.turn - 200, SHOT.outside - 200)),
     red: 0,
+    flash: 1,
   }
 }
 

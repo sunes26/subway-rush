@@ -109,6 +109,43 @@ describe('반대 방면 승강장', () => {
   })
 })
 
+describe('WRONG WAY 전용 효과', () => {
+  /**
+   * ★ **지속 흔들림이 아니다.** 판이 끝난 뒤 보는 화면이라 계속 흔들면 멀미만 남는다.
+   *   놀란 한 순간(안내판 직후 0.45초)에 몰려 있고, 그 앞뒤로는 정확히 0 이어야 한다.
+   */
+  it('흔들림은 안내판 직후 0.45초에만 있다', () => {
+    expect(outroAt('wrongway', SHOT.turn - 50, PX).cam.shakeX).toBe(0)
+    expect(Math.abs(outroAt('wrongway', SHOT.turn + 120, PX).cam.shakeX)).toBeGreaterThan(0)
+    expect(outroAt('wrongway', SHOT.turn + 500, PX).cam.shakeX).toBe(0)
+    expect(outroAt('wrongway', OUTRO_MS, PX).cam.shakeX).toBe(0)
+  })
+
+  it('진폭이 2cm 를 안 넘는다', () => {
+    for (let t = SHOT.turn; t < SHOT.turn + 500; t += 5) {
+      const c = outroAt('wrongway', t, PX).cam
+      expect(Math.abs(c.shakeX), `t=${t}`).toBeLessThanOrEqual(0.021)
+      expect(Math.abs(c.shakeZ), `t=${t}`).toBeLessThanOrEqual(0.015)
+    }
+  })
+
+  it('성공 계열은 절대 안 흔들린다', () => {
+    for (const kind of ['success', 'jit'] as const) {
+      for (let t = 0; t <= OUTRO_MS; t += 100) {
+        expect(outroAt(kind, t, PX).cam.shakeX, `${kind} t=${t}`).toBe(0)
+        expect(outroAt(kind, t, PX).stage.flash, `${kind} t=${t}`).toBe(1)
+      }
+    }
+  })
+
+  /** 번개는 **지옥이 드러난 뒤에** 친다 — 터널에서 번쩍이면 그냥 오류로 보인다 */
+  it('번개는 짧고, 지옥이 드러난 뒤에 친다', () => {
+    expect(outroAt('wrongway', SHOT.turn + 100, PX).stage.flash).toBe(1)
+    expect(outroAt('wrongway', SHOT.turn + 720, PX).stage.flash).toBeGreaterThan(2)
+    expect(outroAt('wrongway', SHOT.turn + 900, PX).stage.flash).toBe(1)
+  })
+})
+
 describe('컷마다 자기 몫의 몸짓이 있다', () => {
   it('JUST IN TIME 은 무릎을 짚는다 — 그리고 끝까지 다 펴지 않는다', () => {
     expect(outroAt('jit', 500, PX).actor.brace).toBeGreaterThan(0.9)
