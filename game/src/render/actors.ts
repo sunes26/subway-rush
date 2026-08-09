@@ -473,23 +473,58 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
     return dx * dx + dy * dy + dz * dz < OBS_CULL_M * OBS_CULL_M
   }
 
+  /** 강제 대화 동안 둘이 서는 자리 — 플레이어 정면, 나란히 두 자리(디렉터 지시) */
+  const PREACH_STAND_M = 1.7
+  const PREACH_SIDE_M = 0.6
+
+  type Stand = Readonly<{ x: number; y: number; facing: number }>
+
+  /**
+   * 대화 중엔 원래 순찰 좌표(`auntieAt`/`studentAt`) 대신 플레이어 앞 고정 자리를 쓴다 —
+   * 안 그러면 플레이어는 잠긴 채 대화창을 보고 있는데 둘은 계속 순찰 경로를 걷는다.
+   * `s.player.facing` 의 정반대를 보게 둬 마주 선 모양이 된다.
+   */
+  const preachStand = (s: GameState): { aj: Stand; st: Stand } | null => {
+    if (!s.preach.active) return null
+    const p = s.player.pos
+    const f = s.player.facing
+    const cx = p.x + Math.cos(f) * PREACH_STAND_M
+    const cy = p.y + Math.sin(f) * PREACH_STAND_M
+    const perp = f + Math.PI / 2
+    const facing = f + Math.PI
+    return {
+      aj: { x: cx + Math.cos(perp) * -PREACH_SIDE_M, y: cy + Math.sin(perp) * -PREACH_SIDE_M, facing },
+      st: { x: cx + Math.cos(perp) * PREACH_SIDE_M, y: cy + Math.sin(perp) * PREACH_SIDE_M, facing },
+    }
+  }
+
   /**
    * 아주머니·학생 순찰 — 공통 동작. 둘 다 Z1 지상의 독립된 남북 구간을 왕복하다,
-   * 플레이어가 반경(또는 그 2.2배)에 들면 걸음을 멈춘 것처럼 플레이어를 보고 말을 건다.
-   * 이어폰이면 무시당한다. `OBS-07` 온/오프를 같이 본다 — 둘은 한 세트라 아주머니가
-   * 없는 판엔 학생도 없다.
+   * 플레이어가 반경(또는 그 2.2배)에 들면 발견 애니메이션만 바뀐다 — 고개를 플레이어
+   * 쪽으로 돌리진 않는다(디렉터 지시, 항상 걷는 방향만 본다). 이어폰이면 무시당한다.
+   * `OBS-07` 온/오프를 같이 본다 — 둘은 한 세트라 아주머니가 없는 판엔 학생도 없다.
    */
   const syncPreacher = (
     s: GameState, rig: NpcRig, at: { x: number; y: number }, prev: { x: number; y: number },
-    dtSec: number,
+    stand: Stand | null, dtSec: number,
   ): void => {
     if (obsOff(s, rig, 'OBS-07')) return
+    // 대화가 끝난(진행 중은 아닌) 뒤엔 다시 안 보인다 — "순찰 복귀" 가 아니라 "사라짐"
+    if (s.preach.seen && !s.preach.active) { rig.setVisible(false); return }
+
+    if (stand) {
+      rig.place(stand.x, stand.y, FLOOR.L0, stand.facing)
+      rig.setVisible(true)
+      rig.play('AJ_Talk')
+      rig.update(dtSec)
+      return
+    }
+
     const p = s.player.pos
     const d = Math.hypot(p.x - at.x, p.y - at.y)
     const spotted = d <= OBSTACLE.preachRangeM * 2.2
     const walkFacing = Math.atan2(at.y - prev.y, at.x - prev.x)
-    const lookFacing = d > 0.05 ? Math.atan2(p.y - at.y, p.x - at.x) : 0
-    rig.place(at.x, at.y, FLOOR.L0, spotted ? lookFacing : walkFacing)
+    rig.place(at.x, at.y, FLOOR.L0, walkFacing)
 
     const visible = nearObs(s, at.x, at.y, FLOOR.L0)
     rig.setVisible(visible)
@@ -504,11 +539,15 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
     rig.update(dtSec)
   }
 
-  const syncAjumma = (s: GameState, dtSec: number): void =>
-    syncPreacher(s, aj, auntieAt(s.elapsedMs), auntieAt(Math.max(0, s.elapsedMs - 120)), dtSec)
+  const syncAjumma = (s: GameState, dtSec: number): void => {
+    const stand = preachStand(s)
+    syncPreacher(s, aj, auntieAt(s.elapsedMs), auntieAt(Math.max(0, s.elapsedMs - 120)), stand?.aj ?? null, dtSec)
+  }
 
-  const syncStudent = (s: GameState, dtSec: number): void =>
-    syncPreacher(s, st, studentAt(s.elapsedMs), studentAt(Math.max(0, s.elapsedMs - 120)), dtSec)
+  const syncStudent = (s: GameState, dtSec: number): void => {
+    const stand = preachStand(s)
+    syncPreacher(s, st, studentAt(s.elapsedMs), studentAt(Math.max(0, s.elapsedMs - 120)), stand?.st ?? null, dtSec)
+  }
 
   /** 좀비폰족 — 위치가 시간의 순수 함수라 렌더도 **같은 식**을 쓴다 */
   const syncZombie = (s: GameState, dtSec: number): void => {
