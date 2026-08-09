@@ -538,8 +538,8 @@ export const poseAt = (tMs: number): IntroPose => {
    */
   if (t < SHOT.phone) {
     const p = framed(
-      [SEAT.x - 0.02, SEAT.y - 0.60, 1.58],
-      [SEAT.x + 0.10, SEAT.y - 0.36, 1.40],
+      [SEAT.x + 0.10, SEAT.y - 0.56, 1.46],
+      [SEAT.x + 0.26, SEAT.y - 0.40, 1.28],
       /**
        * 겨냥점은 폰(z 1.02)과 머리(z 1.12) **사이**다. 폰만 겨냥하면 시선이 너무
        * 내려가 머리가 화면 위로 잘린다 — 어깨와 머리 일부가 남아야 OTS 다.
@@ -550,7 +550,17 @@ export const poseAt = (tMs: number): IntroPose => {
        * OTS 가 아니라 **폰만 있는 인서트**로 보였다. 폰은 0.42m 앞이라 이만큼
        * 올려도 화면 아래에 넉넉히 남는다.
        */
-      [SEAT.x + 0.13, SEAT.y - 0.18, 1.17],
+      /**
+       * ★ 겨냥점을 **폰으로** 옮겼다.
+       *
+       * 예전 값(+0.13, −0.18, 1.17)은 폰이 몸 중심선에서 20cm 오른쪽·팔꿈치 높이에
+       * 있던 시절에 맞춘 것이다. 팔을 몸 쪽으로 모으고 들어 올린 뒤(`pose.ts` 의
+       * `FOREARM_IN_R`) 폰은 (+0.08, −0.08, 1.09) 로 왔다 — 옛 겨냥점은 그보다
+       * 0.10m 오른쪽이라 **화면 초점이 폰이 아니라 그 옆 허공**이었다.
+       *
+       * 폰과 가슴 사이를 본다. 폰이 화면 가운데로 오고, 어깨와 팔은 왼쪽에 남는다.
+       */
+      [SEAT.x + 0.11, SEAT.y - 0.07, 1.13],
       seg(t, SHOT.interior, PUSH_END), dx,
     )
     return { ...p, eye: p.eye + shake * 0.015, pitch: p.pitch + shake * 0.004 - brakeDip(t) }

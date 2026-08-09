@@ -266,7 +266,7 @@ export const buildPhone = (): Phone => {
    * 원점이 곧 쥐는 점이므로 **팔뚝 끝(= 손)에 그대로** 놓는다.
    * 팔뚝은 0.21m 이고, 본에 매달리면 `CHAR_SCALE` 이 곱해지므로 나눠 준다.
    */
-  root.position.set(0.008, 0.205 / CHAR_SCALE, 0.020)
+  root.position.set(0.008, 0.250 / CHAR_SCALE, 0.020)
   root.visible = false
 
   const want = new Quaternion()

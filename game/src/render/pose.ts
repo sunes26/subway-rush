@@ -83,9 +83,18 @@ const ARM_FWD_L = [-0.880, 0, -0.469] as const
 const FOREARM_FWD_R = [-0.992, 0, 0.102] as const
 const FOREARM_FWD_L = [-0.992, 0, -0.102] as const
 const LEG_FWD = [-1, 0, 0] as const
+/**
+ * **몸 쪽으로 모으는 축**(adduction) — 앞으로 드는 축과 본이 뻗은 방향(로컬 +Y)에
+ * 모두 수직인 방향이다(`FOREARM_FWD_R × (0,1,0)` 정규화).
+ *
+ * 이 축이 없어서 팔이 바깥으로 벌어진 채 앞으로만 나갔다. 실측: 어깨 북 21.16 →
+ * 팔꿈치 20.96 → 폰 21.00. 몸통 중심선이 21.20 이므로 폰이 **20cm 오른쪽**에 있었고,
+ * 그게 "몸 옆에 어색하게 붙었다"의 정체였다.
+ */
+const FOREARM_IN_R = [0.102, 0, 0.992] as const
 
 /** 앉은 자세 — 다리를 접고, 팔은 허벅지 위에 편하게 내린다 */
-const SIT: Readonly<Partial<Record<BoneName, Turn>>> = {
+const SIT: Readonly<Partial<Record<BoneName, Turn | readonly Turn[]>>> = {
   UpperLegL: { axis: LEG_FWD, angle: 1.42 },
   UpperLegR: { axis: LEG_FWD, angle: 1.42 },
   /** 종아리 — 1.30 에서는 발이 바닥에서 15cm 떠 있었다 */
@@ -117,7 +126,7 @@ const SIT: Readonly<Partial<Record<BoneName, Turn>>> = {
  *
  * 손 본이 없어서 아래팔 끝이 곧 손이다. 휴대폰은 그 자리에 붙는다(`phone.ts`).
  */
-const PHONE: Readonly<Partial<Record<BoneName, Turn>>> = {
+const PHONE: Readonly<Partial<Record<BoneName, Turn | readonly Turn[]>>> = {
   /**
    * 위팔은 거의 안 든다. **팔꿈치는 옆구리 근처에 남는다.**
    * 앉은 자세가 이미 0.16 을 얹었으므로 합이 0.26rad(15°) — 팔을 앞으로 뻗는 게
@@ -125,13 +134,20 @@ const PHONE: Readonly<Partial<Record<BoneName, Turn>>> = {
    */
   UpperArmR: { axis: ARM_FWD_R, angle: 0.10 },
   /**
+   * 전완을 앞으로 들면서 **몸 쪽으로 모은다.** 두 번째 항이 그것이다 —
+   * 값은 실측으로 잡았다(아래 `LowerArmR` 주석).
+   */
+  /**
    * 팔꿈치 굽힘 — 앉은 자세 0.52 와 합쳐 1.77rad(101°).
    *
    * 84° 였을 때 폰이 z 1.02 에 왔는데, 카메라가 내려다보는 각과 겹쳐 **무릎 위
    * 물체**처럼 읽혔다. 더 접으면 아래팔이 위를 향해 손이 올라온다 —
    * 팔꿈치는 그대로 옆구리에 있으므로 "팔을 뻗은" 자세가 되지는 않는다.
    */
-  LowerArmR: { axis: FOREARM_FWD_R, angle: 1.25 },
+  LowerArmR: [
+    { axis: FOREARM_FWD_R, angle: 1.60 },
+    { axis: FOREARM_IN_R, angle: -0.70 },
+  ],
   // 화면을 내려다본다. 크게 숙이면 얼굴이 안 보인다
   Head: { axis: [1, 0, 0], angle: 0.26 },
 }
@@ -196,10 +212,19 @@ export const makePoseRig = (root: Object3D): PoseRig => {
   const acc = new Quaternion()
   const v = new Vector3()
 
-  const turn = (t: Turn | undefined, w: number): void => {
+  /**
+   * 회전 하나 또는 **여럿**을 겹친다.
+   *
+   * 한동안 본마다 회전 하나만 받았다. 그런데 "폰을 든다"는 팔을 앞으로 드는 것만이
+   * 아니라 **몸 쪽으로 모으는** 동작이 같이 필요하다 — 하나로는 팔이 바깥으로
+   * 벌어진 채 앞으로만 나가서 폰이 몸 중심선에서 20cm 오른쪽에 떠 있었다.
+   */
+  const turn = (t: Turn | readonly Turn[] | undefined, w: number): void => {
     if (!t || w <= 0) return
-    v.set(t.axis[0], t.axis[1], t.axis[2]).normalize()
-    acc.multiply(q.setFromAxisAngle(v, t.angle * w))
+    for (const one of (Array.isArray(t) ? t : [t]) as readonly Turn[]) {
+      v.set(one.axis[0], one.axis[1], one.axis[2]).normalize()
+      acc.multiply(q.setFromAxisAngle(v, one.angle * w))
+    }
   }
 
   return {
