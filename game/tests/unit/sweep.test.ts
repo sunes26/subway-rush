@@ -44,7 +44,9 @@ describe('S12-9 소프트락 0건', () => {
   })
 
   it('요금 미달 시드에서 무자원 루트는 애초에 시도되지 않는다', () => {
-    for (const r of sweep(SEEDS).filter((x) => x.route === 'N-skip')) {
+    // 위 `rows` 를 재사용한다 — `sweep(SEEDS)` 를 여기서 또 처음부터 돌리면
+    // 같은 시뮬레이션 비용을 두 번 내고, 그러면 기본 테스트 타임아웃(5s)을 넘긴다.
+    for (const r of rows.filter((x) => x.route === 'N-skip')) {
       expect(r.startBalance, `seed ${r.seed}`).toBeGreaterThanOrEqual(FARE)
     }
   })
@@ -57,11 +59,6 @@ describe('S12-10 루트 비용 — 정직한 루트가 더 빠른가', () => {
 
   it('대화 루트(C)는 좀비 즉사 리스크가 없어 표본이 충분하다', () => {
     expect(C.reached).toBeGreaterThan(20)
-  })
-
-  it('훔치기 루트의 양심이 명확히 더 낮다', () => {
-    expect(A.avgConscience, `A ${A.avgConscience.toFixed(2)} vs C ${C.avgConscience.toFixed(2)}`)
-      .toBeLessThan(C.avgConscience - 2)
   })
 
   it('[A] 훔치기가 무료 지름길이 아니다 — 15초를 내는 [C]와 30초 이내 차이', () => {
@@ -77,21 +74,14 @@ describe('S12-10 루트 비용 — 정직한 루트가 더 빠른가', () => {
       .toBeLessThan(30)
   })
 
-  it('절도 루트는 반드시 양심 대가를 치른다 (−3 이하)', () => {
-    for (const r of rows.filter((x) => x.route === 'A-steal')) {
-      expect(r.conscience, `seed ${r.seed}`).toBeLessThanOrEqual(-3)
-    }
-  })
-
-  it('대화 루트는 양심이 오른다 (+1 이상)', () => {
-    for (const r of rows.filter((x) => x.route === 'C-talk')) {
-      expect(r.conscience, `seed ${r.seed}`).toBeGreaterThanOrEqual(1)
-    }
-  })
-
-  it('절도 루트는 전부 E-10(양심 파산) 사정권에 들어간다', () => {
-    for (const r of rows.filter((x) => x.route === 'A-steal')) {
-      expect(r.ending, `seed ${r.seed}`).toBe('E-10')
+  /**
+   * 양심 게이지를 없앤 뒤로 훔치기 자체는 더 이상 판정에 흔적을 안 남긴다 —
+   * 대가는 적발(E-09)·즉사(E-16) 같은 **사건**으로만 남는다. 이 시점(탑승 전)
+   * 판정은 죽지 않은 이상 루트를 가리지 않고 전부 E-06(다음 열차)으로 떨어진다.
+   */
+  it('죽지 않은 절도 루트는 대화 루트와 같은 사전 판정(E-06)에 떨어진다', () => {
+    for (const r of rows.filter((x) => x.route === 'A-steal' && !x.died)) {
+      expect(r.ending, `seed ${r.seed}`).toBe('E-06')
     }
   })
 })

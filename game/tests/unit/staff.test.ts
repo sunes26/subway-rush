@@ -96,11 +96,10 @@ describe('S17-3~5 비상게이트 3경로', () => {
     return wait(tap(s, { pressInteract: true }, yaw), 2600, yaw)
   }
 
-  it('지갑 반납 — 문이 열리고 양심 +2', () => {
+  it('지갑 반납 — 문이 열린다', () => {
     const s = atWindow({ inventory: ['I-11', null, null] })
     expect(s.flags).toContain('EMERGENCY_OPEN')
     expect(s.flags).toContain('WALLET_RETURNED')
-    expect(s.scores.conscience).toBe(2)
     expect(s.inventory[0], '지갑은 맡겼다').toBeNull()
   })
 
@@ -110,13 +109,12 @@ describe('S17-3~5 비상게이트 3경로', () => {
     expect(s.act.denyText.length).toBeGreaterThan(0)
   })
 
-  it('인터폰 — 문이 열리고 −15s, 양심은 그대로', () => {
+  it('인터폰 — 문이 열리고 −15s', () => {
     const it = byId('OBJ-22')!
     const s0 = put(start(7), it.x, it.y - 1.1, FLOOR.B1)
     const yaw = yawTo(s0, it.x, it.y)
     const s = wait(tap(s0, { pressInteract: true }, yaw), 1400, yaw)
     expect(s.flags).toContain('EMERGENCY_OPEN')
-    expect(s.scores.conscience).toBe(0)
     expect(180_000 - s.timeLeftMs).toBeGreaterThan(EMERGENCY.intercomWaitMs)
   })
 
@@ -125,12 +123,11 @@ describe('S17-3~5 비상게이트 3경로', () => {
     expect(emergencyDoor(start(7, { flags: ['EMERGENCY_OPEN'] })).length).toBe(0)
   })
 
-  it('열린 문을 잔액 부족으로 지나면 부정승차 — 양심 −3', () => {
+  it('열린 문을 잔액 부족으로 지나면 부정승차 플래그가 선다', () => {
     const s0 = start(7, { flags: ['EMERGENCY_OPEN'] as FlagId[], cardBalance: 0 })
     const s = holdFor(put(s0, EMERGENCY_GATE.x, EMERGENCY_GATE.y, FLOOR.B1), { moveY: 1 }, 60)
     expect(s.gates.passed).toBe(true)
     expect(s.flags).toContain('FARE_EVADED')
-    expect(s.scores.conscience).toBe(-3)
   })
 
   it('잔액이 있으면 자동으로 낸다 — 부정승차가 아니다', () => {

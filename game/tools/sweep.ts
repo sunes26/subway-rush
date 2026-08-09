@@ -106,8 +106,9 @@ ${balanceTable()}
 |---|---:|---:|
 ${endingTable()}
 
-> 탑승 **전** 시점의 판정이므로 성공 계열은 나오지 않는다. 절도 루트가 전부 E-10에
-> 걸리는 것이 정상이다 — 양심 −3 하나로 도달하고, 그게 GDD §6.2 의 의도다.
+> 탑승 **전** 시점의 판정이므로 성공 계열은 나오지 않는다. 이 시점엔 모든 루트가
+> 동일하게 E-06(다음 열차)으로 떨어지는 것이 정상이다 — 훔쳤는지 여부는 판정에
+> 반영되지 않는다(적발·즉사는 별도 사건이다).
 
 ## 5. 방해요소 활성 분포 (P2)
 
@@ -123,8 +124,8 @@ ${obstacleTable()}
 ## 6. 판정
 
 - 소프트락: ${rows.filter((r) => !r.passed).length}건
-- [A] 훔치기 평균 ${summarize(rows, 'A-steal').avgSec.toFixed(1)}s · 양심 ${summarize(rows, 'A-steal').avgConscience.toFixed(2)}
-- [C] 말 걸기 평균 ${summarize(rows, 'C-talk').avgSec.toFixed(1)}s · 양심 ${summarize(rows, 'C-talk').avgConscience.toFixed(2)}
+- [A] 훔치기 평균 ${summarize(rows, 'A-steal').avgSec.toFixed(1)}s
+- [C] 말 걸기 평균 ${summarize(rows, 'C-talk').avgSec.toFixed(1)}s
 - [N] 무자원 평균 ${summarize(rows, 'N-skip').avgSec.toFixed(1)}s
 
 자동조종은 단소를 **피하지 않는다**(맞으면서 걷는다). 사람이 스프린트로 회피하면 [A]는

@@ -55,19 +55,14 @@ export const FAIL_HINTS: readonly string[] = [
 ]
 
 /**
- * ★ 우선순위는 GDD §9.4 그대로다. **E-10이 E-04·E-02보다 위인 것이 핵심이다** —
- *   훔치고 제때 탔어도 양심이 −3이면 양심 파산이 뜬다. 탑승을 취소하지는 않는다
- *   (즉사는 E-09·E-11 둘뿐이고 둘 다 P2다).
+ * ★ 우선순위는 GDD §9.4 그대로다. 즉사는 E-09·E-11 둘뿐이고 둘 다 P2다.
  */
 export const ENDINGS: readonly EndingDef[] = [
   {
     /**
      * ⭐ TRUE 엔딩 — 이 게임에서 **유일한 복합 조건**이다.
      *
-     * P1이 미룬 이유(*"어느 축이 엔딩을 결정했는지 못 읽는다"*)는 4축 채점이 막 들어온
-     * 시점의 이야기였다. 지금은 4축이 전부 실측으로 움직이는 것을 확인했으므로 켠다.
-     * 대신 **결정 요인을 엔딩 카드에 1줄로 적는다**(`reason`) — 못 읽는 문제를 조건을
-     * 숨기는 대신 드러내는 쪽으로 푼다.
+     * 결정 요인을 엔딩 카드에 1줄로 적는다(`reason`) — 조건을 숨기는 대신 드러낸다.
      */
     id: 'E-05',
     priority: 100,
@@ -77,11 +72,10 @@ export const ENDINGS: readonly EndingDef[] = [
     when: (s) =>
       s.boarded &&
       s.timeLeftMs >= 60_000 &&
-      s.scores.conscience >= 3 &&
       s.tally.itemsUsed.length >= 4 &&
       s.chase.hitCount === 0,
     reason: (s) =>
-      `잔여 ${Math.round(s.timeLeftMs / 1000)}s · 양심 +${s.scores.conscience}` +
+      `잔여 ${Math.round(s.timeLeftMs / 1000)}s` +
       ` · 아이템 ${s.tally.itemsUsed.length}종 · 무피격`,
   },
   {
@@ -147,17 +141,6 @@ export const ENDINGS: readonly EndingDef[] = [
     when: (s) => s.flags.includes('BUSTED'),
   },
   {
-    id: 'E-10',
-    priority: 80,
-    title: '양심 파산',
-    line: '다들 왜 이렇게 쳐다보지.',
-    hint: '훔치면 빠르다. 빠른 만큼 뒤에서 따라온다.',
-    tone: 'fail',
-    // 효자손 절도(−3) 단독으로도 도달한다 (GDD §6.2).
-    // **즉사 2종(E-09·E-11)보다 아래다** — 그 자리에서 끝난 판을 나중 집계가 덮으면 안 된다
-    when: (s) => s.scores.conscience <= -3,
-  },
-  {
     id: 'E-13',
     priority: 70,
     title: '해방',
@@ -208,16 +191,6 @@ export const ENDINGS: readonly EndingDef[] = [
     line: '…겨우 탔다.',
     tone: 'success',
     when: (s) => s.boarded,
-  },
-  {
-    id: 'E-07',
-    priority: 5,
-    title: '지각 확정',
-    line: '오늘은 아무래도 글렀다.',
-    hint: '급할수록 정직한 쪽이 빠르다. 실측으로 19초 차이가 난다.',
-    tone: 'fail',
-    // E-06(온화한 실패)과 갈리는 지점은 **양심 하나**다. GDD §9.4
-    when: (s) => !s.boarded && s.scores.conscience < 0,
   },
   /**
    * 강제 엔딩 4종(E-15·E-16·E-17·E-18) — `when` 이 **항상 거짓**이다.

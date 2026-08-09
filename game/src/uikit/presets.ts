@@ -5,7 +5,7 @@
  *   `createHud` · `createDialog` 가 한다. 마크업을 손으로 베끼면 UI를 고칠 때마다
  *   두 곳을 고쳐야 하고, 그건 반드시 갈라진다 — 킷이 예쁜데 게임은 아닌 상태.
  *
- * 각 프리셋은 시간 `t`(초)를 받아 상태를 돌려준다. 진행링·QTE 마커·양심 펄스처럼
+ * 각 프리셋은 시간 `t`(초)를 받아 상태를 돌려준다. 진행링·QTE 마커처럼
  * **움직여야 판단되는 것**이 있어서 정지 화면으로는 부족하다.
  */
 
@@ -292,38 +292,6 @@ export const PRESETS: readonly Preset[] = [
     }),
   },
 
-  // ─────────────── 양심 게이지 ───────────────
-  {
-    id: 'cons-zero',
-    group: '양심 게이지',
-    label: '0 — 아무 일 없음',
-    note: '상시 옅다. 시선을 끌면 도덕 점수판이 된다 (GDD §7.2)',
-    state: () => base(),
-  },
-  {
-    id: 'cons-good',
-    group: '양심 게이지',
-    label: '+3 — 선행',
-    note: '0을 중심으로 우측(녹)으로 자란다. **숫자는 없다**',
-    state: () => base({ scores: { conscience: 3, style: 2, knowledge: 1 } }),
-  },
-  {
-    id: 'cons-bad',
-    group: '양심 게이지',
-    label: '−5 — 하한',
-    note: '절도 −3 + 피격 누적. 이 상태로 승강장에 가면 E-10',
-    state: () => base({ scores: { conscience: -5, style: 0, knowledge: 0 } }),
-  },
-  {
-    id: 'cons-live',
-    group: '양심 게이지',
-    label: '변화 순간 — 0.6s 발광',
-    note: '값이 바뀔 때만 밝아진다. 그 순간만 눈에 들어와야 한다',
-    state: (t) => base({
-      scores: { conscience: Math.floor(t) % 2 === 0 ? 1 : -2, style: 0, knowledge: 0 },
-    }),
-  },
-
   // ─────────────── HUD 계기판 ───────────────
   // Figma `game-hud-ui` 적용 후 신설. 위젯 4개가 각 모서리에 흩어졌으므로
   // "한 화면에서 같이 봐야" 균형을 판단할 수 있다.
@@ -386,7 +354,6 @@ export const PRESETS: readonly Preset[] = [
     state: (t) => {
       const s = base({
         inventory: inv(['I-01', null, null]),
-        scores: { conscience: -4, style: 0, knowledge: 0 },
         flags: ['GRANDPA_ANGRY'] as readonly FlagId[],
       })
       return act({

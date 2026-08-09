@@ -40,29 +40,26 @@ const pick = (s0: GameState, key: 1 | 2 | 3): { s: GameState; sec: number } => {
 }
 
 describe('S9-1 할아버지 3분기 — 전부 효자손을 얻는다', () => {
-  it('[1] 훔치기 — 즉시, 양심 −3, 추격 플래그', () => {
+  it('[1] 훔치기 — 즉시, 추격 플래그', () => {
     const { s, sec } = pick(start(7), 1)
     expect(s.inventory.includes('I-01'), '효자손 획득').toBe(true)
-    expect(s.scores.conscience).toBe(-3)
     expect(s.flags.includes('GRANDPA_ANGRY'), 'O-14 발동원').toBe(true)
     expect(sec, `소요 ${sec.toFixed(2)}s — 즉시여야 한다`).toBeLessThan(0.2)
   })
 
-  it('[2] 양갱 — 1.5s, 양심 +1, 양갱 소모', () => {
+  it('[2] 양갱 — 1.5s, 양갱 소모', () => {
     const { s, sec } = pick(start(7, { inventory: ['I-12', null, null] }), 2)
     expect(s.inventory.includes('I-01')).toBe(true)
     expect(s.inventory.includes('I-12'), '양갱은 소모된다').toBe(false)
-    expect(s.scores.conscience).toBe(1)
     expect(s.flags.includes('GRANDPA_HELPED')).toBe(true)
     expect(s.flags.includes('GRANDPA_ANGRY'), '추격 없음').toBe(false)
     expect(sec).toBeGreaterThan(1.4)
     expect(sec).toBeLessThan(1.75)
   })
 
-  it('[3] 말 걸기 — 30.0s, 양심 +1, 힌트 + 지식', () => {
+  it('[3] 말 걸기 — 30.0s, 힌트 + 지식', () => {
     const { s, sec } = pick(start(7), 3)
     expect(s.inventory.includes('I-01')).toBe(true)
-    expect(s.scores.conscience).toBe(1)
     expect(s.flags.includes('HINT_GRANDPA'), '개찰구 힌트 해금').toBe(true)
     expect(s.scores.knowledge, '시크릿 1건').toBe(1)
     expect(sec, `소요 ${sec.toFixed(1)}s`).toBeGreaterThan(29.9)
@@ -85,7 +82,6 @@ describe('S9-2 [2]는 양갱 보유 시에만 활성', () => {
     const s = tap(opened, { pressSlot: 2 }, yawTo(opened, GP.x, GP.y))
     expect(s.act.denyText).toBe('선물이 없다')
     expect(s.inventory.includes('I-01'), '효자손 안 나온다').toBe(false)
-    expect(s.scores.conscience).toBe(0)
   })
 
   it('보유하면 활성된다', () => {

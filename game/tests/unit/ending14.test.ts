@@ -23,7 +23,7 @@ const FOUR_ITEMS: readonly ItemId[] = ['I-01', 'I-06', 'I-09', 'I-13']
 const trueRun = (over: Partial<GameState> = {}): Partial<GameState> => ({
   boarded: true,
   timeLeftMs: 62_000,
-  scores: { conscience: 3, style: 4, knowledge: 2 },
+  scores: { style: 4, knowledge: 2 },
   tally: tally({ itemsUsed: FOUR_ITEMS }),
   ...over,
 })
@@ -164,36 +164,19 @@ describe('S18-1 신규 8종이 각각 도달 가능하다', () => {
     })).toBe('E-03')
   })
 
-  it('E-07 지각 확정 — 미탑승 + 양심 < 0', () => {
-    /**
-     * ⚠ 이 브랜치에서 한때 판정 축을 **도달 지점**(개찰 통과 여부)으로 바꿨었다.
-     *   "지각은 시간 문제지 도덕이 아니다" 라는 이유였고 지금도 그 지적은 맞다고 본다.
-     *
-     *   다만 upstream 이 그 뒤로 E-07 위에 매복(E-17)·사고(E-18) 엔딩을 쌓았고,
-     *   **엔딩 판정은 upstream 것을 쓰기로** 정해져서 원래 조건으로 되돌렸다.
-     *   되돌린 것이지 틀렸다고 판단해서 지운 것이 아니다 — 다시 바꾸려면
-     *   `data/endings.ts` 의 `when` 한 줄과 이 테스트만 손대면 된다.
-     */
-    expect(at({ boarded: false, scores: { conscience: -1, style: 0, knowledge: 0 } }))
-      .toBe('E-07')
-    expect(at({ boarded: false, scores: { conscience: 0, style: 0, knowledge: 0 } }),
-      '양심이 0 이면 온화한 기본 실패다').toBe('E-06')
-  })
-
   /**
-   * ⚠ 아래 `toBe(14)` 는 **"엔딩 14종"이라는 제목의 잔재가 아니다.** `E-15`·`E-16` 은
+   * ⚠ 아래 `toBe(12)` 는 **"엔딩 12종"이라는 제목의 잔재가 아니다.** `E-15`·`E-16` 은
    * 강제 엔딩이라 `resolveEnding` 을 아예 타지 않으므로(파일 상단 `at()` 은
-   * `resolveEnding` 을 부른다) 여기 모이는 집합엔 절대 안 섞여야 한다. 14는
-   * "resolveEnding 으로 도달 가능한 엔딩 수는 정확히 14개다 — E-15/E-16 은 그중에
+   * `resolveEnding` 을 부른다) 여기 모이는 집합엔 절대 안 섞여야 한다. 12는
+   * "resolveEnding 으로 도달 가능한 엔딩 수는 정확히 12개다 — E-15~E-18 은 그중에
    * 없다"는 불변식을 인코딩한 값이다. 총 엔딩 수(16종)에 맞춰 16으로 "고치면"
    * 이 가드가 무력화된다.
    */
-  it('14종 전부 한 번씩은 나온다', () => {
+  it('12종 전부 한 번씩은 나온다', () => {
     const seen = new Set<EndingId>([
       at(trueRun()),
       at({ boarded: true, tally: tally({ coinsEarned: 3000 }) }),
       at({ boarded: false, flags: ['WALLET_RETURNED', 'GRANDPA_HELPED'] }),
-      at({ scores: { conscience: -3, style: 0, knowledge: 0 } }),
       at({ tally: tally({ pushes: 3 }) }),
       at({ flags: ['BUSTED'] }),
       at({ boarded: false, flags: ['TOILET_USED'] }),
@@ -202,8 +185,6 @@ describe('S18-1 신규 8종이 각각 도달 가능하다', () => {
       at({ boarded: true, timeLeftMs: 900 }),
       at({ boarded: true, timeLeftMs: 35_000 }),
       at({ boarded: true, timeLeftMs: 12_000 }),
-      // E-07 — 미탑승 + 양심 < 0
-      at({ boarded: false, scores: { conscience: -1, style: 0, knowledge: 0 } }),
       at({}),
     ])
     /**
@@ -217,7 +198,7 @@ describe('S18-1 신규 8종이 각각 도달 가능하다', () => {
      * 그러므로 **엔딩을 더할 때는 조건에 쓰는 플래그의 발행처를 먼저 확인한다.**
      * 아래 위 `S18-0` 이 그것을 자동으로 막는다.
      */
-    expect(seen.size, [...seen].sort().join(',')).toBe(14)
+    expect(seen.size, [...seen].sort().join(',')).toBe(12)
   })
 })
 
@@ -229,12 +210,6 @@ describe('S18-2 우선순위', () => {
 
   it('E-05 가 E-14 를 가린다 — 동전 부자여도 TRUE 가 이긴다', () => {
     expect(at(trueRun({ tally: tally({ itemsUsed: FOUR_ITEMS, coinsEarned: 5000 }) }))).toBe('E-05')
-  })
-
-  it('E-10 양심 파산이 E-11 참사보다 아래다 — 밀었으면 참사가 이긴다', () => {
-    expect(at({
-      scores: { conscience: -5, style: 0, knowledge: 0 }, tally: tally({ pushes: 4 }),
-    })).toBe('E-11')
   })
 
   it('E-09 적발이 E-13 해방을 가린다', () => {
@@ -256,10 +231,6 @@ describe('S18-3 E-05 복합 조건 — 하나씩 빼면 다른 엔딩', () => {
     expect(at(trueRun({ timeLeftMs: 45_000 }))).toBe('E-02')
   })
 
-  it('양심이 모자라면 E-02', () => {
-    expect(at(trueRun({ scores: { conscience: 2, style: 4, knowledge: 0 } }))).toBe('E-02')
-  })
-
   it('아이템 종류가 3종이면 E-02', () => {
     expect(at(trueRun({ tally: tally({ itemsUsed: FOUR_ITEMS.slice(0, 3) }) }))).toBe('E-02')
   })
@@ -275,7 +246,7 @@ describe('S18-3 E-05 복합 조건 — 하나씩 빼면 다른 엔딩', () => {
     expect(def.reason).toBeDefined()
     const text = def.reason!(start(7, trueRun()))
     expect(text).toContain('무피격')
-    expect(text).toContain('양심')
+    expect(text).toContain('아이템')
   })
 })
 

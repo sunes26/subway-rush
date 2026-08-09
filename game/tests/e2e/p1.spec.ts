@@ -204,13 +204,12 @@ test('E 한 번은 정확히 한 번 — 대화가 열리기만 하고 분기가
   const s = await page.evaluate(() => {
     const st = window.__game!.state()
     return { dialogId: st.act.dialogId, inv: st.inventory, consumed: st.act.consumed,
-      conscience: st.scores.conscience, dlgOn: document.getElementById('dlg')!.className }
+      dlgOn: document.getElementById('dlg')!.className }
   })
   expect(s.dialogId, '선택 UI 열림').toBe('ACT-02-GP')
   expect(s.dlgOn).toContain('on')
-  expect(s.inv.filter(Boolean), 'E 한 번으로 분기가 눌리지 않았다').toEqual([])
+  expect(s.inv.filter(Boolean), 'E 한 번으로 분기가 눌리지 않았다 — 훔치기가 자동 선택되지 않았다').toEqual([])
   expect(s.consumed).toEqual([])
-  expect(s.conscience, '훔치기가 자동 선택되지 않았다').toBe(0)
 })
 
 test('E 를 연타해도 습득은 한 번 — 중복·씹힘 없음', async ({ page }) => {

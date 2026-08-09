@@ -12,7 +12,7 @@
 import { test, expect } from '@playwright/test'
 /** 결과 화면에 절대 나오면 안 되는 조각들 — 공략·조건·임계값 */
 const BANNED = ['살펴보면','넘으면','알 수 있다','자동으로 낸다','깨닫는다','두 번째로 맞으면',
-  '아이템','무피격','유실물 반납','밀친','양심','세 사람','모든 조건','남을 도','기분은','괜찮다']
+  '아이템','무피격','유실물 반납','밀친','세 사람','모든 조건','남을 도','기분은','괜찮다']
 /**
  * ⚠ `e12` 를 뺐다 — upstream 문구 「가끔은, 늦어도 괜찮다.」 가 위로 어휘 목록의
  *   "괜찮다" 에 걸린다. 엔딩 문구는 upstream 것을 쓰기로 정해졌으므로 문구를 고치는
@@ -29,7 +29,7 @@ const CASES: Array<[string, Record<string, unknown>]> = [
     tally:{ coinsEarned:0, itemsUsed:[], secrets:[], pushes:3, crowdMs:60_000, staminaMin:30 } }],
   ['e16', { phase:'ended', endingId:'E-16', boarded:false, timeLeftMs:61_000, elapsedMs:119_000 }],
   ['e05', { phase:'ended', endingId:'E-05', boarded:true, timeLeftMs:72_000, elapsedMs:108_000,
-    scores:{ conscience:4, style:8, knowledge:11 },
+    scores:{ style:8, knowledge:11 },
     tally:{ coinsEarned:0, itemsUsed:['I-01','I-06','I-09','I-12'], secrets:['a'], pushes:0, crowdMs:20_000, staminaMin:80 } }],
   ['e14', { phase:'ended', endingId:'E-14', boarded:true, timeLeftMs:24_000, elapsedMs:156_000,
     tally:{ coinsEarned:3500, itemsUsed:[], secrets:[], pushes:0, crowdMs:30_000, staminaMin:55 } }],

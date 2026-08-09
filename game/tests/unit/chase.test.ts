@@ -148,11 +148,6 @@ describe('S10-3~S10-6 피격', () => {
     expect(later.chase.hitCount, '1.5초를 넘기면 2대').toBe(2)
   })
 
-  it('S10-6 피격당 양심 −1', () => {
-    const s = stand(80)
-    expect(s.scores.conscience, '절도 −3 + 피격 −1').toBe(-4)
-  })
-
   /**
    * 개편 — **회수 단계가 사라졌다.** 예전엔 5대까지 버티면 효자손만 잃고
    * 게임은 계속됐다. 지금은 2대째가 그대로 런의 끝이다 (E-16). `CHASE_END` 를
@@ -170,7 +165,6 @@ describe('S10-3~S10-6 피격', () => {
     expect(s.chase.hitCount, '2대').toBe(2)
     expect(s.phase, '즉시 게임 오버 — 회수 연출을 기다리지 않는다').toBe('ended')
     expect(s.endingId).toBe('E-16')
-    expect(s.scores.conscience, '절도 −3 + 피격 2회 −2, 하한과 일치').toBe(-5)
     expect(s.inventory.includes('I-01'), '효자손은 손에 쥔 채로 끝난다 — 회수되지 않는다').toBe(true)
   })
 })
@@ -195,15 +189,13 @@ describe('S10-7~S10-8 해제 3경로', () => {
     expect(s.inventory.includes('I-01')).toBe(true)
   })
 
-  it('S10-8 효자손을 반납하면 해제 + 양심 +1 + 효자손 상실', () => {
+  it('S10-8 효자손을 반납하면 해제 + 효자손 상실', () => {
     let s = afterSteal()
     s = wait(s, CHASE.drawMs + 60)
     s = { ...s, chase: { ...s.chase, pos: { x: s.player.pos.x - 1.5, y: s.player.pos.y } } }
-    const c0 = s.scores.conscience
     s = tap(s, { pressSlot: 1 })          // 1번 슬롯 = 효자손
     expect(s.chase.active, '추격 해제').toBe(false)
     expect(s.inventory.includes('I-01'), '효자손을 잃는다').toBe(false)
-    expect(s.scores.conscience, '양심 +1').toBe(c0 + 1)
   })
 
   /**
