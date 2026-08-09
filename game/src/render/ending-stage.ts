@@ -96,6 +96,9 @@ export type EndingStage = Readonly<{
    * @param wrong  참이면 안내판이 **신촌**을 띄우고 창밖이 **지옥**이 된다
    * @param glow   창밖 빛이 객실로 들어오는 정도 0 → 1. **이 값이 이 컷의 절반이다**
    * @param flash  번개 — 창밖 빛의 순간 배율(1 = 평소). 새 광원을 안 만든다
+   *
+   * ⚠ 실내 감광(`dim`)은 여기서 안 한다 — `stage.setIndirect()` 가 그 일을 이미
+   *   갖고 있고(`render/scene.ts`), 그쪽은 `main.ts` 가 쥐고 있다.
    */
   sync(o: {
     x: number; yOff: number; tunnel: number; scroll: number
@@ -570,8 +573,10 @@ export const buildEndingStage = (): EndingStage => {
     root,
     setVisible(on) {
       root.visible = on
+      if (on) return
       // 꺼질 때 광원도 확실히 끈다 — 다시하기 뒤 역이 주황색으로 물들면 안 된다
-      if (!on) { sunLight.intensity = 0; lavaLight.intensity = 0 }
+      sunLight.intensity = 0
+      lavaLight.intensity = 0
     },
     sync({ x, yOff, tunnel: tunnelK, scroll, led: ledK, wrong, glow, flash }) {
       root.position.x = x

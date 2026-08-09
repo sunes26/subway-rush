@@ -174,21 +174,6 @@ test.describe('엔딩 컷 — 실제 플레이', () => {
    * 세 컷 중 유일하게 한 번도 안 찍혀 본 것이었다. 닫히기 1.2초 전에 승강장에 서면
    * 걸어 들어가는 사이 문이 닫히기 시작하고, `boardedCloseInMs` 가 임계값 아래로 떨어진다.
    *
-   * ⚠ **판정은 맞는데 그림이 아직 깨져 있다** — 이 케이스만 카메라가 객차 구조물에
-   *   막힌다. 원인은 아래에 적었다(`__shots__/ending/jit-*.png` 참고).
-   *   그림이 고쳐질 때까지도 이 테스트는 남겨 둔다: 판정이 도달 가능하다는 것과
-   *   컷이 켜진다는 것은 여전히 검증되고, 스크린샷이 진행 상황을 보여 준다.
-   *
-   *   ■ 왜 이 케이스만 깨지는가
-   *   카메라 x 는 `px + 0.46`(문 중심에서 옆으로)이고, **객차는 양쪽에 문이 있다.**
-   *   문 간격 4m · 개구 1.6m 라 창은 문 사이 2.4m 구간에만 있다. 카메라가 북쪽을 보면
-   *   그 시선 끝이 **반대편 문**일 수도, **창**일 수도 있는데, 열차가 출발하며 미끄러진
-   *   위치에서 시뮬이 얼기 때문에 그 정렬이 판마다 달라진다. 성공 컷은 창에 걸렸고
-   *   JIT 는 문틀에 걸렸다 — 우연의 차이였다.
-   *
-   *   고치려면 카메라를 문 중심에 두는 것으로는 안 된다(그러면 반대편 문을 정면으로
-   *   본다 — 실측). **`boardedDoorX` 기준으로 창 구간(±2m)을 계산해** 카메라와 인물을
-   *   거기 놓아야 한다.
    */
   test('닫히는 문으로 들어가면 JUST IN TIME 컷이 돈다', async ({ page }) => {
     const id = await runCut(page, false, 'jit', TIGHT_AT)
@@ -224,6 +209,14 @@ test.describe('엔딩 뒤 정리', () => {
           .filter((c: any) => c.isLight)
           .map((c: any) => c.intensity.toFixed(3)).join(',')
       })
+      /**
+       * 실내 감광이 되돌아왔는가 — 컷이 `setIndirect` 로 씬 광원 5개를 한꺼번에
+       * 낮춘다. 안 되돌리면 **다음 판의 역 전체가 어둡다.**
+       */
+      let amb = -1
+      ;(window as any).__scene.traverse((o: any) => {
+        if (o.isAmbientLight) amb = o.intensity
+      })
       const veil = document.querySelector('#outro .veil') as HTMLElement | null
       const outro = document.getElementById('outro')
       return {
@@ -233,6 +226,7 @@ test.describe('엔딩 뒤 정리', () => {
         outroCls: outro?.className ?? 'no-el',
         board: document.getElementById('screen')?.innerHTML.length ?? -1,
         fov: (window as any).__camera.fov,
+        amb,
       }
     })
 
@@ -244,5 +238,7 @@ test.describe('엔딩 뒤 정리', () => {
     expect(left.board, '타이틀이 떠 있어야 한다').toBeGreaterThan(0)
     // 컷은 화각을 46~55 로 몰았다. 조작권이 돌아오면 1인칭 화각으로 돌아와야 한다
     expect(left.fov, '화각이 복원돼야 한다').toBeGreaterThan(60)
+    // WRONG WAY 는 간접광을 0.28 배까지 내린다. 복원 안 되면 역이 어두운 채로 남는다
+    expect(left.amb, '간접광이 복원돼야 한다').toBeGreaterThan(0.1)
   })
 })

@@ -340,6 +340,8 @@ let lastEndedId: string | null = null
 /** E2E 전용 — 컷 시계를 못 박는다(`introHold` 와 같은 이유) */
 let outroHold: number | null = null
 let endStage: EndingStage | null = null
+/** 평소의 간접광 배율 — 컷이 이 값에 `dim` 을 곱하고, 끝나면 이 값으로 되돌린다 */
+let baseIndirect = 1
 
 /**
  * 버스 실내 — 인트로에만 존재한다.
@@ -459,6 +461,8 @@ const endOutro = (): void => {
   outroHold = null
   endStage?.setVisible(false)
   outro.hide()
+  // 실내 감광 복원 — 빠뜨리면 다음 판의 역 전체가 어둡다
+  stage.setIndirect(baseIndirect)
   // 시점 설정(1인칭이면 몸을 다시 끈다)과 화각을 원래대로 되돌린다
   applyView()
   screens.setHold(false)
@@ -717,6 +721,18 @@ const frame = (now: number): void => {
         glow: f.stage.glow,
         flash: f.stage.flash,
       })
+
+      /**
+       * 실내 감광 — **`setIndirect` 가 이 프로젝트의 그 손잡이다**(`render/scene.ts`).
+       *
+       * 처음엔 GLB 라이트맵 강도를 낮추려 했는데, 실측해 보니 이 씬에는 라이트맵을
+       * 가진 재질이 **한 장도 없었다**(`stationStats().lightmaps === 0`). 객실 밝기는
+       * 전부 씬 광원 5개에서 오고, 그 다섯을 한 번에 낮추는 API 가 이미 있다.
+       *
+       * `setMood` 가 매 프레임 이 배율을 다시 먹이므로 한 번만 설정하면 유지된다.
+       * 되돌리는 것은 `endOutro()` 가 한다 — 안 되돌리면 다음 판의 역 전체가 어둡다.
+       */
+      stage.setIndirect(baseIndirect * f.stage.dim)
       outro.sync(t, f.stage.red)
 
       // 흔들림은 카메라 자리에만 더한다 — 바라보는 점은 그대로라 시선이 안 흔들린다
@@ -1049,7 +1065,8 @@ const boot = async (): Promise<void> => {
     // 라이트맵이 붙은 존이 있으면 런타임 간접광을 줄인다. 라이트맵이 이미
     // 간접 성분을 담고 있어서 그대로 두면 이중 계산으로 역이 하얗게 날아간다.
     // 아틀라스가 없으면(사이드카 없이 익스포트한 빌드) 1.0 그대로 — 예전 룩.
-    stage.setIndirect(station.stats.lightmaps > 0 ? 0.06 : 1)
+    baseIndirect = station.stats.lightmaps > 0 ? 0.06 : 1
+    stage.setIndirect(baseIndirect)
   } else {
     console.error('[station] GLB 로드 실패 — 그레이박스로 진행합니다', stationResult.reason)
     world.root.visible = true

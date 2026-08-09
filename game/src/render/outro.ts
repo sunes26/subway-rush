@@ -117,6 +117,17 @@ export type OutroStage = Readonly<{
    * 움직이면 두 값이 하나라는 뜻이라 따로 둘 이유가 없다.
    */
   glow: number
+  /**
+   * 실내 라이트맵 배율 (1 = 평소).
+   *
+   * 창밖은 톤매핑을 안 거쳐 원본 그대로 나오는데 실내가 환한 낮이면 **노출차가
+   * 안 생긴다** — 지옥 컷에서 특히 이상하다(창밖은 용암인데 객실은 대낮이다).
+   * 실내를 내리면 창이 상대적으로 타오른다.
+   *
+   * 성공 계열은 조금만 내린다. 일출은 **밝은 아침**이라 객실까지 어두우면 그건
+   * 안도가 아니라 불안이 된다 — 창으로 빛이 들어오는 그림이어야 한다.
+   */
+  dim: number
   /** 화면 전체에 얹는 붉은 기 0~1 (WRONG WAY 전용) */
   red: number
   /**
@@ -260,11 +271,18 @@ export const outroAt = (kind: OutroKind, tMs: number, ax: number, yOff = 0): Out
     x: ax - 0.24, y: 13.34 + yOff, eye: z + EYE + 0.04,
     lx: ax - 0.10, ly: GLASS_Y + yOff, lz: z + 1.52, fov: 55,
   }
-  /** WRONG WAY 는 ③ 에서 사람에게 돌아온다 — 바깥이 준 답을 받는 얼굴이 필요하다 */
+  /**
+   * WRONG WAY 는 ③ 에서 사람에게 돌아온다 — 바깥이 준 답을 받는 얼굴이 필요하다.
+   *
+   * ★ **안내판을 프레임 안에 남긴다.** `lz` 를 0.94 로 두고 화각 50 이었을 때
+   *   안내판(z B2+2.28)이 위로 잘렸다 — 이 엔딩에서 「신촌」은 마지막까지 화면에
+   *   있어야 하는 물건이다. 무너지는 몸을 보여주는 동안 그 원인이 같이 보여야
+   *   "왜 무너지는가"가 한 프레임 안에 있다. 시선을 조금 올리고 화각을 넓혔다.
+   */
   const backToBody: OutroCam = {
     shakeX: 0, shakeZ: 0,
     x: ax - 0.58, y: 13.08 + yOff, eye: z + EYE - 0.06,
-    lx: ax - 0.04, ly: STAND_Y + yOff, lz: z + 0.94, fov: 50,
+    lx: ax - 0.04, ly: STAND_Y + yOff, lz: z + 1.20, fov: 54,
   }
 
   const base =
@@ -351,12 +369,19 @@ const stageAt = (kind: OutroKind, t: number): OutroStage => {
       scroll,
       led: seg(t, SHOT.turn - 700, SHOT.turn - 200),
       glow: reveal,
+      // 지옥이 드러나는 만큼 실내가 꺼진다 — 0.28 이면 형체는 남고 빛은 창에서만 온다
+      dim: lerp(1, 0.28, reveal),
       /**
        * 번개 두 번. 지옥이 드러난 **뒤에** 친다 — 드러나기 전에 치면 터널에서
        * 번개가 번쩍이는 꼴이 된다. 짧고(90ms) 세게(2.6배), 그리고 안 반복한다.
        */
+      /**
+       * 2.6 배였을 때 인물이 통째로 하얗게 날아갔다 — 툰 3단 램프는 세게 줄수록
+       * 붉어지는 게 아니라 **평평해진다**(`ending-stage.ts` 용암 광원 주석과 같은 이유).
+       * 1.9 면 번쩍이는 것이 보이면서 실루엣이 남는다.
+       */
       flash: [SHOT.turn + 700, SHOT.turn + 1500]
-        .reduce((m, at) => Math.max(m, t >= at && t < at + 90 ? 2.6 : 1), 1),
+        .reduce((m, at) => Math.max(m, t >= at && t < at + 90 ? 1.9 : 1), 1),
       // 붉은 기는 **보조**다. 실제 어둠과 붉음은 무대의 광원이 만든다
       red: seg(t, SHOT.turn + 400, SHOT.turn + 1300) * 0.22,
     }
@@ -373,6 +398,8 @@ const stageAt = (kind: OutroKind, t: number): OutroStage => {
     led: seg(t, 900, 1600) * 0.85,
     // 빛은 조금 늦게 들어와 조금 더 오래 남는다 — 해가 뜨는 속도가 그렇다
     glow: easeInOut(seg(t, SHOT.turn - 200, SHOT.outside - 200)),
+    // 아침이라 조금만 내린다. 0.72 면 창이 도드라지면서도 객실이 어둡지 않다
+    dim: lerp(1, 0.72, easeInOut(seg(t, SHOT.turn - 400, SHOT.outside - 400))),
     red: 0,
     flash: 1,
   }
