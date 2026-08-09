@@ -76,5 +76,33 @@ for (const [w, h] of [[1920, 1080], [1280, 720]] as const) {
     console.log(`VP ${w}×${h}  ${m.cols}열  슬롯 ${m.slot}  제목 ${m.title}  상세제목 ${m.detail}  그리드스크롤 ${m.scroll ? '★YES' : 'no'}  문서스크롤 ${m.docScroll ? '★YES' : 'no'}`)
     await page.screenshot({ path: `${DIR}/ui-collection-${w}.png` })
     expect(m.scroll).toBe(false)
+
+    /**
+     * ★ **선택 테두리는 잠금 여부와 무관하게 같아야 한다.**
+     *
+     * 한때 잠긴 칸이 `border-style:dashed` 라, 고르면 테두리가 점선 앰버가 되어
+     * 해금 칸을 고를 때(실선 앰버)와 선택 표시가 달라 보였다. 눈으로는 "비슷한데"
+     * 로 넘어가기 쉬우므로 **계산된 스타일을 직접 비교**한다.
+     */
+    await page.click('#collection .slot[data-id="E-14"]')
+    await page.waitForTimeout(200)
+    const pair = await page.evaluate(() => {
+      const pick = (sel: string): Record<string, string> => {
+        const c = getComputedStyle(document.querySelector(sel) as HTMLElement)
+        return { w: c.borderTopWidth, s: c.borderTopStyle, c: c.borderTopColor }
+      }
+      // E-14 는 지금 선택된 잠긴 칸. E-05 를 다시 골라 해금 선택본을 잰다
+      const locked = pick('#collection .slot.locked.sel')
+      ;(document.querySelector('#collection .slot[data-id="E-05"]') as HTMLElement).click()
+      const got = pick('#collection .slot.got.sel')
+      return { locked, got }
+    })
+    console.log(`SEL ${w}  잠금선택 ${JSON.stringify(pair.locked)}  해금선택 ${JSON.stringify(pair.got)}`)
+    expect(pair.locked, '선택 테두리가 잠금 여부에 따라 달라진다').toEqual(pair.got)
+
+    // 잠긴 칸을 고른 상태의 화면도 남긴다
+    await page.click('#collection .slot[data-id="E-14"]')
+    await page.waitForTimeout(200)
+    await page.screenshot({ path: `${DIR}/ui-collection-${w}-locked.png` })
   })
 }

@@ -408,22 +408,49 @@ body.run-ended #gl{filter:blur(5px) saturate(.90) brightness(.80);
 #collection .slot.got.hidden .badge{color:var(--led-amber)}
 #collection .slot.got.hidden .name{color:var(--led-amber)}
 
-/* 잠금 — 점선으로 "빈칸"임을 형태로 말한다. **글자는 읽힌다** */
-#collection .slot.locked{border-style:dashed;border-color:#2A2A2E;background:#08080A}
+/*
+ * ■ ★ **테두리는 선택만 말한다. 잠금은 내용만 말한다.**
+ *
+ * 한동안 잠긴 칸이 `border-style:dashed` 였다. 그러면 잠긴 칸을 고를 때
+ * 테두리가 **점선 앰버**가 되어, 해금 칸을 고를 때(실선 앰버)와 선택 표시가
+ * 달라 보인다. 같은 "선택"인데 두 모양이면 그 표시는 규칙이 아니다.
+ *
+ * 그래서 역할을 갈랐다 — 잠금은 테두리를 안 건드리고 **배경과 내용**으로만
+ * 말한다(큰 자물쇠). 테두리는 오직 선택 여부만 나타낸다.
+ */
+#collection .slot.locked{background:#08080A}
 #collection .slot.locked .code{color:var(--ink-3)}
-#collection .slot.locked .name{color:var(--ink-3);letter-spacing:.14em}
-/* 자물쇠 — 이모지가 아니라 그린다. 폰트마다 모양이 달라지지 않는다 */
-#collection .slot .lock{grid-column:2;justify-self:end;position:relative;
-  width:11px;height:9px;margin-top:5px;background:var(--ink-3);border-radius:1px}
-#collection .slot .lock::before{content:'';position:absolute;left:2px;right:2px;bottom:100%;
-  height:5px;border:2px solid var(--ink-3);border-bottom:0;border-radius:4px 4px 0 0}
+
+/*
+ * 자물쇠 — **칸 한복판에 크게.** 이모지가 아니라 그린다(폰트마다 모양이 다르다).
+ *
+ * 예전엔 오른쪽 위에 11px 로 붙어 있었다. 그 크기로는 18칸을 훑을 때 자물쇠가
+ * 아니라 얼룩으로 보였고, 그래서 `???` 라는 글자가 따로 필요했다. 자물쇠를
+ * 칸 크기에 맞춰 키우면 글자가 필요 없어진다 — 한 눈에 "잠김"이 읽힌다.
+ *
+ * 몸통 + 고리 두 조각. 실루엣이 단순해야 작은 칸에서도 안 뭉갠다.
+ */
+#collection .slot .lock{grid-column:1/-1;grid-row:2;justify-self:center;align-self:center;
+  position:relative;width:clamp(26px,2.1vw,34px);height:clamp(20px,1.6vw,26px);
+  background:var(--ink-3);border-radius:3px;opacity:.72}
+#collection .slot .lock::before{content:'';position:absolute;left:22%;right:22%;bottom:100%;
+  height:clamp(11px,.9vw,15px);border:clamp(3px,.26vw,4px) solid var(--ink-3);
+  border-bottom:0;border-radius:99px 99px 0 0}
+/* 열쇠구멍 — 하나만 있어도 자물쇠로 확실히 읽힌다 */
+#collection .slot .lock::after{content:'';position:absolute;left:50%;top:32%;
+  width:14%;height:36%;transform:translateX(-50%);background:#08080A;border-radius:1px}
+/* 잠긴 칸은 두 줄이 아니라 **코드 한 줄 + 가운데 자물쇠**다 — 아래를 비운다 */
+#collection .slot.locked{align-content:stretch;grid-template-rows:auto 1fr}
 
 /*
  * 선택 — **세 겹으로 말한다.** 얇은 테두리 하나로는 18칸 중 어디인지 안 찾아진다.
  *   ① 앰버 테두리  ② 배경 한 단 밝게  ③ 왼쪽 LED 바
  * 글로우는 안 쓴다 — 이 화면의 어휘가 아니다.
  */
-#collection .slot.sel{border-color:var(--led-amber);background:#17140F}
+/* ★ 잠김이든 아니든 **같은 테두리**다 — 점선이 남지 않도록 스타일까지 못박는다 */
+#collection .slot.sel,#collection .slot.locked.sel{border:1px solid var(--led-amber);
+  background:#17140F}
+#collection .slot.locked.sel .lock{opacity:.9}
 #collection .slot.sel::before{content:'';position:absolute;left:-1px;top:-1px;bottom:-1px;
   width:4px;background:var(--led-amber)}
 #collection .slot.sel .code{color:var(--led-amber)}
@@ -454,7 +481,15 @@ body.run-ended #gl{filter:blur(5px) saturate(.90) brightness(.80);
 #collection .d-stats dd{margin:0;font-family:var(--mono);font-size:clamp(24px,2.1vw,30px);
   font-weight:800;display:flex;align-items:baseline;gap:4px}
 #collection .d-stats dd span{font-size:13px;font-weight:500;color:var(--ink-2)}
-#collection .detail.locked .d-name{color:var(--ink-3);letter-spacing:.1em}
+#collection .detail.locked .d-name{color:var(--ink-2);letter-spacing:-.02em;
+  display:flex;align-items:center;gap:14px}
+/* 상세의 자물쇠 — 제목 옆 작은 것. 슬롯의 것과 같은 실루엣이라 같은 물건으로 읽힌다 */
+#collection .d-lock{position:relative;flex:none;width:22px;height:17px;
+  background:var(--ink-3);border-radius:2px;margin-top:9px}
+#collection .d-lock::before{content:'';position:absolute;left:22%;right:22%;bottom:100%;
+  height:10px;border:3px solid var(--ink-3);border-bottom:0;border-radius:99px 99px 0 0}
+#collection .d-lock::after{content:'';position:absolute;left:50%;top:32%;width:14%;height:36%;
+  transform:translateX(-50%);background:var(--panel);border-radius:1px}
 #collection .detail.locked .d-what{color:var(--ink-3)}
 
 /* ── 하단 — 조작. 읽을 수 있는 밝기로 ── */

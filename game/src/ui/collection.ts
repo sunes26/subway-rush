@@ -90,12 +90,23 @@ const bestLabel = (rec: EndingRecord): string =>
 const slotHtml = (e: EndingDef, rec: EndingRecord | undefined, sel: boolean): string => {
   const cls = ['slot', rec ? 'got' : 'locked', e.tone, sel ? 'sel' : ''].filter(Boolean).join(' ')
   const attrs = `class="${cls}" data-id="${e.id}" role="option" aria-selected="${sel}"`
+  /**
+   * ★ 잠긴 칸에는 **`???` 를 안 쓴다.**
+   *
+   * 물음표 세 개는 "여기 뭔가 있다"를 글자로 반복하는 것뿐인데, 큰 자물쇠 하나가
+   * 그 말을 더 빨리 한다. 글자가 하나 줄면 칸이 조용해지고, 18칸을 훑을 때
+   * **깐 것과 안 깐 것의 경계**가 더 선명해진다.
+   */
+  if (!rec) {
+    return `<li ${attrs}>
+      <span class="code">${e.id}</span>
+      <span class="lock" role="img" aria-label="잠김"></span>
+    </li>`
+  }
   return `<li ${attrs}>
     <span class="code">${e.id}</span>
-    ${rec
-      ? `<span class="badge">${statusOf(e.tone)}</span>`
-      : '<span class="lock" aria-hidden="true"></span>'}
-    <span class="name">${rec ? e.title : '???'}</span>
+    <span class="badge">${statusOf(e.tone)}</span>
+    <span class="name">${e.title}</span>
   </li>`
 }
 
@@ -107,10 +118,16 @@ const slotHtml = (e: EndingDef, rec: EndingRecord | undefined, sel: boolean): st
  */
 const detailHtml = (e: EndingDef, rec: EndingRecord | undefined): string => {
   if (!rec) {
+    /**
+     * 잠긴 칸의 상세 — **`???` 대신 말로 적는다.**
+     *
+     * 물음표는 무엇이 비었는지는 말해도 그것이 **잠긴 상태**라는 것은 안 말한다.
+     * 여기는 자리가 넉넉하므로 그대로 적는다. 조건은 여전히 안 알려 준다.
+     */
     return `<aside class="detail locked">
       <div class="d-top"><span class="d-code">${e.id}</span></div>
-      <h2 class="d-name">???</h2>
-      <p class="d-what">아직 보지 못한 엔딩입니다.</p>
+      <h2 class="d-name"><span class="d-lock" aria-hidden="true"></span>잠긴 엔딩</h2>
+      <p class="d-what">아직 발견하지 못한 엔딩입니다.</p>
     </aside>`
   }
   return `<aside class="detail ${e.tone}">
