@@ -18,6 +18,7 @@ import { OBSTACLES, type ObsId } from '../data/obstacles'
 import { OBSTACLE } from '../data/tuning'
 import { FLOOR } from '../data/world'
 import type { Action, GameState, ItemId } from '../state/types'
+import { ZOMBIE_TALK_LINES } from './zombieTalk'
 
 export type ObsCtx = Readonly<{ dtMs: number; prev: GameState }>
 
@@ -147,14 +148,17 @@ const RULES: readonly Rule[] = [
   {
     id: 'OBS-08',
     fires: (s) => {
+      // 대화가 이미 진행 중이면 다시 발동하지 않는다 — 쿨다운(6s)이 대화 길이(8s)보다
+      // 짧아서, 이 가드가 없으면 대화 막바지에 재충돌로 다시 시작될 수 있다
+      if (s.zombieTalk.active) return false
       if (!onFloor(s.player.pos.z, FLOOR.B1)) return false
       const z = zombieAt(s.elapsedMs)
       return near(s, z.x, z.y, OBSTACLE.zombieRangeM)
     },
-    // 시간을 깎지 않는다 — 부딪힌 만큼 그 자리에 붙잡힌다 (STALL 전용)
-    effect: () => [
-      { t: 'STALL', ms: OBSTACLE.zombieStallMs },
-      { t: 'FX', kind: 'toast', text: '폰만 보던 사람과 부딪혔다', lifeMs: 1600, value: 0 },
+    // 시간을 깎지 않는다 — 대화가 끝날 때까지 그 자리에 붙잡힌다 (`systems/movement.ts` isTalkLocked)
+    effect: (s) => [
+      // 세트 3종을 순환한다 — 시드가 아니라 이번 충돌 시각으로 고른다(Math.random 금지 규칙)
+      { t: 'ZOMBIE_TALK_START', variant: Math.floor(s.elapsedMs) % ZOMBIE_TALK_LINES.length },
     ],
     negatedText: 'EMP — 폰이 꺼지자 길이 열렸다',
     cooldownMs: OBSTACLE.zombieCooldownMs,

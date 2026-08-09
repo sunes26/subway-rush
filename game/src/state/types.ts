@@ -294,6 +294,20 @@ export type PreachState = Readonly<{
 }>
 
 /**
+ * OBS-08 좀비폰족 부딪힘 — **`AmbushState`와 같은 모양이지만 합치지 않는다**(위 주석과
+ * 같은 이유: 즉사 컷씬과 환경 방해요소는 다른 사건이다). 위치는 상태로 안 든다 —
+ * `zombieAt(elapsedMs)`가 시간의 순수 함수라 렌더가 그대로 다시 읽으면 된다.
+ *
+ * `variant`는 어느 대사 세트(`systems/zombieTalk.ts`의 `ZOMBIE_TALK_LINES`)를 트는지다 —
+ * 같은 판에서 여러 번 부딪혀도 매번 같은 대사만 나오면 지겹다.
+ */
+export type ZombieTalkState = Readonly<{
+  active: boolean
+  phaseMs: number
+  variant: number
+}>
+
+/**
  * O-04 역류 (P1). 웨이브 자체는 `surgeAt(elapsedMs, seed)` 로 파생되므로 상태가 없다 —
  * 여기 남는 건 **한 번만 일어나야 하는 일**뿐이다.
  */
@@ -431,6 +445,7 @@ export type GameState = Readonly<{
   knockdown: KnockdownState
   /** OBS-07 아주머니+학생 강제 대화 — 활성 동안 이동·ESC가 잠긴다 */
   preach: PreachState
+  zombieTalk: ZombieTalkState
   flags: readonly FlagId[]
 
   // ── P1 신설 ──
@@ -542,6 +557,14 @@ export type Action =
   | { t: 'PREACH_TICK'; dtMs: number }
   /** 종료 — 게임을 안 끝낸다. 그냥 풀려난다(`ambush`와의 차이) */
   | { t: 'PREACH_END' }
+
+  // ── OBS-08 좀비폰족 부딪힘 ──
+  /** 발동 — 이동이 잠기고 대화창이 뜬다. `variant`는 어느 대사 세트를 틀지 */
+  | { t: 'ZOMBIE_TALK_START'; variant: number }
+  /** 대사 진행. 총 길이를 넘기면 `systems/zombieTalk.ts`가 곧바로 `ZOMBIE_TALK_END`를 낸다 */
+  | { t: 'ZOMBIE_TALK_TICK'; dtMs: number }
+  /** 종료 — 이동이 풀린다 */
+  | { t: 'ZOMBIE_TALK_END' }
 
   // ── P1 인파 (O-04) ──
   | { t: 'SURGE_FALL' }

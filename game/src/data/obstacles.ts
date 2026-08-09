@@ -53,7 +53,8 @@ export const OBSTACLES: Readonly<Record<ObsId, ObstacleDef>> = {
   'OBS-06': { id: 'OBS-06', name: '전단지 배포원', zone: 'Z1', costSec: 5, counteredBy: ['I-05'] },
   // 실제 비용은 강제 대화 25.6초(`systems/preach.ts` PREACH_TOTAL_MS) — 예산 상한 계산용 명목치도 맞춘다
   'OBS-07': { id: 'OBS-07', name: '"도 아세요" 아주머니', zone: 'Z2', costSec: 26, counteredBy: ['I-05'] },
-  'OBS-08': { id: 'OBS-08', name: '좀비폰족', zone: 'Z2', costSec: 4, counteredBy: ['I-14'] },
+  // 실제 비용은 강제 대화 8초(`systems/zombieTalk.ts` zombieTalkTotalMs) — 예산 상한 계산용 명목치도 맞춘다
+  'OBS-08': { id: 'OBS-08', name: '좀비폰족', zone: 'Z2', costSec: 8, counteredBy: ['I-14'] },
   'OBS-10': { id: 'OBS-10', name: '공사중 출구 안내', zone: 'Z2', costSec: 20, counteredBy: ['I-13'] },
   'OBS-11': { id: 'OBS-11', name: '승차 대기줄 오선택', zone: 'Z5', costSec: 12, counteredBy: ['I-13'] },
   'OBS-12': { id: 'OBS-12', name: '스크린도어 닫힘', zone: 'Z5', costSec: 0, counteredBy: [] },

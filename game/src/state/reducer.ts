@@ -14,7 +14,8 @@ import { GRANDPA_ID } from '../data/interactables'
 import { rollObstacles, rollQueues, type ObsId } from '../data/obstacles'
 import { GATES, SPAWN, TRAFFIC_LIGHT, zoneAt } from '../data/world'
 import type { Action, ActState, AmbushState, ChaseState, Drop, GameState, Fx, HandState, ItemId,
-  KnockdownState, PreachState, QteState, SurgeState, SwapState, TallyState } from './types'
+  KnockdownState, PreachState, QteState, SurgeState, SwapState, TallyState,
+  ZombieTalkState } from './types'
 
 const MAX_FX = 12
 
@@ -61,6 +62,8 @@ const EMPTY_AMBUSH: AmbushState = { active: false, phaseMs: 0 }
 const EMPTY_KNOCKDOWN: KnockdownState = { active: false, phaseMs: 0 }
 
 const EMPTY_PREACH: PreachState = { active: false, phaseMs: 0 }
+
+const EMPTY_ZOMBIE_TALK: ZombieTalkState = { active: false, phaseMs: 0, variant: 0 }
 
 const EMPTY_SURGE: SurgeState = { fell: false, stallMs: 0 }
 
@@ -182,6 +185,7 @@ export const initialState = (seed: number, freeplay = false, allObstacles = fals
     ambush: EMPTY_AMBUSH,
     knockdown: EMPTY_KNOCKDOWN,
     preach: EMPTY_PREACH,
+    zombieTalk: EMPTY_ZOMBIE_TALK,
     flags: [],
     act: EMPTY_ACT,
     drops: [],
@@ -849,6 +853,19 @@ export const reducer = (s: GameState, a: Action): GameState => {
     // 게임을 안 끝낸다 — `ambush`와 달리 그냥 풀려나고 이동이 돌아온다
     case 'PREACH_END':
       return s.preach.active ? { ...s, preach: EMPTY_PREACH } : s
+
+    // ─────────────────── OBS-08 좀비폰족 부딪힘 ───────────────────
+
+    case 'ZOMBIE_TALK_START':
+      return s.zombieTalk.active
+        ? s
+        : { ...s, zombieTalk: { active: true, phaseMs: 0, variant: a.variant } }
+
+    case 'ZOMBIE_TALK_TICK':
+      return { ...s, zombieTalk: { ...s.zombieTalk, phaseMs: s.zombieTalk.phaseMs + a.dtMs } }
+
+    case 'ZOMBIE_TALK_END':
+      return s.zombieTalk.active ? { ...s, zombieTalk: EMPTY_ZOMBIE_TALK } : s
   }
 }
 

@@ -335,10 +335,10 @@ export const OBSTACLE = {
   ajummaPatrolM: 4,
   /** 말 거는 계열 공용 — 한 번 붙잡히면 그 사람은 한동안 다시 안 붙는다 */
   talkCooldownMs: 25_000,
-  // OBS-08 좀비폰족 — 위치는 시간의 순수 함수다
+  // OBS-08 좀비폰족 — 위치는 시간의 순수 함수다. 정지 시간은 대화 총 길이가 정한다
+  // (`systems/zombieTalk.ts` ZOMBIE_TALK_LINES) — 여기 별도 상수를 안 둔다
   zombiePeriodMs: 18_000,
   zombieRangeM: 1.3,
-  zombieStallMs: 4000,
   zombieCooldownMs: 6000,
   // OBS-10 공사
   constructionPenaltyMs: 20_000,

@@ -30,10 +30,13 @@ import { WET_ZONE } from './obstacles'
  *
  * OBS-07 아주머니+학생(`preach.active`)도 같은 이유다 — 25.6초짜리 자동 대화 중에
  * 걸어서 빠져나가면 마주 서 있어야 할 세 사람이 서로 다른 곳을 보고 대사만 흘러나온다.
+ *
+ * 좀비폰족(`zombieTalk.active`)도 같은 이유다 — 8초짜리 자동 대화 중에 걸어서
+ * 빠져나가면 마주 서 있어야 할 두 사람이 서로 다른 곳을 보고 대사만 흘러나온다.
  */
 const isTalkLocked = (s: GameState): boolean =>
   s.act.busyKind === 'story' || s.ambush.active || s.act.dialogId === FISHCAKE_ID ||
-  s.preach.active ||
+  s.preach.active || s.zombieTalk.active ||
   // 차에 치이면 조작이 통째로 끝난다 — 날아가는 동안 걸어 다니면 안 된다
   s.knockdown.active
 

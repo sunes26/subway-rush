@@ -51,14 +51,14 @@ describe('S16-1 6종이 각각 발동한다', () => {
     expect(s.timeLeftMs).toBeLessThan(180_000 - OBSTACLE.constructionPenaltyMs)
   })
 
-  it('OBS-08 좀비폰족 — 진행 경로 위에 서 있으면 부딪힌다', () => {
+  it('OBS-08 좀비폰족 — 진행 경로 위에 서 있으면 부딪혀 대화가 뜬다', () => {
     let s = armed()
     // 위치가 시간의 순수 함수이므로 **좀비를 플레이어에게 오게** 한다
     let hit = false
     for (let i = 0; i < 900 && !hit; i++) {
       const z = zombieAt(s.elapsedMs)
       s = holdFor(put(s, z.x, z.y, FLOOR.B1), {}, 1)
-      hit = s.player.stallMs > 0
+      hit = s.zombieTalk.active
     }
     expect(hit, '좀비 위치에 서면 반드시 부딪힌다').toBe(true)
   })
@@ -127,6 +127,7 @@ describe('S16-2 짝 아이템이 무효화한다', () => {
     }
     expect(s.inventory[0]).toBeNull()
     expect(s.player.stallMs).toBe(0)
+    expect(s.zombieTalk.active, '무효화됐으면 대화도 안 뜬다').toBe(false)
   })
 })
 

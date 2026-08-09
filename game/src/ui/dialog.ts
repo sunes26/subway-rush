@@ -17,6 +17,7 @@ import { AMBUSH_DIALOGUE_MS, ambushCollapseT, ambushLineAt } from '../systems/am
 import { knockdownT } from '../systems/knockdown'
 import { branchesFor, hasItem } from '../systems/interact'
 import { PREACH_TOTAL_MS, preachLineAt } from '../systems/preach'
+import { zombieTalkLineAt, zombieTalkTotalMs } from '../systems/zombieTalk'
 import type { GameState, ItemId } from '../state/types'
 // 스타일은 `css/dialog.css` 가 단일 원천이다 — UI 킷(/uikit.html)이 같은 파일을 읽는다.
 // `?inline` 은 파일 내용을 문자열로 준다: 주입 방식(<style> 삽입)은 예전과 같다.
@@ -175,6 +176,12 @@ export const createDialog = (mount: HTMLElement): Dialog => {
         <div class="cap" id="gpstory-cap"></div>
       </div>
     </div>
+    <div id="zombietalk">
+      <div class="conv">
+        <div class="bubble"><span class="who" id="zt-speaker"></span><p id="zt-line"></p></div>
+        <div class="bar"><i id="zt-bar"></i></div>
+      </div>
+    </div>
     <div id="ambush">
       <div class="actor-card">
         <div class="frame" id="ambush-frame"><img id="ambush-portrait" src="" alt=""></div>
@@ -253,6 +260,10 @@ export const createDialog = (mount: HTMLElement): Dialog => {
   const gpstoryLine = $('gpstory-line')
   const gpstoryBar = $('gpstory-bar')
   const gpstoryCap = $('gpstory-cap')
+  const zombietalk = $('zombietalk')
+  const ztSpeaker = $('zt-speaker')
+  const ztLine = $('zt-line')
+  const ztBar = $('zt-bar')
   const blackout = $('blackout')
   const ambush = $('ambush')
   const ambushFrame = $('ambush-frame')
@@ -482,6 +493,19 @@ export const createDialog = (mount: HTMLElement): Dialog => {
         }
         gpstoryBar.style.transform = `scaleX(${Math.min(1, elapsed / total).toFixed(3)})`
         gpstoryCap.textContent = `${busyLabel(s)} · ${Math.ceil(s.act.busyLeftMs / 1000)}s`
+      }
+
+      // ── OBS-08 좀비폰족 부딪힘 — 선택지 없이 8초 자동 진행, `#gpstory` 와 같은 문법
+      if (zombietalk.className !== (s.zombieTalk.active ? 'on' : '')) {
+        zombietalk.className = s.zombieTalk.active ? 'on' : ''
+      }
+      if (s.zombieTalk.active) {
+        const { line } = zombieTalkLineAt(s.zombieTalk.phaseMs, s.zombieTalk.variant)
+        ztSpeaker.textContent = line.speaker === 'player' ? '나' : '행인'
+        ztSpeaker.className = `who${line.speaker === 'player' ? ' player' : ''}`
+        ztLine.textContent = line.text
+        const total = zombieTalkTotalMs(s.zombieTalk.variant) || 1
+        ztBar.style.transform = `scaleX(${Math.min(1, s.zombieTalk.phaseMs / total).toFixed(3)})`
       }
 
       /**
