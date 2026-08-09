@@ -605,15 +605,27 @@ export const buildEndingStage = (): EndingStage => {
   const SHELL_BASE = new Color(0xd6d1c8)
   const shellMat = new MeshBasicMaterial({ color: SHELL_BASE.clone(), side: DoubleSide })
   const CEIL_Z = FLOOR.B2 + 2.62
-  const wallBand = (z0: number, z1: number): Mesh => {
-    const m = new Mesh(new PlaneGeometry(HALF_W * 2, z1 - z0), shellMat)
-    m.position.set(0, (z0 + z1) / 2, -GLASS_Y - 0.03)
-    return m
-  }
-  root.add(wallBand(FLOOR.B2 - 0.2, GLASS_Z0))   // 창 아래 — 좌석 뒤를 받친다
-  root.add(wallBand(GLASS_Z1, CEIL_Z))           // 창 위 — 전광판이 붙는 벽
+  /**
+   * ★ 셸은 창(±6m)보다 **넓다.**
+   *
+   * 화각을 51 → 54~60 으로 넓히고 카메라가 옆으로 더 비켜서자(`outro.ts` 카메라 주석)
+   * 화면 오른쪽 끝에 **승강장이 그대로 보였다** — 안내 모니터와 초록 띠까지(실측,
+   * `ww-0800`). 차체를 숨겼으니 셸이 안 덮는 곳은 곧 역이다. 창은 텍스처 종횡비가
+   * 걸려 있어(`loadOrDraw` 의 띠 잘라내기) 폭을 못 늘리므로, **셸만** 늘린다.
+   * 창 양옆이 벽인 것은 실제 객차와도 같다.
+   */
+  const SHELL_HALF_W = 9.0
+  /**
+   * 바닥부터 천장까지 한 장이다. 예전에는 창 위·아래로 나눠 두 장이었는데, 창보다
+   * 넓어진 지금은 창 옆도 벽이라 나눌 이유가 없다 — 한 장이면 이음매도 없다.
+   * 창 판(불투명)이 이 앞에 서서 가운데를 도려낸다.
+   */
+  const wall = new Mesh(
+    new PlaneGeometry(SHELL_HALF_W * 2, CEIL_Z - (FLOOR.B2 - 0.2)), shellMat)
+  wall.position.set(0, (FLOOR.B2 - 0.2 + CEIL_Z) / 2, -GLASS_Y - 0.03)
+  root.add(wall)
   const ceil = new Mesh(
-    new PlaneGeometry(HALF_W * 2, GLASS_Y - 12.2),
+    new PlaneGeometry(SHELL_HALF_W * 2, GLASS_Y - 12.2),
     new MeshBasicMaterial({ color: SHELL_BASE.clone().multiplyScalar(1.06), side: DoubleSide }),
   )
   ceil.rotation.x = Math.PI / 2
@@ -788,12 +800,18 @@ export const buildEndingStage = (): EndingStage => {
       tunnelTex.offset.x = scroll * 0.11
       /**
        * 풍경 속도. 0.018/0.022 였을 때 컷 내내 그림의 8% 밖에 안 흘러 **멈춘 것처럼**
-       * 보였다. 0.030/0.040 이면 13~17% — 흐르는 게 눈에 잡히면서도, 한 장이 안 끝난다
-       * (끝이 화면에 들어오는 한계는 offset 0.24 다. 시야 우단 +3.1m 와 판 끝 +6m 의 차).
-       * 지옥이 33% 빠르다 — 같은 열차인데 더 급해 보이는 것이 이 엔딩의 불안이다.
+       * 보였다. 흐르는 게 눈에 잡히면서도 한 장이 안 끝나야 한다 — 판 끝이 화면에
+       * 들어오는 한계는 offset **0.24** 다(시야 우단 +3.1m 와 판 끝 +6m 의 차).
+       *
+       * ⚠ 컷이 5.2 → 7.0 초가 되면서 `scroll` 최대값이 4.2 → **6.0** 으로 올랐다.
+       *   비율을 그대로 뒀다면 지옥이 0.040×6.0 = **0.24** 로 한계에 정확히 닿는다 —
+       *   이음매가 화면 오른쪽 끝에 걸린다. 그래서 지옥만 0.034 로 낮췄다(0.204).
+       *   일출은 0.030×6.0 = 0.18 이라 그대로 둔다.
+       *
+       * 지옥이 여전히 13% 빠르다 — 같은 열차인데 더 급해 보이는 것이 이 엔딩의 불안이다.
        */
       dawnTex.offset.x = scroll * 0.030
-      hellTex.offset.x = scroll * 0.040
+      hellTex.offset.x = scroll * 0.034
     },
   }
 }

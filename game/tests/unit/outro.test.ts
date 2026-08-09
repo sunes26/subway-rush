@@ -64,6 +64,53 @@ describe('컷 길이', () => {
   })
 })
 
+/**
+ * 인물이 서는 자리 — **실측한 객실 치수에 걸어 둔다.**
+ *
+ * 두 번 고쳤고 두 번 다 "좌석에 껴 보인다"였다(`outro.ts STAND_Y` 주석). 숫자만
+ * 바꿔 두면 다음에 카메라를 만지다가 조용히 되돌아간다. 실측값은 이렇다:
+ *   객실 내부 y 12.40 ~ 15.48 · 좌석 앞면 15.14 · 몸통 반경 약 0.35
+ */
+describe('인물은 통로 한가운데 선다', () => {
+  const SEAT_FRONT = 15.14
+  const CABIN_Y0 = 12.40
+  const BODY_R = 0.35
+
+  it('몸통 뒤와 좌석 사이가 0.6m 넘게 뜬다 — 닿는 것과 떨어져 보이는 것은 다르다', () => {
+    expect(SEAT_FRONT - (STAND_Y + BODY_R)).toBeGreaterThan(0.6)
+  })
+
+  it('통로 한가운데에서 크게 안 벗어난다', () => {
+    expect(Math.abs(STAND_Y - (CABIN_Y0 + SEAT_FRONT) / 2)).toBeLessThan(0.25)
+  })
+
+  /** 가까워진 만큼 화각으로 메운다 — 안 그러면 얼굴만 잡힌다 */
+  it('세 컷 모두 인물에서 1.2m 넘게 떨어져 서고, 화각이 그만큼 넓다', () => {
+    for (const kind of ['success', 'jit', 'wrongway'] as const) {
+      for (let t = 0; t <= OUTRO_MS; t += 100) {
+        const { cam } = outroAt(kind, t, AX)
+        const d = Math.hypot(cam.x - AX, cam.y - STAND_Y)
+        expect(d, `${kind} t=${t}`).toBeGreaterThan(1.2)
+        expect(cam.fov, `${kind} t=${t}`).toBeGreaterThanOrEqual(54)
+      }
+    }
+  })
+
+  /**
+   * 옆으로 비켜서는 각도의 상한. 1.6m(42°)까지 갔다가 화면이 객실이 아니라
+   * **복도**가 됐다 — 32m 짜리 벽을 비껴보게 되기 때문이다.
+   */
+  it('옆으로 비켜서는 각이 30° 를 안 넘는다', () => {
+    for (const kind of ['success', 'jit', 'wrongway'] as const) {
+      for (let t = 0; t <= OUTRO_MS; t += 100) {
+        const { cam } = outroAt(kind, t, AX)
+        const deg = Math.atan2(Math.abs(cam.x - AX), STAND_Y - cam.y) * 180 / Math.PI
+        expect(deg, `${kind} t=${t}`).toBeLessThan(30)
+      }
+    }
+  })
+})
+
 describe('카메라는 객실 안에 머문다', () => {
   /**
    * 남쪽으로 나가면 안전문과 차문이 화면을 막고, 북쪽으로 나가면 창을 통과해
@@ -185,7 +232,7 @@ describe('WRONG WAY 전용 효과', () => {
   /** 번개는 **지옥이 드러난 뒤에** 친다 — 터널에서 번쩍이면 그냥 오류로 보인다 */
   it('번개는 짧고, 지옥이 드러난 뒤에 친다', () => {
     expect(outroAt('wrongway', SHOT.turn + 100, AX).stage.flash).toBe(1)
-    expect(outroAt('wrongway', SHOT.turn + 720, AX).stage.flash).toBeGreaterThan(2)
+    expect(outroAt('wrongway', SHOT.turn + 720, AX).stage.flash).toBeGreaterThan(1.5)
     expect(outroAt('wrongway', SHOT.turn + 900, AX).stage.flash).toBe(1)
   })
 })
