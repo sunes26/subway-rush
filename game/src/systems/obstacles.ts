@@ -58,8 +58,10 @@ const STUDENT_X = -15.8
 
 /**
  * 순찰 y — 좀비폰족(`zombieAt`)과 같은 수법: **시간의 순수 함수**라 렌더와 판정이
- * 같은 식을 쓴다. 아주머니·학생 둘 다 같은 위상으로 걷는다(디렉터가 위상차를
- * 특정하지 않았다 — 각자 독립된 경로만 요구했다).
+ * 같은 식을 쓴다. 아주머니·학생은 **반대 위상**으로 걷는다(디렉터 지시) — 한쪽이
+ * y_min→y_max 로 갈 때 다른 쪽은 같은 순간에 y_max→y_min. `studentPatrolY` 는
+ * `preachPatrolY` 를 구간 중앙 기준으로 거울 대칭시킨 값이라, 위상이 어긋나는 게
+ * 아니라 매 순간 정확히 반대 방향이다.
  */
 const preachPatrolY = (elapsedMs: number): number => {
   const period = OBSTACLE.preachPeriodMs
@@ -68,11 +70,14 @@ const preachPatrolY = (elapsedMs: number): number => {
   return PREACH_Y_MIN + k * (PREACH_Y_MAX - PREACH_Y_MIN)
 }
 
+const studentPatrolY = (elapsedMs: number): number =>
+  PREACH_Y_MIN + PREACH_Y_MAX - preachPatrolY(elapsedMs)
+
 export const auntieAt = (elapsedMs: number): { x: number; y: number } =>
   ({ x: AUNTIE_X, y: preachPatrolY(elapsedMs) })
 
 export const studentAt = (elapsedMs: number): { x: number; y: number } =>
-  ({ x: STUDENT_X, y: preachPatrolY(elapsedMs) })
+  ({ x: STUDENT_X, y: studentPatrolY(elapsedMs) })
 
 /**
  * OBS-10 공사중 막다른 길 — `OBJ-28-N`(y 6.6~7.0, x 44~56)과
