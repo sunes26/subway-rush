@@ -12,7 +12,7 @@
 
 import CSS from './css/settings.css?inline'
 import {
-  DEFAULT_SETTINGS, loadSettings, saveSettings, SENS_MAX, SENS_MIN,
+  BRIGHTNESS_MAX, BRIGHTNESS_MIN, DEFAULT_SETTINGS, loadSettings, saveSettings, SENS_MAX, SENS_MIN,
   type ResKey, type ScreenMode, type Settings,
 } from '../core/settings'
 
@@ -104,6 +104,10 @@ export const createSettings = (mount: HTMLElement, hooks: SettingsHooks): Settin
 
       <div class="sec">
         <h3>그래픽</h3>
+        <div class="row"><label for="set-bright">밝기</label>
+          <input id="set-bright" type="range" min="${Math.round(BRIGHTNESS_MIN * 100)}"
+            max="${Math.round(BRIGHTNESS_MAX * 100)}" step="5">
+          <span class="val" id="val-bright"></span></div>
         <div class="row"><label for="set-res">해상도</label>
           <select id="set-res">${opt(RES_LABEL, cur.res)}</select></div>
         <div class="row"><label for="set-screen">화면 모드</label>
@@ -122,6 +126,7 @@ export const createSettings = (mount: HTMLElement, hooks: SettingsHooks): Settin
   const rBgm = $<HTMLInputElement>('set-bgm')
   const rSfx = $<HTMLInputElement>('set-sfx')
   const rSens = $<HTMLInputElement>('set-sens')
+  const rBright = $<HTMLInputElement>('set-bright')
   const bInvert = $<HTMLButtonElement>('set-invert')
   const selRes = $<HTMLSelectElement>('set-res')
   const selScreen = $<HTMLSelectElement>('set-screen')
@@ -132,10 +137,12 @@ export const createSettings = (mount: HTMLElement, hooks: SettingsHooks): Settin
     rBgm.value = String(Math.round(cur.bgm * 100))
     rSfx.value = String(Math.round(cur.sfx * 100))
     rSens.value = String(Math.round(cur.sens * 100))
+    rBright.value = String(Math.round(cur.brightness * 100))
     $('val-master').textContent = pct(cur.master)
     $('val-bgm').textContent = pct(cur.bgm)
     $('val-sfx').textContent = pct(cur.sfx)
     $('val-sens').textContent = pct(cur.sens)
+    $('val-bright').textContent = pct(cur.brightness)
     bInvert.setAttribute('aria-checked', String(cur.invertY))
     $('val-invert').textContent = cur.invertY ? 'ON' : 'OFF'
     selRes.value = cur.res
@@ -148,7 +155,7 @@ export const createSettings = (mount: HTMLElement, hooks: SettingsHooks): Settin
     hooks.onChange(cur)
   }
 
-  const bindRange = (input: HTMLInputElement, key: 'master' | 'bgm' | 'sfx' | 'sens'): void => {
+  const bindRange = (input: HTMLInputElement, key: 'master' | 'bgm' | 'sfx' | 'sens' | 'brightness'): void => {
     // `input` 이지 `change` 가 아니다 — 끄는 도중에 소리가 따라와야 값을 고를 수 있다
     input.addEventListener('input', () => { commit({ [key]: Number(input.value) / 100 } as Partial<Settings>) })
   }
@@ -156,6 +163,7 @@ export const createSettings = (mount: HTMLElement, hooks: SettingsHooks): Settin
   bindRange(rBgm, 'bgm')
   bindRange(rSfx, 'sfx')
   bindRange(rSens, 'sens')
+  bindRange(rBright, 'brightness')
 
   bInvert.addEventListener('click', () => { commit({ invertY: !cur.invertY }) })
   selRes.addEventListener('change', () => { commit({ res: selRes.value as ResKey }) })

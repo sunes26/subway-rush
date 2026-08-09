@@ -61,7 +61,7 @@ const EMPTY_AMBUSH: AmbushState = { active: false, phaseMs: 0 }
 
 const EMPTY_KNOCKDOWN: KnockdownState = { active: false, phaseMs: 0 }
 
-const EMPTY_PREACH: PreachState = { active: false, phaseMs: 0 }
+const EMPTY_PREACH: PreachState = { active: false, phaseMs: 0, seen: false }
 
 const EMPTY_ZOMBIE_TALK: ZombieTalkState = { active: false, phaseMs: 0, variant: 0 }
 
@@ -847,14 +847,15 @@ export const reducer = (s: GameState, a: Action): GameState => {
     // ─────────────────── OBS-07 아주머니+학생 강제 대화 (신규) ───────────────────
 
     case 'PREACH_START':
-      return s.preach.active ? s : { ...s, preach: { active: true, phaseMs: 0 } }
+      return s.preach.active ? s : { ...s, preach: { active: true, phaseMs: 0, seen: true } }
 
     case 'PREACH_TICK':
       return { ...s, preach: { ...s.preach, phaseMs: s.preach.phaseMs + a.dtMs } }
 
-    // 게임을 안 끝낸다 — `ambush`와 달리 그냥 풀려나고 이동이 돌아온다
+    // 게임을 안 끝낸다 — `ambush`와 달리 그냥 풀려나고 이동이 돌아온다.
+    // `seen` 은 안 되돌린다 — `PREACH_START`에서 이미 영구로 세웠다.
     case 'PREACH_END':
-      return s.preach.active ? { ...s, preach: EMPTY_PREACH } : s
+      return s.preach.active ? { ...s, preach: { active: false, phaseMs: 0, seen: true } } : s
 
     // ─────────────────── OBS-08 좀비폰족 부딪힘 ───────────────────
 

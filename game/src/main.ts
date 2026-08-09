@@ -127,6 +127,7 @@ const applySettings = (v: Settings, boot = false): void => {
   sfx.setVolumes({ master: v.master, bgm: v.bgm, sfx: v.sfx })
   input.setLook({ sens: v.sens, invertY: v.invertY })
   stage.setResScale(RES_SCALES[v.res])
+  stage.setExposure(v.brightness)
   if (boot) return
   const wantFull = v.screen === 'fullscreen'
   const isFull = document.fullscreenElement !== null
