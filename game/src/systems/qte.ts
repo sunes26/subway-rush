@@ -13,6 +13,14 @@
  *   프레임당 두 번 움직여 판정이 프레임레이트를 탄다.
  * ★ 포인터 락을 **풀지 않는다.** 락을 풀면 QTE가 끝나고 다시 클릭해야 시선이 돌아온다 —
  *   3분 게임에서 그건 최악의 UX다. 대신 `qte.active` 동안 카메라가 시선 적용만 건너뛴다.
+ *
+ * ★ **판정은 `ctx.prevPos` 를 본다, `s.qte.pos` 가 아니다.** 한 틱 안에서 `ADVANCE` 가
+ *   먼저 돌아 마커를 이미 이번 프레임만큼 옮긴 **뒤에** 이 시스템이 클릭을 판정한다.
+ *   `s.qte.pos` 를 그대로 쓰면 화면에 마지막으로 그려진 위치(플레이어가 보고 누른 바로 그
+ *   위치)가 아니라 한 틱 더 진행된 위치로 판정된다 — 진행 방향 쪽 구간 경계에서
+ *   "분명 초록인데 미스"가 난다(실측: speedMul 1 기준 한 틱 이동량이 zoneHalf 의 30%,
+ *   2연속 성공 뒤엔 38%). `ctx.prevPos` 는 `tick.ts` 가 이번 틱의 `ADVANCE` 보다
+ *   먼저 떠 두는, 직전 프레임에 실제로 그려졌던 값이다.
  */
 
 import type { InputFrame } from '../core/input'
@@ -21,7 +29,7 @@ import { VENDING_IDS } from '../data/interactables'
 import { FARE, QTE } from '../data/tuning'
 import type { Action, GameState } from '../state/types'
 
-export type QteCtx = Readonly<{ dtMs: number; input: InputFrame }>
+export type QteCtx = Readonly<{ dtMs: number; input: InputFrame; prevPos: number }>
 
 /** 자판기 id → 안정 해시. 시드와 섞어 자판기별 독립 금액을 만든다 */
 const hash = (s: string): number => {
@@ -126,7 +134,7 @@ export const qteSystem = (s: GameState, ctx: QteCtx): Action[] => {
    */
   if (!f.pressInteract) return []
 
-  const hit = inZone(s.qte.pos)
+  const hit = inZone(ctx.prevPos)
   const strokes = s.qte.strokes + (hit ? 1 : 0)
   const misses = s.qte.misses + (hit ? 0 : 1)
 
