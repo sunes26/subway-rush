@@ -291,6 +291,12 @@ export type KnockdownState = Readonly<{
 export type PreachState = Readonly<{
   active: boolean
   phaseMs: number
+  /**
+   * 이번 판에 한 번이라도 붙잡힌 적 있는가 — **영구적이다**, 쿨다운과 달리 안 풀린다.
+   * true면 `systems/obstacles.ts`가 OBS-07을 다시 안 켜고, `render/actors.ts`는
+   * 대화가 끝난 아주머니·학생을 순찰로 되돌리는 대신 아예 지운다(디렉터 지시).
+   */
+  seen: boolean
 }>
 
 /**
