@@ -58,6 +58,14 @@ export const rebuildDynamics = (s: GameState): void => {
 export const tick = (state: GameState, dtMs: number, ctx: TickCtx): GameState => {
   let s = state
 
+  /**
+   * QTE 마커의 **직전 프레임 위치** — 화면에 마지막으로 그려졌던 값이다.
+   * `ADVANCE` 가 이번 프레임만큼 마커를 옮기기 **전에** 떠 둔다 — `qteSystem` 은 이번 틱에
+   * 들어온 클릭을 이 값으로 판정해야, 플레이어가 실제로 본 위치와 판정이 일치한다
+   * (`systems/qte.ts` 상단 주석 참고).
+   */
+  const prevQtePos = s.qte.pos
+
   // 1) 시계 전진
   s = applyAll(s, [{ t: 'ADVANCE', dtMs }])
 
@@ -141,7 +149,7 @@ export const tick = (state: GameState, dtMs: number, ctx: TickCtx): GameState =>
    * 둘 다 이동보다 뒤인 것도 이유가 있다 — 타겟팅은 이번 틱의 **최종 위치**에서 해야 한다.
    */
   s = applyAll(s, interactSystem(s, { dtMs, input: ctx.input, cameraYaw: ctx.cameraYaw }))
-  s = applyAll(s, qteSystem(s, { dtMs, input: ctx.input }))
+  s = applyAll(s, qteSystem(s, { dtMs, input: ctx.input, prevPos: prevQtePos }))
 
   /**
    * 펼친 우산 훑기 — **상호작용 뒤**다. 같은 스텝에 좌클릭으로 편 우산이 곧바로
