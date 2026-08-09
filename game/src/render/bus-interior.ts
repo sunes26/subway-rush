@@ -140,8 +140,25 @@ const IN = {
   xE: BUS.xMax - 0.10,
 } as const
 
-/** 문짝이 붙는 면 — 옆판 **바로 바깥**. 여기가 뜨면 문이 공중에 뜬다 */
-const SKIN_OUT = BUS.skinN + 0.02
+/**
+ * 문짝이 놓이는 면 — **개구부 안쪽**이다.
+ *
+ * ■ ★ 한동안 옆판 **바깥**(`skinN + 0.02`)이었다
+ *
+ * 외피에 문 구멍이 없던 시절의 편법이다. 문짝을 차체 표면에 띄워 붙여야 밖에서
+ * 보이니까 그랬다. 대가는 컸다 — 정면에서 보면 **차체에 판을 덧댄** 것으로 읽히고,
+ * 그 앞을 지나는 주인공이 차체 옆면에 붙어 보였다. 실측으로도 9개 면이 옆판을
+ * +0.03~0.067 넘고 있었다.
+ *
+ * 이제 외피에 실제 구멍이 있다(`tools/hq_punch_bus_door.py` · 함몰 깊이 0.28).
+ * 그래서 문짝을 **구멍 안**으로 넣는다. 실물 시내버스의 미닫이문도 옆판 안쪽에서
+ * 옆으로 빠진다.
+ *
+ * 0.10 은 옆판(21.58)에서 안쪽, 함몰 뒷벽(21.30)에서 0.18 앞이다 — 두께 0.05 짜리
+ * 문짝이 어느 쪽에도 닿지 않는다.
+ */
+const DOOR_INSET = 0.10
+const SKIN_IN = BUS.skinN - DOOR_INSET
 
 /**
  * 모서리를 죽인 상자. **날 선 박스 하나가 통째로 프로토타입처럼 보이게 만든다.**
@@ -398,26 +415,20 @@ export const buildBusInterior = (): BusInterior => {
    */
   const doorTop = BUS.winTop
   const doorH = doorTop - 0.06
-  const yOut = tz(SKIN_OUT)
+  const yIn = tz(SKIN_IN)
   const dw = DOOR.xMax - DOOR.xMin
 
-  /**
-   * 열렸을 때 드러나는 구멍 — 실내 그늘.
+  /*
+   * ★ 여기 있던 **가짜 개구부 평면을 걷어냈다.**
    *
-   * ⚠ **상자로 만들면 안 된다.** 상자는 안쪽 면도 있어서, 버스 **안에서** 보면
-   *   창 자리에 시커먼 판이 걸린다. 실제로 그랬다 — ① 샷 오른쪽 절반이 통째로
-   *   검은 사각형이었고, 창밖이 하나도 안 보였다(마젠타로 칠해 범인을 확인했다).
-   *
-   *   바깥(북)만 향하는 **평면 한 장**이면 안에서는 뒷면이 컬링돼 사라진다.
+   * 외피에 구멍이 없던 시절, "열렸을 때 드러나는 그늘"을 어두운 평면 한 장으로
+   * 흉내 냈다. 이제 외피에 실제 구멍과 0.28m 함몰이 있으므로(`BUS_TRIM` 재사용)
+   * 그 평면은 진짜 함몰 **앞을 가리는** 판이 된다. 없는 것이 맞다.
    */
-  const hole = new Mesh(new PlaneGeometry(dw - 0.04, doorH - 0.06), toonMat(0x14161a))
-  hole.position.set(DOOR_X, (doorH + 0.06) / 2, yOut + 0.05)
-  hole.rotation.y = Math.PI                 // +y(북)를 향한다
-  root.add(hole)
   // 문틀
-  root.add(box(0.08, doorH, 0.09, C.trim, DOOR.xMin, doorH / 2 + 0.03, yOut))
-  root.add(box(0.08, doorH, 0.09, C.trim, DOOR.xMax, doorH / 2 + 0.03, yOut))
-  root.add(box(dw + 0.16, 0.08, 0.09, C.trim, DOOR_X, doorTop, yOut))
+  root.add(box(0.08, doorH, 0.09, C.trim, DOOR.xMin, doorH / 2 + 0.03, yIn))
+  root.add(box(0.08, doorH, 0.09, C.trim, DOOR.xMax, doorH / 2 + 0.03, yIn))
+  root.add(box(dw + 0.16, 0.08, 0.09, C.trim, DOOR_X, doorTop, yIn))
   /**
    * 내릴 때 잡는 세로봉 — 문 **동쪽**.
    *
@@ -454,14 +465,14 @@ export const buildBusInterior = (): BusInterior => {
     const bottom = 0.35
     const lower = BUS.winBottom - bottom
     // 아래 판 — 양면 다 차체 색이라 상자로 둬도 된다
-    g.add(box(leafW, lower, 0.05, 0x1c6bc7, cx, bottom + lower / 2, yOut))
+    g.add(box(leafW, lower, 0.05, 0x1c6bc7, cx, bottom + lower / 2, yIn))
     const glass = new Mesh(new PlaneGeometry(leafW - 0.02, doorTop - BUS.winBottom - 0.02),
       toonMat(0x171c24))
-    glass.position.set(cx, (BUS.winBottom + doorTop) / 2, yOut - 0.01)
+    glass.position.set(cx, (BUS.winBottom + doorTop) / 2, yIn - 0.01)
     glass.rotation.y = Math.PI
     g.add(glass)
     // 문짝 가운데 세로 몰딩 — 두 짝이 맞물린 자리
-    g.add(box(0.035, doorH - 0.1, 0.055, C.trim, DOOR_X + dir * 0.018, doorH / 2 + 0.03, yOut - 0.02))
+    g.add(box(0.035, doorH - 0.1, 0.055, C.trim, DOOR_X + dir * 0.018, doorH / 2 + 0.03, yIn - 0.02))
     return g
   }
   const dL = leafOf(-1)

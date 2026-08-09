@@ -43,7 +43,7 @@ test('실내 AABB 는 정차 후 외피 안에 들어간다', async ({ page }) =
     let inner: any = null
     root.traverse((x: any) => { if (!inner && x.name === 'intro-bus-interior') inner = x })
     inner.updateWorldMatrix(true, true)
-    let xmin = 1e9, xmax = -1e9
+    let xmin = 1e9, xmax = -1e9, nmax = -1e9
     inner.traverse((o: any) => {
       if (!o.geometry) return
       o.geometry.computeBoundingBox()
@@ -51,14 +51,23 @@ test('실내 AABB 는 정차 후 외피 안에 들어간다', async ({ page }) =
       for (const X of [bb.min.x, bb.max.x]) for (const Y of [bb.min.y, bb.max.y]) for (const Z of [bb.min.z, bb.max.z]) {
         const wx = m[0] * X + m[4] * Y + m[8] * Z + m[12]
         xmin = Math.min(xmin, wx); xmax = Math.max(xmax, wx)
+        nmax = Math.max(nmax, -(m[2] * X + m[6] * Y + m[10] * Z + m[14]))
       }
     })
-    return { dx: +inner.position.x.toFixed(3), xmin: +xmin.toFixed(2), xmax: +xmax.toFixed(2) }
+    return { dx: +inner.position.x.toFixed(3), xmin: +xmin.toFixed(2), xmax: +xmax.toFixed(2), nmax: +nmax.toFixed(3) }
   })
-  console.log(`AABB dx=${r.dx}  x ${r.xmin} ~ ${r.xmax}  (외피 −65.30 ~ −54.40)`)
+  console.log(`AABB dx=${r.dx}  x ${r.xmin} ~ ${r.xmax}  최북단 ${r.nmax}  (외피 x −65.30~−54.40 · 옆판 21.58)`)
   expect(r.dx, '정차 후여야 한다').toBe(0)
   expect(r.xmin, '서쪽으로 안 나간다').toBeGreaterThan(-65.30)
   expect(r.xmax, '동쪽으로 안 나간다').toBeLessThan(-54.40)
+  /**
+   * ★ 북쪽(옆판 21.58)도 안 넘는다.
+   *
+   * 한동안 문짝·문틀 9면이 옆판을 +0.03~0.067 넘고 있었다 — 외피에 문 구멍이 없어서
+   * 밖에서 보이려면 그래야 했다. 이제 구멍이 있으므로(`tools/hq_punch_bus_door.py`)
+   * 문짝을 안으로 넣었고, 이 단정이 다시 밖으로 나가는 것을 막는다.
+   */
+  expect(r.nmax, '실내가 옆판을 넘는다').toBeLessThan(21.58)
 })
 
 const MARKS: readonly [string, number][] = [
