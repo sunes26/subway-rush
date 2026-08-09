@@ -85,6 +85,14 @@ export type InputSource = {
    * (`onPointerDown` 의 "락 안 걸려 있으면 좌클릭 = 재진입" 규칙) 마우스가 도로 시선 회전이 된다.
    */
   setPointerLockAllowed(allowed: boolean): void
+  /**
+   * 1인칭 시선 누적값을 되돌린다 — 기본은 역 방향(yaw 0 · pitch 0).
+   *
+   * `lookYaw`/`lookPitch` 는 이 클로저에서만 산다. 재시작은 `GameState` 만 새로
+   * 만들 뿐 이 값은 그대로 두므로, 인트로가 다시 끝나 조작권을 넘기는 순간
+   * 직전 판에서 보던 방향이 그대로 남아 있었다 — 그걸 여기서 끊는다.
+   */
+  resetLook(yaw?: number, pitch?: number): void
   dispose(): void
 }
 
@@ -233,6 +241,10 @@ export const createInput = (target: HTMLElement): InputSource => {
     setPointerLockAllowed(allowed) {
       lockAllowed = allowed
       if (!allowed && document.pointerLockElement === target) document.exitPointerLock()
+    },
+    resetLook(yaw = 0, pitch = 0) {
+      lookYaw = yaw
+      lookPitch = pitch
     },
     sample(): InputFrame {
       // 이 프레임에 반영할 시선 델타를 꺼낸다. 넘치는 몫은 필터가 다음 프레임으로 이월한다.
