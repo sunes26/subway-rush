@@ -68,7 +68,7 @@ describe('S10-1 발동 타이밍', () => {
   })
 })
 
-describe('S10-2 걷기로는 못 벗어나고 스프린트로는 벗어난다', () => {
+describe('S10-2 걷기만으로도 서서히 벌어지고, 스프린트로는 더 빨리 벌어진다', () => {
   /** 3초 도망친 뒤의 거리 */
   const gapAfter = (sprint: boolean): number => {
     let s = afterSteal()
@@ -77,15 +77,17 @@ describe('S10-2 걷기로는 못 벗어나고 스프린트로는 벗어난다', 
     return Math.hypot(s.chase.pos.x - s.player.pos.x, s.chase.pos.y - s.player.pos.y)
   }
 
-  it('할아버지 속도가 걷기와 같다', () => {
-    expect(CHASE.speed).toBe(SPEED.walk)
+  it('할아버지 속도는 걷기(5.0)의 80% — 4.0이다 (디렉터 지시로 하향)', () => {
+    expect(CHASE.speed).toBeCloseTo(SPEED.walk * 0.8, 5)
   })
 
-  it('걸어서 도망치면 거리가 벌어지지 않는다', () => {
-    expect(gapAfter(false), '걷기로는 절대 못 벗어난다').toBeLessThan(CHASE.hitRangeM + 0.6)
+  it('걸어서 도망쳐도 (걷기가 더 빠르므로) 거리가 서서히 벌어진다', () => {
+    // 순 속도차는 1.0 m/s(5.0−4.0)지만 발도 직후 가속·선회 구간이 있어 3초 뒤 실측 ≈2.2m —
+    // "못 벗어난다"였던 옛 상한(hitRangeM+0.6=1.8)은 확실히 넘는다는 것만 본다
+    expect(gapAfter(false), '걷기만으로도 서서히 벗어난다').toBeGreaterThan(CHASE.hitRangeM + 0.8)
   })
 
-  it('스프린트로 도망치면 거리가 벌어진다', () => {
+  it('스프린트로 도망치면 걷기보다 훨씬 빨리 벌어진다', () => {
     const sprintGap = gapAfter(true)
     expect(sprintGap, `스프린트 3초 후 ${sprintGap.toFixed(1)}m`).toBeGreaterThan(gapAfter(false) + 2)
   })

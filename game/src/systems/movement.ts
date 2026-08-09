@@ -33,15 +33,8 @@ import { WET_ZONE } from './obstacles'
  *
  * 좀비폰족(`zombieTalk.active`)도 같은 이유다 — 8초짜리 자동 대화 중에 걸어서
  * 빠져나가면 마주 서 있어야 할 두 사람이 서로 다른 곳을 보고 대사만 흘러나온다.
- *
- * ★ `export` 하는 이유: `systems/chase.ts` 도 이걸 본다 — 조작이 안 먹히는 동안은
- *   추격도 같이 멈춰야 한다. 안 그러면 이동은 막혔는데 할아버지만 다가와 때린다
- *   (실측 — 좀비폰족이 상시 활성화된 뒤 절도 루트가 100% 즉사했다. 8초 대화 동안
- *   할아버지의 스윙 쿨다운 1.5초가 다섯 번 넘게 돌아 도망칠 겨를도 없이 두 대를
- *   맞았다). 플레이어가 대응할 수 없는 상태에서 맞는 건 "위험한 선택의 대가"가
- *   아니라 그냥 불공평한 처형이다(GDD §11 "재미없는 실패" 금지 원칙과 같은 결).
  */
-export const isTalkLocked = (s: GameState): boolean =>
+const isTalkLocked = (s: GameState): boolean =>
   s.act.busyKind === 'story' || s.ambush.active || s.act.dialogId === FISHCAKE_ID ||
   s.preach.active || s.zombieTalk.active ||
   // 차에 치이면 조작이 통째로 끝난다 — 날아가는 동안 걸어 다니면 안 된다

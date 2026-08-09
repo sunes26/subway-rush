@@ -5,8 +5,9 @@
  * 그 자리에서 런이 끝난다. 예전에는 5대 누적으로 효자손을 회수당하는 "산수로 손해"
  * 구조였는데, 즉사로 바꾸면서 성격이 달라졌다 — 시간 손해가 아니라 판돈이다.
  *
- * 도망은 성립한다: 스프린트 8.3 대 할아버지 5.0, 벤치(x=42)에서 개찰구(x=56)까지 14m,
- * 스태미너 100/초당 22 ≈ 4.5초면 37m 를 달린다.
+ * 도망은 성립한다: 스프린트 8.3 대 할아버지 4.0(원래 5.0에서 80%로 하향), 벤치(x=42)에서
+ * 개찰구(x=56)까지 14m, 스태미너 100/초당 22 ≈ 4.5초면 37m 를 달린다. 이제 걷기(5.0)만으로도
+ * 할아버지보다 빠르다 — 스프린트 없이도 서서히 거리를 벌릴 수 있다.
  *
  * 톤 가드레일: 폭력이 아니라 슬랩스틱이다. 피 없음 · 데미지 수치 없음 · 3등신 SD ·
  * 타격음은 "딱!" 목탁 계열 · 대사는 훈계가 아니라 잔소리.
@@ -19,7 +20,6 @@ import type { Action, GameState } from '../state/types'
 import { crowdSolids } from './crowd'
 import { gateFlaps } from './gates'
 import { resolveMove, sampleGround, setDynamicSolids } from './collision'
-import { isTalkLocked } from './movement'
 import { psdDoors } from './train'
 
 export type ChaseCtx = Readonly<{ dtMs: number }>
@@ -90,13 +90,6 @@ const step = (
 
 export const chaseSystem = (s: GameState, ctx: ChaseCtx): Action[] => {
   if (s.phase !== 'playing') return []
-  /**
-   * 플레이어가 다른 강제 대화(좀비폰족·아주머니+학생·말동무 등)에 묶여 조작이
-   * 안 먹히는 동안은 추격도 같이 멈춘다 — 위 `isTalkLocked` 주석 참고. 여기서 멈춰도
-   * `remainingMs` 는 리듀서의 `ADVANCE` 가 그대로 깎는다(플레이어에게 유리한 쪽이라
-   * 손볼 이유가 없다 — 타임아웃으로 풀려나는 건 손해가 아니라 이득이다).
-   */
-  if (isTalkLocked(s)) return []
   const c = s.chase
   const p = s.player.pos
 
