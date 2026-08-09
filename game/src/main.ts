@@ -353,7 +353,7 @@ let outroKind: OutroKind | null = null
  *
  * ⚠ **삭제가 아니라 숨김이다.** 원래 값을 들고 있다가 컷이 끝나면 그대로 되돌린다.
  */
-const CUT_HIDDEN = /^merged:(B_)?TR_(INNER|DOOR)$/
+const CUT_HIDDEN = /^merged:(B_)?TR_(INNER|DOOR|WINDOW|BODY)$/
 
 /** 숨기기 전의 `visible` — 컷이 끝나면 이 값으로 되돌린다 */
 let cutHidden: { o: Object3D; was: boolean }[] = []
@@ -753,6 +753,7 @@ const frame = (now: number): void => {
         wrong: outroKind === 'wrongway',
         glow: f.stage.glow,
         flash: f.stage.flash,
+        dim: f.stage.dim,
       })
 
       /**

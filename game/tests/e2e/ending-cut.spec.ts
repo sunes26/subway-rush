@@ -214,12 +214,12 @@ test.describe('엔딩 뒤 정리', () => {
        * 낮춘다. 안 되돌리면 **다음 판의 역 전체가 어둡다.**
        */
       /**
-       * 치웠던 전경이 돌아왔는가 — 컷이 기둥(`TR_INNER`)과 차문(`TR_DOOR`)을 숨긴다.
-       * 안 되돌리면 **다음 판의 열차에 기둥도 문도 없다.**
+       * 치웠던 전경이 돌아왔는가 — 컷이 기둥·차문·창틀·차체 셸을 통째로 숨긴다.
+       * 안 되돌리면 **다음 판의 열차가 껍데기만 남는다.**
        */
       let hiddenLeft = 0
       ;(window as any).__scene.traverse((o: any) => {
-        if (/^merged:(B_)?TR_(INNER|DOOR)$/.test(o.name) && !o.visible) hiddenLeft++
+        if (/^merged:(B_)?TR_(INNER|DOOR|WINDOW|BODY)$/.test(o.name) && !o.visible) hiddenLeft++
       })
       let amb = -1
       ;(window as any).__scene.traverse((o: any) => {

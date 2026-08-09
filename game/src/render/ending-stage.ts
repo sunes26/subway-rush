@@ -97,12 +97,12 @@ export type EndingStage = Readonly<{
    * @param glow   창밖 빛이 객실로 들어오는 정도 0 → 1. **이 값이 이 컷의 절반이다**
    * @param flash  번개 — 창밖 빛의 순간 배율(1 = 평소). 새 광원을 안 만든다
    *
-   * ⚠ 실내 감광(`dim`)은 여기서 안 한다 — `stage.setIndirect()` 가 그 일을 이미
-   *   갖고 있고(`render/scene.ts`), 그쪽은 `main.ts` 가 쥐고 있다.
+   * @param dim 실내 밝기 배율. 진짜 객실 부품은 `stage.setIndirect()` 가 낮추지만
+   *   무대가 세운 **껍데기는 unlit 이라 안 먹는다** — 여기서 직접 곱한다
    */
   sync(o: {
     x: number; yOff: number; tunnel: number; scroll: number
-    led: number; wrong: boolean; glow: number; flash: number
+    led: number; wrong: boolean; glow: number; flash: number; dim: number
   }): void
   setVisible(on: boolean): void
 }>
@@ -509,11 +509,21 @@ const ledWrong = texOf(drawLed(true))
 
 // ─────────────────────────── 조립 ───────────────────────────
 
-const panel = (w: number, h: number, tex: Texture, opacity: number): Mesh => {
+const panel = (w: number, h: number, tex: Texture, opacity: number, opaque = false): Mesh => {
   const m = new Mesh(
     new PlaneGeometry(w, h),
     new MeshBasicMaterial({
-      map: tex, transparent: true, opacity, side: DoubleSide, depthWrite: false,
+      map: tex,
+      /**
+       * ★ 배경 판만 **불투명 패스**로 보낸다(`opaque`).
+       *
+       * 전부 `transparent + depthWrite:false` 로 뒀더니 **뒤쪽 광고판 글로우가 배경을
+       * 뚫고 올라왔다** — 하늘 위로 옅은 사각형이 줄줄이 떠 있었다(실측). 깊이를
+       * 안 쓰니 25m 뒤의 가산 판을 아무것도 가려 주지 않았던 것이다.
+       * 배경은 어차피 불투명(opacity 1)이라 불투명 패스가 제자리다: 깊이를 쓰고,
+       * 뒤를 전부 가린다. 그 위에 얹히는 터널·번짐·유리는 그대로 투명이다.
+       */
+      transparent: !opaque, opacity, side: DoubleSide, depthWrite: opaque,
       /**
        * ★★ **톤매핑을 통과시키지 않는다.** 이 한 줄이 화질 문제의 대부분이었다.
        *
@@ -553,7 +563,7 @@ export const buildEndingStage = (): EndingStage => {
    * 뒤(풍경) → 앞(터널) 두 장. 터널이 걷히면 뒤가 드러난다.
    * 뒤에 무엇이 오는지는 `wrong` 이 정한다 — 성공이면 일출, 반대 방면이면 지옥.
    */
-  const back = panel(GLASS_W, GLASS_H, dawnTex, 1)
+  const back = panel(GLASS_W, GLASS_H, dawnTex, 1, true)
   back.position.set(0, GLASS_Z, -GLASS_Y - 0.02)
   root.add(back)
 
@@ -576,6 +586,39 @@ export const buildEndingStage = (): EndingStage => {
   const led = panel(LED_W, LED_H, ledOk, 0)
   led.position.set(0, LED_Z, -LED_Y)
   root.add(led)
+
+  /**
+   * ★ **객실 껍데기** — 컷이 차체(`merged:TR_BODY`)를 숨기는 대신 그 자리를 채운다.
+   *
+   * 차체를 숨겨야 통창이 된다. 거기에 매달린 손잡이·양끝 기둥·창틀이 전부 병합돼
+   * 있어서, 그것만 떼려면 원본 머티리얼을 갈라야 하기 때문이다. 그런데 셸을 그냥
+   * 끄면 **벽과 천장이 같이 사라져 역이 비친다**(실측: 창 위로 승강장 천장이 보였다).
+   *
+   * 그래서 무대가 대신 공급한다. 창 위·아래 띠와 천장, 딱 그 셋이다 —
+   * 좌석(`TR_SEAT`)과 전광판은 그대로 두므로 "열차 안"의 기준선은 남는다.
+   * 예전에 벽·천장을 지었다가 **진짜 내부를 가려서** 걷어낸 적이 있는데, 그때와
+   * 다른 점이 이것이다: 그때는 살아 있는 내부를 덮었고, 지금은 **꺼 둔 자리를 채운다.**
+   *
+   * 색은 `dim` 을 따라간다 — 씬 광원을 낮추는 `setIndirect` 는 unlit 재질에 안 먹으므로
+   * 여기서 직접 곱한다. 안 그러면 지옥 컷에서 벽만 대낮으로 남는다.
+   */
+  const SHELL_BASE = new Color(0xd6d1c8)
+  const shellMat = new MeshBasicMaterial({ color: SHELL_BASE.clone(), side: DoubleSide })
+  const CEIL_Z = FLOOR.B2 + 2.62
+  const wallBand = (z0: number, z1: number): Mesh => {
+    const m = new Mesh(new PlaneGeometry(HALF_W * 2, z1 - z0), shellMat)
+    m.position.set(0, (z0 + z1) / 2, -GLASS_Y - 0.03)
+    return m
+  }
+  root.add(wallBand(FLOOR.B2 - 0.2, GLASS_Z0))   // 창 아래 — 좌석 뒤를 받친다
+  root.add(wallBand(GLASS_Z1, CEIL_Z))           // 창 위 — 전광판이 붙는 벽
+  const ceil = new Mesh(
+    new PlaneGeometry(HALF_W * 2, GLASS_Y - 12.2),
+    new MeshBasicMaterial({ color: SHELL_BASE.clone().multiplyScalar(1.06), side: DoubleSide }),
+  )
+  ceil.rotation.x = Math.PI / 2
+  ceil.position.set(0, CEIL_Z, -(12.2 + GLASS_Y) / 2)
+  root.add(ceil)
 
   /**
    * ★ **빛 번짐** — 창이 밝고 객실이 어두우면 그 경계에서 빛이 샌다.
@@ -657,6 +700,7 @@ export const buildEndingStage = (): EndingStage => {
   lavaLight.position.set(0, FLOOR.B2 + 0.35, -GLASS_Y + 0.6)
   root.add(lavaLight)
 
+  const ceilMat = ceil.material as MeshBasicMaterial
   const bleedMat = bleed.material as MeshBasicMaterial
   const sheenMat = sheen.material as MeshBasicMaterial
   const emberMat = embers.material as PointsMaterial
@@ -673,7 +717,7 @@ export const buildEndingStage = (): EndingStage => {
       sunLight.intensity = 0
       lavaLight.intensity = 0
     },
-    sync({ x, yOff, tunnel: tunnelK, scroll, led: ledK, wrong, glow, flash }) {
+    sync({ x, yOff, tunnel: tunnelK, scroll, led: ledK, wrong, glow, flash, dim }) {
       root.position.x = x
       // 월드 y 는 three z 로 부호가 뒤집혀 들어간다(`train-rig.ts` 와 같은 규약)
       root.position.z = -yOff
@@ -704,6 +748,17 @@ export const buildEndingStage = (): EndingStage => {
        * 빛 번짐·유리·불티 — 전부 `glow` 에 매인다. 창밖이 안 드러났으면 0 이라,
        * 터널 구간에서는 아무것도 안 그린다(가산 판이 검은 화면을 들추지 않는다).
        */
+      /**
+       * 껍데기 밝기 — `dim` 을 직접 곱한다. 지옥은 붉게 물들이기까지 한다:
+       * 광원이 닿는 진짜 객실 부품과 톤이 어긋나면 껍데기만 회색으로 떠 보인다.
+       */
+      shellMat.color.copy(SHELL_BASE).multiplyScalar(dim)
+      ceilMat.color.copy(SHELL_BASE).multiplyScalar(dim * 1.06)
+      if (wrong) {
+        shellMat.color.multiply(new Color(1.0, 0.72, 0.66))
+        ceilMat.color.multiply(new Color(1.0, 0.72, 0.66))
+      }
+
       const warm = wrong ? 0xff4a14 : 0xffb066
       if (bleedMat.color.getHex() !== warm) bleedMat.color.setHex(warm)
       bleedMat.opacity = glow * (wrong ? 0.5 : 0.34) * flash
