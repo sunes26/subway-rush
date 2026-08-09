@@ -123,10 +123,8 @@ const walkPolyline = (
 
 /**
  * 순번 `index` 의 승객이 문이 열린 시각으로부터 `elapsedSinceOpenSec` 뒤 있는 자리.
- * 아직 첫 파도가 안 내렸으면(스태거 대기) null. 그 뒤로는 `DISEMBARK.cycleSec` 주기로
- * 같은 40명이 반복해서 내린다 — 걷는 구간이 끝나면(주기의 남은 부분) 잠깐 null이었다가
- * 다음 파도에서 다시 문 앞에 나타난다. `walkPolyline` 자체는 그대로(한 파도치만 안다),
- * 여기서 `% cycleSec` 로 시간만 감아 되돌린다.
+ * 아직 스태거 대기 중이면 null. 그 뒤로는 경로를 한 번만 걷고, 개찰구 밖으로 나가면
+ * (`walkPolyline` 이 null을 돌려주면) 그대로 소멸한 채 다시 나타나지 않는다.
  */
 export const disembarkAt = (
   index: number, elapsedSinceOpenSec: number, workingGateIds: readonly number[],
@@ -134,8 +132,7 @@ export const disembarkAt = (
   const delay = disembarkDelaySec(index, DISEMBARK.count, DISEMBARK.spawnSpreadMs)
   if (elapsedSinceOpenSec < delay) return null
   const sinceFirstWave = elapsedSinceOpenSec - delay
-  const tInCycle = sinceFirstWave % DISEMBARK.cycleSec
-  const walked = tInCycle * DISEMBARK.speedMps
+  const walked = sinceFirstWave * DISEMBARK.speedMps
   return walkPolyline(pathFor(index, workingGateIds), walked)
 }
 
@@ -165,14 +162,13 @@ const pathForOpp = (index: number): readonly Waypoint[] => {
   ]
 }
 
-/** `disembarkAt` 과 같은 식(스태거·주기), 경로만 `pathForOpp`. 게이트 목록이 필요 없다 */
+/** `disembarkAt` 과 같은 식(스태거, 한 번만 걷고 소멸), 경로만 `pathForOpp`. 게이트 목록이 필요 없다 */
 export const disembarkAtOpp = (
   index: number, elapsedSinceOpenSec: number,
 ): Readonly<{ x: number; y: number; z: number; facing: number }> | null => {
   const delay = disembarkDelaySec(index, DISEMBARK.count, DISEMBARK.spawnSpreadMs)
   if (elapsedSinceOpenSec < delay) return null
   const sinceFirstWave = elapsedSinceOpenSec - delay
-  const tInCycle = sinceFirstWave % DISEMBARK.cycleSec
-  const walked = tInCycle * DISEMBARK.speedMps
+  const walked = sinceFirstWave * DISEMBARK.speedMps
   return walkPolyline(pathForOpp(index), walked)
 }
