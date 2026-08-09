@@ -24,8 +24,9 @@
  */
 
 import {
-  BoxGeometry, CanvasTexture, Group, LinearFilter, Matrix4, Mesh, MeshBasicMaterial,
-  PlaneGeometry, Quaternion, SRGBColorSpace, Vector3, type Object3D, type Texture,
+  BoxGeometry, CanvasTexture, Group, LinearFilter, Matrix4, Mesh,
+  MeshBasicMaterial, PlaneGeometry, Quaternion, SRGBColorSpace, Vector3,
+  type Object3D, type Texture,
 } from 'three'
 import { CHAR_SCALE } from './actors'
 import { toonMat } from './toon'
@@ -187,6 +188,8 @@ export type Phone = Readonly<{
  */
 const SIZE = { w: 0.082, h: 0.168, d: 0.010 } as const
 
+
+
 export const buildPhone = (): Phone => {
   const root = new Group()
   root.name = 'intro-phone'
@@ -199,7 +202,20 @@ export const buildPhone = (): Phone => {
    * 사람이 쥐는 자리는 아래쪽이므로, 몸체와 화면을 위로 올려 **원점 = 쥐는 점**
    * 으로 만든다. 그러면 자세를 어떻게 돌리든 손과 폰이 안 떨어진다.
    */
-  const GRIP_UP = SIZE.h / 2 - 0.022
+  /**
+   * ★ 쥐는 점을 폰의 **아래 모서리에 거의 붙인다**(0.006 만 안쪽).
+   *
+   * ■ 왜 0.022 → 0.006 인가 — **손과 폰이 떨어지는 것을 크기로 풀면 안 된다**
+   *
+   * 손이 화면 아래쪽을 가려서, 한때 폰을 **손 끝 방향으로 밀어냈다**(0.205 → 0.250).
+   * 전완 길이가 약 0.21m 인데 0.25 로 보냈으니 **4cm 를 넘겨** 손에서 떨어졌고,
+   * 그게 "공중에 떠 있다"의 정체였다. 가림을 없애려다 접촉을 잃었다.
+   *
+   * 옳은 방향은 반대다 — 쥐는 점은 손 **안에** 두고(0.195 < 0.21), 폰 몸체를
+   * 그 위로 올린다. 그러면 손은 폰의 아래 모서리·뒷면에 닿은 채로 남고 화면은
+   * 손 위에서 열린다. 실제로 사람이 폰을 쥐는 모양이 이것이다.
+   */
+  const GRIP_UP = SIZE.h / 2 - 0.006
 
   const body = new Mesh(
     new BoxGeometry(SIZE.w, SIZE.h, SIZE.d),
@@ -229,7 +245,6 @@ export const buildPhone = (): Phone => {
   screen.position.set(0, GRIP_UP, -(SIZE.d / 2 + 0.001))
   screen.rotation.y = Math.PI
   root.add(screen)
-
   /**
    * ★ **본에 매달면 캐릭터 배율(`CHAR_SCALE` 1.6)을 그대로 먹는다.**
    *
@@ -266,7 +281,40 @@ export const buildPhone = (): Phone => {
    * 원점이 곧 쥐는 점이므로 **팔뚝 끝(= 손)에 그대로** 놓는다.
    * 팔뚝은 0.21m 이고, 본에 매달리면 `CHAR_SCALE` 이 곱해지므로 나눠 준다.
    */
-  root.position.set(0.008, 0.205 / CHAR_SCALE, 0.020)
+  /**
+   * ★ **손 메시를 따로 붙이지 않는다 — 팔뚝 끝이 손이다.**
+   *
+   * ■ 두 번 만들어 보고 두 번 다 걷어냈다
+   *
+   *   1. 손가락 셋 + 엄지를 폰에 감았다. 모양은 났지만 손가락 높이를 화면 문구
+   *      아래에서 끝내야 해서 mm 단위로 맞춰 뒀고, 문구가 한 줄 늘면 그 값이
+   *      전부 틀어지는 구조였다. 필요한 것보다 정교했다.
+   *   2. 캡슐 하나로 줄였다. 그런데 지름 0.046 인 캡슐이 두께 0.010 인 폰을
+   *      앞뒤·좌우로 넘어서, 팔뚝 실루엣 밖에 **흰 혹**이 하나 붙어 보였다.
+   *      길이를 0.086 → 0.076 → 0.066 으로 줄이고 폰 뒤로 넣어도 안 없어졌다 —
+   *      팔뚝보다 굵은 덩어리를 팔뚝 옆에 두는 한 남는다.
+   *
+   * ■ 그래서 아무것도 안 붙인다
+   *
+   * 이 리그의 팔뚝은 끝이 둥근 low-poly 덩어리이고, 그게 이미 벙어리장갑 낀
+   * 손처럼 읽힌다. 폰의 **아래 모서리를 그 안으로 넣으면** 「손 위에 얹혀 있다」가
+   * 성립하고, 실루엣은 팔에서 손으로 이어지는 하나의 매끈한 형태로 남는다.
+   *
+   * ■ 값은 런타임 스윕으로 찾았다 (`0.180 / 0.196 / 0.212 / 0.228` × `x 0 / −0.012`)
+   *
+   *   0.228   폰 아래 모서리가 팔뚝 **위**에 떠서 사이가 벌어진다
+   *   0.212   모서리가 팔뚝 뒤로 들어가고 화면 세 줄이 다 남는다  ← 이것
+   *   0.196   조금 더 묻힌다. 여기까지도 쓸 수 있다
+   *   0.180   팔뚝이 「20분 26초 후」를 가린다
+   *
+   * 팔뚝 길이(0.235) 안이라 자세가 어떻게 바뀌어도 폰이 팔에서 떨어질 수 없다 —
+   * 접촉은 여전히 **부모-자식 관계**로 보장된다. 본에 매달리면 `CHAR_SCALE` 이
+   * 곱해지므로 나눠 준다.
+   *
+   * `x` 는 좌우다. `+x` 가 팔뚝이 들어오는 쪽이라, 0.024 로 밀었을 때 폰이 팔뚝
+   * 뒤로 들어가 화면이 거의 안 보였다. −0.012 면 팔뚝 앞으로 나온다.
+   */
+  root.position.set(-0.012, 0.212 / CHAR_SCALE, 0.020)
   root.visible = false
 
   const want = new Quaternion()
@@ -319,7 +367,15 @@ export const buildPhone = (): Phone => {
      */
     aim(eye, face, up) {
       root.getWorldPosition(here)
-      target.copy(face).lerp(eye, 0.65)
+      /**
+       * 0.65 → 0.80. 화면을 카메라 쪽으로 더 돌린다.
+       *
+       * 0.65 는 "옆자리 시선을 피해 살짝 안으로 트는" 각인데, 그러면 화면의 왼쪽
+       * 모서리가 **손 뒤로 들어가** 「3분 후」의 첫 글자가 가렸다. 0.80 이면 폰이
+       * 손보다 앞으로 나와 글자가 다 열린다. 여전히 얼굴 쪽으로 20% 틀어져 있어
+       * "카메라에 들이댄" 모양은 안 된다.
+       */
+      target.copy(face).lerp(eye, 0.80)
       // `Matrix4.lookAt(eye, target, up)` 은 **+Z 가 target → eye** 를 향하게 만든다.
       // 즉 −Z 가 here → target 이다. 화면이 −Z 이므로 이대로 맞는다.
       m.lookAt(here, target, up.lengthSq() > 1e-6 ? up : UP)
