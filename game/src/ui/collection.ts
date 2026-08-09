@@ -102,6 +102,15 @@ const bestLabel = (rec: EndingRecord): string =>
  * 계속 줄여야 했고, 결국 **아무것도 안 읽히는 화면**이 됐다. 슬롯이 답해야 하는
  * 질문은 하나뿐이다 — *"이건 뭐고, 깠나 안 깠나."* 나머지는 상세가 말한다.
  */
+/**
+ * 엔딩 무드 스크린샷 — `public/endings/E-XX.png`. 초상화(`public/portraits/`)와
+ * 같은 방식으로 실제 씬 렌더를 그대로 쓴다(`tests/e2e/collect-ending-shots.spec.ts`).
+ *
+ * ★ 잠긴 칸에는 안 쓴다 — 조건도 결과도 안 흘리는 도감 규칙과 같은 이유다.
+ *   해금한 것만 보여 준다.
+ */
+const shotSrc = (id: EndingId): string => `${import.meta.env.BASE_URL}endings/${id}.png`
+
 const slotHtml = (e: EndingDef, rec: EndingRecord | undefined, sel: boolean): string => {
   const cls = ['slot', rec ? 'got' : 'locked', e.tone, sel ? 'sel' : ''].filter(Boolean).join(' ')
   const attrs = `class="${cls}" data-id="${e.id}" role="option" aria-selected="${sel}"`
@@ -118,7 +127,13 @@ const slotHtml = (e: EndingDef, rec: EndingRecord | undefined, sel: boolean): st
       <span class="lock" role="img" aria-label="잠김"></span>
     </li>`
   }
+  /**
+   * 칸 배경 전체를 사진으로 깐다 — 글자는 그 위에 스크림(어두운 그라데이션)을 깔고 얹는다.
+   * `onerror` 로 사진이 없으면 스스로 지운다 — 그러면 원래의 무지 배경 칸으로 돌아간다.
+   */
   return `<li ${attrs}>
+    <img class="s-shot" src="${shotSrc(e.id)}" alt="" onerror="this.remove()">
+    <span class="s-scrim" aria-hidden="true"></span>
     <span class="code">${e.id}</span>
     <span class="badge">${statusOf(e.tone)}</span>
     <span class="name">${e.title}</span>
@@ -150,6 +165,8 @@ const detailHtml = (e: EndingDef, rec: EndingRecord | undefined): string => {
       <span class="d-code">${e.id}</span>
       <span class="d-badge">${statusOf(e.tone)}</span>
     </div>
+    <img class="d-shot" src="${shotSrc(e.id)}" alt=""
+      onerror="this.remove()">
     <h2 class="d-name">${e.title}</h2>
     <p class="d-what">${WHAT_HAPPENED[e.id]}</p>
     <p class="d-say">${e.line}</p>

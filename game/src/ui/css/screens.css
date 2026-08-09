@@ -388,7 +388,7 @@ body.run-ended #gl{filter:blur(5px) saturate(.90) brightness(.80);
  * 슬롯 — 코드/상태는 위 한 줄, 제목은 그 아래 크게.
  * 상태는 **테두리와 밝기**로도 갈린다. 색만으로 구분하지 않는다.
  */
-#collection .slot{position:relative;display:grid;
+#collection .slot{position:relative;display:grid;overflow:hidden;
   grid-template-columns:auto 1fr;grid-template-rows:auto 1fr;
   /* 코드·상태는 위, 제목은 아래. 넓은 화면에서 칸이 커져도 아래가 안 빈다 */
   align-content:space-between;column-gap:10px;row-gap:clamp(6px,.9vh,12px);
@@ -396,12 +396,23 @@ body.run-ended #gl{filter:blur(5px) saturate(.90) brightness(.80);
   border:1px solid var(--line);background:#0C0C0F;cursor:pointer;
   transition:border-color .12s,background .12s}
 #collection .slot:hover{border-color:#3A3A40;background:#111116}
-#collection .slot .code{font-family:var(--mono);font-size:13px;letter-spacing:.14em;
-  color:var(--ink-2)}
-#collection .slot .badge{grid-column:2;justify-self:end;font-family:var(--mono);
-  font-size:12px;font-weight:700;letter-spacing:.16em}
-#collection .slot .name{grid-column:1/-1;align-self:end;
-  font-size:clamp(18px,1.55vw,22px);font-weight:800;letter-spacing:-.02em;line-height:1.2}
+/*
+ * 해금 칸 배경 사진 — 실제 씬 무드샷을 깐다(`public/endings/`). 없으면 `onerror` 로
+ * 스스로 지워 원래의 무지 배경 칸으로 돌아간다(레이아웃은 그대로 흐른다).
+ * 스크림(어두운 그라데이션)이 그 위·글자 아래에 끼어 대비를 지킨다.
+ */
+#collection .slot .s-shot{position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;grid-column:1/-1;grid-row:1/-1}
+#collection .slot .s-scrim{position:absolute;inset:0;grid-column:1/-1;grid-row:1/-1;
+  background:linear-gradient(180deg,rgba(6,6,8,.55) 0%,rgba(6,6,8,.3) 40%,rgba(6,6,8,.85) 100%)}
+#collection .slot .code{position:relative;font-family:var(--mono);font-size:13px;
+  letter-spacing:.14em;color:var(--ink-2)}
+#collection .slot.got .code{color:#D8D8DC}
+#collection .slot .badge{position:relative;grid-column:2;justify-self:end;
+  font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.16em}
+#collection .slot .name{position:relative;grid-column:1/-1;align-self:end;
+  font-size:clamp(18px,1.55vw,22px);font-weight:800;letter-spacing:-.02em;line-height:1.2;
+  text-shadow:0 1px 3px rgba(0,0,0,.6)}
 
 #collection .slot.got.success .badge{color:var(--led-green)}
 #collection .slot.got.fail .badge{color:var(--led-red)}
@@ -451,8 +462,9 @@ body.run-ended #gl{filter:blur(5px) saturate(.90) brightness(.80);
 #collection .slot.sel,#collection .slot.locked.sel{border:1px solid var(--led-amber);
   background:#17140F}
 #collection .slot.locked.sel .lock{opacity:.9}
+/* z-index — 사진 칸(`.s-shot`·`.s-scrim`)이 뒤에 깔려도 LED 바는 항상 위에 뜬다 */
 #collection .slot.sel::before{content:'';position:absolute;left:-1px;top:-1px;bottom:-1px;
-  width:4px;background:var(--led-amber)}
+  width:4px;background:var(--led-amber);z-index:2}
 #collection .slot.sel .code{color:var(--led-amber)}
 
 /* ── 상세 — 고른 하나만, 크게 ── */
@@ -460,6 +472,9 @@ body.run-ended #gl{filter:blur(5px) saturate(.90) brightness(.80);
   padding:clamp(22px,2.6vw,40px) clamp(20px,2vw,34px);
   display:flex;flex-direction:column;gap:clamp(10px,1.4vh,18px);min-height:0;overflow:auto}
 #collection .d-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+/* 무드 스크린샷 — 있으면 보여준다. 없으면 `onerror` 로 스스로 지운다(레이아웃은 그대로 흐른다) */
+#collection .d-shot{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:4px;
+  border:1px solid var(--line);display:block}
 #collection .d-code{font-family:var(--mono);font-size:14px;letter-spacing:.18em;color:var(--ink-2)}
 #collection .d-badge{font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.18em}
 #collection .detail.success .d-badge{color:var(--led-green)}
