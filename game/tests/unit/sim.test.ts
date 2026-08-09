@@ -262,8 +262,8 @@ describe('S5-4 열차 스케줄', () => {
     [0, 'incoming'],
     [167_900, 'incoming'],
     [168_100, 'arriving'],
-    [171_900, 'arriving'],
-    [172_100, 'open'],
+    [169_900, 'arriving'],
+    [170_100, 'open'],
     [179_900, 'open'],
     [180_100, 'closing'],
     [181_100, 'closing'],
@@ -299,11 +299,11 @@ describe('S5-4 열차 스케줄', () => {
     const at = (elapsedMs: number, triggerMs = 60_000): GameState =>
       ({ ...start(), elapsedMs, trainTriggerMs: triggerMs })
 
-    it('트리거 + 6초에 도착하고, + 7.2초에 완전 개방된다', () => {
-      const arrive = trainAt(trainClock(at(66_000)))
+    it('트리거 + 2.8초에 도착하고, + 4초에 완전 개방된다', () => {
+      const arrive = trainAt(trainClock(at(62_800)))
       expect(arrive.state).toBe('open')
       expect(arrive.x).toBe(78)
-      const opened = trainAt(trainClock(at(67_200)))
+      const opened = trainAt(trainClock(at(64_000)))
       expect(opened.doorProgress).toBe(1)
     })
 

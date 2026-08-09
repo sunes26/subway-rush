@@ -11,16 +11,13 @@ import { itemDef } from '../data/items'
 import { BALANCE_POOL, CHASE, FARE, GATE, INTERACT, QTE, SLOTS, SURGE, SWAP_WINDOW_MS,
   TOTAL_TIME_MS } from '../data/tuning'
 import { GRANDPA_ID } from '../data/interactables'
-import { rollObstacles, rollQueues, type ObsId } from '../data/obstacles'
+import { ACTIVE_OBSTACLES, rollQueues, type ObsId } from '../data/obstacles'
 import { GATES, SPAWN, TRAFFIC_LIGHT, zoneAt } from '../data/world'
 import type { Action, ActState, AmbushState, ChaseState, Drop, GameState, Fx, HandState, ItemId,
-  KnockdownState, QteState, SurgeState, SwapState, TallyState } from './types'
+  KnockdownState, PreachState, QteState, SurgeState, SwapState, TallyState,
+  ZombieTalkState } from './types'
 
 const MAX_FX = 12
-
-/** GDD §6.1 — 양심 범위 −5 ~ +5. 리듀서에서 못 벗어나게 묶는다 */
-const CONSCIENCE_MIN = -5
-const CONSCIENCE_MAX = 5
 
 const EMPTY_ACT: ActState = {
   targetId: null,
@@ -63,6 +60,10 @@ const EMPTY_CHASE: ChaseState = {
 const EMPTY_AMBUSH: AmbushState = { active: false, phaseMs: 0 }
 
 const EMPTY_KNOCKDOWN: KnockdownState = { active: false, phaseMs: 0 }
+
+const EMPTY_PREACH: PreachState = { active: false, phaseMs: 0 }
+
+const EMPTY_ZOMBIE_TALK: ZombieTalkState = { active: false, phaseMs: 0, variant: 0 }
 
 const EMPTY_SURGE: SurgeState = { fell: false, stallMs: 0 }
 
@@ -125,7 +126,7 @@ export const rollSeed = (seed: number) => {
   return { workingIds, cardBalance, ledHint, ledBrokenId }
 }
 
-export const initialState = (seed: number, freeplay = false, allObstacles = false): GameState => {
+export const initialState = (seed: number, freeplay = false): GameState => {
   const roll = rollSeed(seed)
   return {
     phase: 'title',
@@ -180,10 +181,12 @@ export const initialState = (seed: number, freeplay = false, allObstacles = fals
     fx: [],
     nextFxId: 1,
     inventory: Array.from({ length: SLOTS }, () => null),
-    scores: { conscience: 0, style: 0, knowledge: 0 },
+    scores: { style: 0, knowledge: 0 },
     chase: EMPTY_CHASE,
     ambush: EMPTY_AMBUSH,
     knockdown: EMPTY_KNOCKDOWN,
+    preach: EMPTY_PREACH,
+    zombieTalk: EMPTY_ZOMBIE_TALK,
     flags: [],
     act: EMPTY_ACT,
     drops: [],
@@ -194,7 +197,7 @@ export const initialState = (seed: number, freeplay = false, allObstacles = fals
     hand: EMPTY_HAND,
     knocks: [],
     swap: EMPTY_SWAP,
-    obstacles: rollObstacles(seed, allObstacles),
+    obstacles: ACTIVE_OBSTACLES,
     obsCooldown: {},
     staffAlertMs: 0,
     queues: rollQueues(seed),
@@ -468,7 +471,7 @@ export const reducer = (s: GameState, a: Action): GameState => {
       return s.act.busyId === null ? s : { ...s, act: clearBusy(s.act) }
 
     /**
-     * 사유 표시. **상태를 아무것도 바꾸지 않는다** — 아이템·시간·양심 전부 불변이다.
+     * 사유 표시. **상태를 아무것도 바꾸지 않는다** — 아이템·시간 전부 불변이다.
      * GDD §5.1: "아웃라인 1회 깜빡임 + 사유 텍스트". 거부는 벌이 아니라 안내다.
      */
     case 'ACT_DENY':
@@ -657,15 +660,6 @@ export const reducer = (s: GameState, a: Action): GameState => {
       )
     }
 
-    case 'CONSCIENCE':
-      return {
-        ...s,
-        scores: {
-          ...s.scores,
-          conscience: clamp(s.scores.conscience + a.delta, CONSCIENCE_MIN, CONSCIENCE_MAX),
-        },
-      }
-
     /** 지식 축 — 같은 시크릿을 다시 찾아도 안 오른다 */
     case 'SECRET':
       return s.tally.secrets.includes(a.id)
@@ -740,7 +734,7 @@ export const reducer = (s: GameState, a: Action): GameState => {
         : { ...s, chase: { ...s.chase, phase: a.phase, phaseMs: 0 } }
 
     /**
-     * 피격 — GDD §4.1 그대로. 감속 누적 · 양심 −1 · 쿨다운.
+     * 피격 — GDD §4.1 그대로. 감속 누적 · 쿨다운.
      * ⚠ `speedPenalty` 상한을 여기서 묶는다. 1.0을 넘으면 `movement.ts` 의
      *   `speed * (1 - speedPenalty)` 가 **음수**가 되어 조작이 반대로 된다.
      */
@@ -757,10 +751,6 @@ export const reducer = (s: GameState, a: Action): GameState => {
           swingCooldownMs: CHASE.swingCooldownMs,
           phase: 'swing',
           phaseMs: 0,
-        },
-        scores: {
-          ...s.scores,
-          conscience: clamp(s.scores.conscience - 1, CONSCIENCE_MIN, CONSCIENCE_MAX),
         },
       }
 
@@ -789,13 +779,6 @@ export const reducer = (s: GameState, a: Action): GameState => {
           ? { ...s.act, consumed: s.act.consumed.filter((id) => id !== GRANDPA_ID) }
           : s.act,
         chase: { ...s.chase, active: false, phase: 'return', phaseMs: 0, swingCooldownMs: 0 },
-        scores: {
-          ...s.scores,
-          conscience: clamp(
-            s.scores.conscience + (returned ? 1 : 0),
-            CONSCIENCE_MIN, CONSCIENCE_MAX,
-          ),
-        },
         flags: s.flags.includes('CHASE_DONE') ? s.flags : [...s.flags, 'CHASE_DONE'],
       }
     }
@@ -860,6 +843,31 @@ export const reducer = (s: GameState, a: Action): GameState => {
 
     case 'KNOCKDOWN_TICK':
       return { ...s, knockdown: { ...s.knockdown, phaseMs: s.knockdown.phaseMs + a.dtMs } }
+
+    // ─────────────────── OBS-07 아주머니+학생 강제 대화 (신규) ───────────────────
+
+    case 'PREACH_START':
+      return s.preach.active ? s : { ...s, preach: { active: true, phaseMs: 0 } }
+
+    case 'PREACH_TICK':
+      return { ...s, preach: { ...s.preach, phaseMs: s.preach.phaseMs + a.dtMs } }
+
+    // 게임을 안 끝낸다 — `ambush`와 달리 그냥 풀려나고 이동이 돌아온다
+    case 'PREACH_END':
+      return s.preach.active ? { ...s, preach: EMPTY_PREACH } : s
+
+    // ─────────────────── OBS-08 좀비폰족 부딪힘 ───────────────────
+
+    case 'ZOMBIE_TALK_START':
+      return s.zombieTalk.active
+        ? s
+        : { ...s, zombieTalk: { active: true, phaseMs: 0, variant: a.variant } }
+
+    case 'ZOMBIE_TALK_TICK':
+      return { ...s, zombieTalk: { ...s.zombieTalk, phaseMs: s.zombieTalk.phaseMs + a.dtMs } }
+
+    case 'ZOMBIE_TALK_END':
+      return s.zombieTalk.active ? { ...s, zombieTalk: EMPTY_ZOMBIE_TALK } : s
   }
 }
 

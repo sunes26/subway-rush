@@ -76,12 +76,19 @@ export const disembarkSystem = (s: GameState, ctx: DisembarkCtx): Action[] => {
   if (!bumped) return []
 
   if (s.player.moving) {
-    // 전진 중 — movementSystem 이 이미 낸 자리 위에 살짝만 서쪽으로 얹는다
+    /**
+     * 전진 중 — 가로지르는 느낌을 살리려고 **플레이어가 가려는 방향으로만** 아주
+     * 살짝 얹는다. 예전엔 이동 방향과 무관하게 항상 서쪽(개찰구 쪽)으로 밀어서,
+     * 걷는 방향을 거슬러 인파에 떠밀리는 것처럼 느껴졌다.
+     */
+    const speed = Math.hypot(s.player.vel.x, s.player.vel.y)
+    if (speed < 1e-6) return []   // 방향을 아직 못 잡았으면 이번 프레임은 그대로 둔다
     const nudge = DISEMBARK.pushSpeed * DISEMBARK.forwardFactor * ctx.dtMs / 1000
-    const x = Math.max(PAID_AREA_X, p.x - nudge)
+    const x = Math.max(PAID_AREA_X, p.x + (s.player.vel.x / speed) * nudge)
+    const y = p.y + (s.player.vel.y / speed) * nudge
     return [{
       t: 'MOVE',
-      pos: { x, y: p.y, z: p.z },
+      pos: { x, y, z: p.z },
       vel: s.player.vel,
       facing: s.player.facing,
       rampId: s.player.rampId,

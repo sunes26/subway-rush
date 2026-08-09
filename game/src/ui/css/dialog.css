@@ -37,7 +37,7 @@
 
 /* ─────────────── UI-13 할아버지 대화 — Figma `dialogue-ui`(node 57:4) ───────────────
    ⚠ 하단 여백은 **소지품 패널을 피해야** 한다. 소지품이 하단 중앙(bottom 40 · 높이 133
-   → 상단 173)에 있으므로 그 위, 양심 게이지(bottom 184) 위로 띄운다. */
+   → 상단 173) 위로 띄운다. */
 #dlg{position:absolute;left:50%;bottom:210px;transform:translateX(-50%);
   width:min(760px,90vw);display:none;align-items:center;gap:20px;font-family:var(--sans);
   background:var(--panel);border:1.5px solid var(--accent);border-radius:var(--r-panel);
@@ -109,6 +109,24 @@
   background:var(--gold);transition:transform .1s linear}
 #gpstory .cap{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--muted)}
 
+/* OBS-08 좀비폰족 부딪힘 — `#preach`와 같은 초상화 카드 UI(디렉터 지시로 통일).
+   한때 초상화 없는 가벼운 버전이었지만, 다른 강제 대화(할아버지·아주머니+학생)와
+   문법이 달라 보여 맞췄다 — 화자가 나(`player`)여도 초상화가 나온다(`PLAYER_PORTRAIT`,
+   `grandpa-alt.png`). 이름표만 금색이 되는 것은 `#preach`와 같다. */
+#zombietalk{position:absolute;left:50%;bottom:210px;transform:translateX(-50%);
+  width:min(620px,88vw);display:none;align-items:center;gap:20px;font-family:var(--sans);
+  background:var(--panel);border:1.5px solid var(--accent);border-radius:var(--r-panel);
+  padding:20px;box-shadow:0 16px 32px rgba(0,0,0,.8),inset 0 0 24px rgba(0,240,255,.16)}
+#zombietalk.on{display:flex;animation:rpop .22s ease both}
+#zombietalk .conv{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:10px}
+#zombietalk .bubble{background:rgba(14,16,23,.8);border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;padding:14px 16px;box-shadow:0 10px 24px rgba(0,0,0,.25);min-height:52px}
+#zombietalk .bubble p{font-size:14px;line-height:1.5;color:#fff;margin:0;transition:opacity .18s}
+#zombietalk .tag.player{color:var(--gold);background:rgba(255,200,61,.15);border-color:var(--gold)}
+#zombietalk .bar{height:4px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden}
+#zombietalk .bar i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left;
+  background:var(--gold);transition:transform .1s linear}
+
 /* 개찰구 매복(E-17) — 강제 컷씬이지만 **크롬은 `#dlg`와 완전히 같다**(디렉터 지시,
    "기존 대화 UI와 동일하도록") — 테두리·글로우까지 `--accent`(청록)로 맞춘다.
    위험함은 색이 아니라 **내용**(역무원 대사 `.who.danger`)으로만 표시한다 —
@@ -135,6 +153,23 @@
 #ambush .bar i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left;
   background:var(--gold);transition:transform .1s linear}
 
+/* OBS-07 아주머니+학생 강제 대화 — `#ambush`와 같은 크롬(디렉터 지시로 통일), 킥커 배지만 뺐다
+   (여긴 정체를 숨기지 않는다 — 초상화가 바로 나온다). 화자가 나(`player`)면 `#gpstory`와 같은
+   문법으로 이름표만 금색이 되고, 초상화 프레임은 감춘다. */
+#preach{position:absolute;left:50%;bottom:210px;transform:translateX(-50%);
+  width:min(760px,90vw);display:none;align-items:center;gap:20px;font-family:var(--sans);
+  background:var(--panel);border:1.5px solid var(--accent);border-radius:var(--r-panel);
+  padding:20px;box-shadow:0 16px 32px rgba(0,0,0,.8),inset 0 0 24px rgba(0,240,255,.16)}
+#preach.on{display:flex;animation:rpop .22s ease both}
+#preach .conv{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:12px}
+#preach .bubble{background:rgba(14,16,23,.8);border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;padding:12px 14px;box-shadow:0 10px 24px rgba(0,0,0,.25)}
+#preach .bubble p{font-size:20px;line-height:1.5;color:#fff;margin:0}
+#preach .tag.player{color:var(--gold);background:rgba(255,200,61,.15);border-color:var(--gold)}
+#preach .bar{height:4px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden}
+#preach .bar i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left;
+  background:var(--gold);transition:transform .1s linear}
+
 /* 쓰러지며 의식이 꺼지는 암전 — 매복(E-17) 전용.
    엔딩 카드로 **툭 끊기지 않게** 마지막 구간을 검게 덮는다. 카메라가 이미 바닥에 누운
    뒤라 화면에 더 보여 줄 것이 없고, 여기서 끊으면 "쓰러졌다"가 "버그로 화면이 튀었다"로 읽힌다.
@@ -144,7 +179,7 @@
 
 /* QTE — 리듬창을 **눈으로 볼 수 있어야** 실력이 성립한다.
    창이 안 보이면 판정은 그냥 운으로 읽힌다 */
-/* 위 `#dlg` 와 같은 이유 — 소지품 패널·양심 게이지 위로 */
+/* 위 `#dlg` 와 같은 이유 — 소지품 패널 위로 */
 #qte{position:absolute;left:50%;bottom:210px;transform:translateX(-50%);width:min(430px,86vw);
   display:none;flex-direction:column;gap:9px;font-family:var(--sans);
   background:rgba(8,8,10,.9);border:1px solid rgba(255,200,61,.3);border-radius:9px;

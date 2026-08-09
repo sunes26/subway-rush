@@ -16,6 +16,8 @@ import { QTE } from '../data/tuning'
 import { AMBUSH_DIALOGUE_MS, ambushCollapseT, ambushLineAt } from '../systems/ambush'
 import { knockdownT } from '../systems/knockdown'
 import { branchesFor, hasItem } from '../systems/interact'
+import { PREACH_TOTAL_MS, preachLineAt } from '../systems/preach'
+import { zombieTalkLineAt, zombieTalkTotalMs } from '../systems/zombieTalk'
 import type { GameState, ItemId } from '../state/types'
 // 스타일은 `css/dialog.css` 가 단일 원천이다 — UI 킷(/uikit.html)이 같은 파일을 읽는다.
 // `?inline` 은 파일 내용을 문자열로 준다: 주입 방식(<style> 삽입)은 예전과 같다.
@@ -30,6 +32,17 @@ const GP_PORTRAIT = `${import.meta.env.BASE_URL}portraits/grandpa.png`
 const FM_PORTRAIT = `${import.meta.env.BASE_URL}portraits/fishcake-man.png`
 /** 개찰구 매복 역무원 초상화 */
 const AO_PORTRAIT = `${import.meta.env.BASE_URL}portraits/ambush-officer.png`
+/** OBS-07 아주머니+학생 초상화 — 스크린샷 렌더(디렉터 제공) */
+const AUNTIE_PORTRAIT = `${import.meta.env.BASE_URL}portraits/auntie-preacher.png`
+const STUDENT_PORTRAIT = `${import.meta.env.BASE_URL}portraits/student-preacher.png`
+/** OBS-08 좀비폰족 초상화 — 스크린샷 렌더(디렉터 제공). `#preach`와 같은 실물 렌더 규약 */
+const ZOMBIE_PORTRAIT = `${import.meta.env.BASE_URL}portraits/zombie-phone.png`
+/**
+ * 플레이어 초상화 — `grandpa-alt.png`. 이름과 달리 할아버지가 아니라 액세서리 없는
+ * 민머리 캐릭터(ACT-01 플레이어 베이스) 렌더다. 아무 데도 안 쓰이고 있었다 — 지금까지
+ * 대화 UI에서 내 차례에는 초상화가 아예 없었다.
+ */
+const PLAYER_PORTRAIT = `${import.meta.env.BASE_URL}portraits/grandpa-alt.png`
 
 /**
  * 편의점 상점 카드 순서 — 선물 5지 + 마스크(디렉터 지시, 매대 상품 목록에 편입).
@@ -171,6 +184,16 @@ export const createDialog = (mount: HTMLElement): Dialog => {
         <div class="cap" id="gpstory-cap"></div>
       </div>
     </div>
+    <div id="zombietalk">
+      <div class="actor-card">
+        <div class="frame" id="zt-frame"><img id="zt-portrait" src="" alt=""></div>
+        <div class="tag" id="zt-who"></div>
+      </div>
+      <div class="conv">
+        <div class="bubble"><p id="zt-line"></p></div>
+        <div class="bar"><i id="zt-bar"></i></div>
+      </div>
+    </div>
     <div id="ambush">
       <div class="actor-card">
         <div class="frame" id="ambush-frame"><img id="ambush-portrait" src="" alt=""></div>
@@ -179,6 +202,16 @@ export const createDialog = (mount: HTMLElement): Dialog => {
       <div class="conv">
         <div class="bubble"><div class="kick">DIALOGUE</div><p id="ambush-line"></p></div>
         <div class="bar"><i id="ambush-bar"></i></div>
+      </div>
+    </div>
+    <div id="preach">
+      <div class="actor-card">
+        <div class="frame" id="preach-frame"><img id="preach-portrait" src="" alt=""></div>
+        <div class="tag" id="preach-who"></div>
+      </div>
+      <div class="conv">
+        <div class="bubble"><p id="preach-line"></p></div>
+        <div class="bar"><i id="preach-bar"></i></div>
       </div>
     </div>
     <div id="blackout"></div>
@@ -239,6 +272,11 @@ export const createDialog = (mount: HTMLElement): Dialog => {
   const gpstoryLine = $('gpstory-line')
   const gpstoryBar = $('gpstory-bar')
   const gpstoryCap = $('gpstory-cap')
+  const zombietalk = $('zombietalk')
+  const ztWho = $('zt-who')
+  const ztPortrait = $<HTMLImageElement>('zt-portrait')
+  const ztLine = $('zt-line')
+  const ztBar = $('zt-bar')
   const blackout = $('blackout')
   const ambush = $('ambush')
   const ambushFrame = $('ambush-frame')
@@ -246,6 +284,11 @@ export const createDialog = (mount: HTMLElement): Dialog => {
   const ambushPortrait = $<HTMLImageElement>('ambush-portrait')
   const ambushLine = $('ambush-line')
   const ambushBar = $('ambush-bar')
+  const preach = $('preach')
+  const preachWho = $('preach-who')
+  const preachPortrait = $<HTMLImageElement>('preach-portrait')
+  const preachLine = $('preach-line')
+  const preachBar = $('preach-bar')
   const qte = $('qte')
   const qFill = $('qte-fill')
   const qWin = $('qte-win')
@@ -465,6 +508,24 @@ export const createDialog = (mount: HTMLElement): Dialog => {
       }
 
       /**
+       * ── OBS-08 좀비폰족 부딪힘 — 선택지 없이 8초 자동 진행. `#preach`와 같은
+       * 초상화 카드 UI로 맞춘다(디렉터 지시) — 내 차례에도 초상화가 있어야
+       * 다른 강제 대화(할아버지·아주머니+학생)와 같은 문법으로 읽힌다.
+       */
+      if (zombietalk.className !== (s.zombieTalk.active ? 'on' : '')) {
+        zombietalk.className = s.zombieTalk.active ? 'on' : ''
+      }
+      if (s.zombieTalk.active) {
+        const { line } = zombieTalkLineAt(s.zombieTalk.phaseMs, s.zombieTalk.variant)
+        ztWho.textContent = line.speaker === 'player' ? '나' : '행인'
+        ztWho.className = `tag${line.speaker === 'player' ? ' player' : ''}`
+        ztPortrait.src = line.speaker === 'player' ? PLAYER_PORTRAIT : ZOMBIE_PORTRAIT
+        ztLine.textContent = line.text
+        const total = zombieTalkTotalMs(s.zombieTalk.variant) || 1
+        ztBar.style.transform = `scaleX(${Math.min(1, s.zombieTalk.phaseMs / total).toFixed(3)})`
+      }
+
+      /**
        * ── 개찰구 매복 — `#dlg`·`#gpstory`와 같은 초상화 카드 UI(디렉터 지시로 통일).
        * `??` 구간은 **초상화도 감춘다** — 정체 공개가 이름표만이 아니라 사진에서도
        * 한 번에 터져야 한다. 공개된 뒤엔 실제 사진(`FM_PORTRAIT`/`AO_PORTRAIT`)으로 바뀐다.
@@ -516,6 +577,28 @@ export const createDialog = (mount: HTMLElement): Dialog => {
         // 진행바는 **대사 구간**만 잰다 — 쓰러지는 동안엔 이 패널 자체가 없다
         const overall = Math.min(1, s.ambush.phaseMs / AMBUSH_DIALOGUE_MS)
         ambushBar.style.transform = `scaleX(${overall.toFixed(3)})`
+      }
+
+      /**
+       * ── OBS-07 아주머니+학생 강제 대화 — `#ambush`와 같은 초상화 카드 UI.
+       * 선택지 없이 25.6초 자동 진행, 세 화자(아주머니·학생·나)가 돌아가며 말한다.
+       * `player` 차례에도 초상화를 보여준다(`PLAYER_PORTRAIT`) — `#gpstory`·`#zombietalk`은
+       * 내 차례에 초상화가 아예 없는 것과 다르게, 여기는 `#ambush`형 카드라 항상 프레임이 있다.
+       */
+      if (preach.className !== (s.preach.active ? 'on' : '')) {
+        preach.className = s.preach.active ? 'on' : ''
+      }
+      if (s.preach.active) {
+        const { line } = preachLineAt(s.preach.phaseMs)
+        const who = line.speaker === 'auntie' ? '아주머니' : line.speaker === 'student' ? '학생' : '나'
+        preachWho.textContent = who
+        preachWho.className = `tag${line.speaker === 'player' ? ' player' : ''}`
+        preachLine.textContent = line.text
+        preachPortrait.src = line.speaker === 'auntie' ? AUNTIE_PORTRAIT
+          : line.speaker === 'student' ? STUDENT_PORTRAIT
+            : PLAYER_PORTRAIT
+        preachBar.style.transform =
+          `scaleX(${Math.min(1, s.preach.phaseMs / PREACH_TOTAL_MS).toFixed(3)})`
       }
 
       // ── UI-19 편의점 상점

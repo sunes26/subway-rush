@@ -68,7 +68,7 @@ describe('S10-1 발동 타이밍', () => {
   })
 })
 
-describe('S10-2 걷기로는 못 벗어나고 스프린트로는 벗어난다', () => {
+describe('S10-2 걷기만으로도 서서히 벌어지고, 스프린트로는 더 빨리 벌어진다', () => {
   /** 3초 도망친 뒤의 거리 */
   const gapAfter = (sprint: boolean): number => {
     let s = afterSteal()
@@ -77,15 +77,17 @@ describe('S10-2 걷기로는 못 벗어나고 스프린트로는 벗어난다', 
     return Math.hypot(s.chase.pos.x - s.player.pos.x, s.chase.pos.y - s.player.pos.y)
   }
 
-  it('할아버지 속도가 걷기와 같다', () => {
-    expect(CHASE.speed).toBe(SPEED.walk)
+  it('할아버지 속도는 걷기(5.0)의 80% — 4.0이다 (디렉터 지시로 하향)', () => {
+    expect(CHASE.speed).toBeCloseTo(SPEED.walk * 0.8, 5)
   })
 
-  it('걸어서 도망치면 거리가 벌어지지 않는다', () => {
-    expect(gapAfter(false), '걷기로는 절대 못 벗어난다').toBeLessThan(CHASE.hitRangeM + 0.6)
+  it('걸어서 도망쳐도 (걷기가 더 빠르므로) 거리가 서서히 벌어진다', () => {
+    // 순 속도차는 1.0 m/s(5.0−4.0)지만 발도 직후 가속·선회 구간이 있어 3초 뒤 실측 ≈2.2m —
+    // "못 벗어난다"였던 옛 상한(hitRangeM+0.6=1.8)은 확실히 넘는다는 것만 본다
+    expect(gapAfter(false), '걷기만으로도 서서히 벗어난다').toBeGreaterThan(CHASE.hitRangeM + 0.8)
   })
 
-  it('스프린트로 도망치면 거리가 벌어진다', () => {
+  it('스프린트로 도망치면 걷기보다 훨씬 빨리 벌어진다', () => {
     const sprintGap = gapAfter(true)
     expect(sprintGap, `스프린트 3초 후 ${sprintGap.toFixed(1)}m`).toBeGreaterThan(gapAfter(false) + 2)
   })
@@ -148,11 +150,6 @@ describe('S10-3~S10-6 피격', () => {
     expect(later.chase.hitCount, '1.5초를 넘기면 2대').toBe(2)
   })
 
-  it('S10-6 피격당 양심 −1', () => {
-    const s = stand(80)
-    expect(s.scores.conscience, '절도 −3 + 피격 −1').toBe(-4)
-  })
-
   /**
    * 개편 — **회수 단계가 사라졌다.** 예전엔 5대까지 버티면 효자손만 잃고
    * 게임은 계속됐다. 지금은 2대째가 그대로 런의 끝이다 (E-16). `CHASE_END` 를
@@ -170,7 +167,6 @@ describe('S10-3~S10-6 피격', () => {
     expect(s.chase.hitCount, '2대').toBe(2)
     expect(s.phase, '즉시 게임 오버 — 회수 연출을 기다리지 않는다').toBe('ended')
     expect(s.endingId).toBe('E-16')
-    expect(s.scores.conscience, '절도 −3 + 피격 2회 −2, 하한과 일치').toBe(-5)
     expect(s.inventory.includes('I-01'), '효자손은 손에 쥔 채로 끝난다 — 회수되지 않는다').toBe(true)
   })
 })
@@ -195,15 +191,13 @@ describe('S10-7~S10-8 해제 3경로', () => {
     expect(s.inventory.includes('I-01')).toBe(true)
   })
 
-  it('S10-8 효자손을 반납하면 해제 + 양심 +1 + 효자손 상실', () => {
+  it('S10-8 효자손을 반납하면 해제 + 효자손 상실', () => {
     let s = afterSteal()
     s = wait(s, CHASE.drawMs + 60)
     s = { ...s, chase: { ...s.chase, pos: { x: s.player.pos.x - 1.5, y: s.player.pos.y } } }
-    const c0 = s.scores.conscience
     s = tap(s, { pressSlot: 1 })          // 1번 슬롯 = 효자손
     expect(s.chase.active, '추격 해제').toBe(false)
     expect(s.inventory.includes('I-01'), '효자손을 잃는다').toBe(false)
-    expect(s.scores.conscience, '양심 +1').toBe(c0 + 1)
   })
 
   /**

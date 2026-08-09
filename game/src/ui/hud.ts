@@ -86,7 +86,6 @@ export const createHud = (mount: HTMLElement): Hud => {
     </div>
     <div id="coord">—</div>
 
-    <div id="cons"><i id="cons-i"></i><u></u></div>
     <div id="inv-p" class="hud-panel">
       <div id="inv-h">
         <div class="t">${iconBackpack}<span>소지품</span></div>
@@ -132,8 +131,6 @@ export const createHud = (mount: HTMLElement): Hud => {
   const invEl = $('hud-inv')
   // UI-06 — 잠긴 껍데기였던 컨테이너에 실제 지도를 넣는다 (P2)
   const minimap = createMinimap($('mini'))
-  const consEl = $('cons')
-  const consFill = $('cons-i')
   let firstPerson = true
 
   // 슬롯 노드는 처음 한 번만 만든다 — 매 프레임 innerHTML을 쓰면 60fps로 파서를 돌린다
@@ -161,9 +158,6 @@ export const createHud = (mount: HTMLElement): Hud => {
   invEl.parentElement?.insertBefore(swapBar, invEl)
   const swapFill = swapBar.querySelector('i') as HTMLElement
   let lastSwap = false
-
-  let lastCons = -99
-  let consLitUntil = 0
 
   let lastLed = ''
   let lastTime = ''
@@ -313,21 +307,6 @@ export const createHud = (mount: HTMLElement): Hud => {
         invCount.textContent = `${held} / ${SLOTS}`
         lastInvCount = held
       }
-
-      // ── 양심 게이지. 0을 중심으로 좌(적)·우(녹)로 자란다. **숫자는 없다**
-      const c = s.scores.conscience
-      if (c !== lastCons) {
-        const half = Math.min(1, Math.abs(c) / 5) * 50
-        consFill.style.left = c < 0 ? `${50 - half}%` : '50%'
-        consFill.style.width = `${half}%`
-        consFill.style.background = c < 0 ? 'var(--crit)' : 'var(--line2)'
-        // 처음 값(0)에는 반짝이지 않는다 — 아무 일도 없었는데 시선을 끌 이유가 없다
-        if (lastCons !== -99) consLitUntil = performance.now() + 600
-        lastCons = c
-      }
-      const lit = performance.now() < consLitUntil
-      const consCls = lit ? 'lit' : ''
-      if (consEl.className !== consCls) consEl.className = consCls
 
       // 피드백 — 새 항목만 추가, 만료된 것만 제거
       const live = new Set(s.fx.map((f) => f.id))

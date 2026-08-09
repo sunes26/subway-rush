@@ -30,7 +30,6 @@ export type SweepRow = Readonly<{
   /** 최종 잔액 */
   balance: number
   coinsEarned: number
-  conscience: number
   /** 도달 시점에 판정한 엔딩 (탑승 전이므로 참고값) */
   ending: EndingId
   /** 진행 불가로 멈춘 지점 (없으면 null) */
@@ -58,7 +57,9 @@ const toConcourse = (s0: GameState): { s: GameState; stuckAt: string | null } =>
   for (const [name, x, y, r, maxSec] of [
     ['Z1 횡단보도 앞', -34, 27.5, 1.4, 20],
     ['Z1 횡단보도 통과', -20, 27.5, 1.4, 30],
-    ['Z1 4번 출구', 0.5, 28, 1.4, 20],
+    // 아주머니(x=-8.2)·학생(x=-15.8) 순찰 구간(y 22.7~32.7)을 가로지른다 —
+    // OBS-07 강제 대화(25.6s)에 붙잡힐 수 있어 예산을 넉넉히 둔다
+    ['Z1 4번 출구', 0.5, 28, 1.4, 50],
     ['B1 계단 하단', 15.5, 28, 1.6, 20],
   ] as const) {
     const r2 = goto(s, x, y, { r, maxSec })
@@ -142,7 +143,6 @@ const row = (
   sec: (s0.timeLeftMs - s.timeLeftMs) / 1000,
   balance: s.cardBalance,
   coinsEarned: s.tally.coinsEarned,
-  conscience: s.scores.conscience,
   ending: resolveEnding(s).id,
   stuckAt,
   died: s.phase === 'ended',
@@ -209,7 +209,6 @@ export type RouteStat = Readonly<{
   reached: number
   passed: number
   avgSec: number
-  avgConscience: number
   softlocks: readonly SweepRow[]
 }>
 
@@ -222,7 +221,6 @@ export const summarize = (rows: readonly SweepRow[], route: Route): RouteStat =>
     reached: ok.length,
     passed: mine.filter((r) => r.passed).length,
     avgSec: ok.length ? ok.reduce((a, r) => a + r.sec, 0) / ok.length : Infinity,
-    avgConscience: mine.length ? mine.reduce((a, r) => a + r.conscience, 0) / mine.length : 0,
     // 소프트락 = 요금을 만들 길이 있었는데 개찰구를 못 넘은 경우
     softlocks: mine.filter((r) => !r.passed),
   }
@@ -244,11 +242,10 @@ export const sweep = (seeds: readonly number[]): SweepRow[] => {
 /** 층 판정 확인용 — 스윕 결과를 사람이 읽는 표로 */
 export const asMarkdown = (rows: readonly SweepRow[]): string => {
   const stats = (['A-steal', 'C-talk', 'N-skip'] as const).map((r) => summarize(rows, r))
-  const head = '| 루트 | n | 승강장 도달 | 개찰구 통과 | 평균 소요 | 평균 양심 |\n|---|---:|---:|---:|---:|---:|'
+  const head = '| 루트 | n | 승강장 도달 | 개찰구 통과 | 평균 소요 |\n|---|---:|---:|---:|---:|'
   const body = stats.map((st) =>
     `| ${st.route} | ${st.n} | ${st.reached} | ${st.passed} | ` +
-    `${Number.isFinite(st.avgSec) ? st.avgSec.toFixed(1) + 's' : '—'} | ` +
-    `${st.avgConscience.toFixed(2)} |`).join('\n')
+    `${Number.isFinite(st.avgSec) ? st.avgSec.toFixed(1) + 's' : '—'} |`).join('\n')
   const locks = rows.filter((r) => !r.passed)
   const lockText = locks.length === 0
     ? '소프트락 **0건**.'

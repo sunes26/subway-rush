@@ -168,7 +168,7 @@ const moveAxis = (f: InputFrame): number => Math.abs(f.moveX) + Math.abs(f.moveY
  * 진행 중 상호작용이 끝났다 — 효과를 낸다.
  *
  * **여기가 P1의 인과 사슬이 모이는 곳이다.** 습득/구매/전달/완청이 각각
- * 잔액·양심·플래그·시크릿을 어떻게 건드리는지 한 화면에서 읽혀야 한다.
+ * 잔액·플래그·시크릿을 어떻게 건드리는지 한 화면에서 읽혀야 한다.
  */
 const complete = (s: GameState): Action[] => {
   const id = s.act.busyId
@@ -224,7 +224,7 @@ const complete = (s: GameState): Action[] => {
       }]
 
     /**
-     * [2] 선물 — **양갱만** 효자손으로 이어진다. 양심 +1.
+     * [2] 선물 — **양갱만** 효자손으로 이어진다.
      *
      * 구매가 1회 한정(`GIFT_BOUGHT`)이라 소지한 선물은 항상 최대 하나다.
      * 어느 것을 드릴지 다시 고를 필요가 없어 인벤토리의 첫 선물이 곧 답이다.
@@ -247,7 +247,6 @@ const complete = (s: GameState): Action[] => {
         { t: 'ITEM_SPEND', slot },
         { t: 'ITEM_USED', item: held },
         { t: 'PICKUP', item: 'I-01', slot: -1, dropId: null },
-        { t: 'CONSCIENCE', delta: 1 },
         { t: 'FLAG', id: 'GRANDPA_HELPED', on: true },
         { t: 'ACT_CONSUME', id: GRANDPA_ID },
       ]
@@ -262,7 +261,6 @@ const complete = (s: GameState): Action[] => {
     case 'story':
       return [
         { t: 'PICKUP', item: 'I-01', slot: -1, dropId: null },
-        { t: 'CONSCIENCE', delta: 1 },
         { t: 'FLAG', id: 'GRANDPA_HELPED', on: true },
         { t: 'FLAG', id: 'HINT_GRANDPA', on: true },
         { t: 'SECRET', id: 'gp-story' },
@@ -281,7 +279,6 @@ const complete = (s: GameState): Action[] => {
         { t: 'ITEM_USED', item: 'I-11' },
         { t: 'FLAG', id: 'WALLET_RETURNED', on: true },
         { t: 'FLAG', id: 'EMERGENCY_OPEN', on: true },
-        { t: 'CONSCIENCE', delta: 2 },
         { t: 'SECRET', id: 'wallet-returned' },
         { t: 'ACT_CONSUME', id },
         { t: 'FX', kind: 'toast', text: '"아이고 감사합니다 — 저쪽 비상문으로 나가세요."', lifeMs: 3000, value: 0 },
@@ -467,7 +464,6 @@ const fishcakeChoice = (_s: GameState, key: Branch['key']): Action[] => {
 const steal = (): Action[] => [
   { t: 'DIALOG', id: null },
   { t: 'PICKUP', item: 'I-01', slot: -1, dropId: null },
-  { t: 'CONSCIENCE', delta: -3 },
   { t: 'FLAG', id: 'GRANDPA_ANGRY', on: true },
   { t: 'ACT_CONSUME', id: GRANDPA_ID },
   { t: 'FX', kind: 'toast', text: '"이놈이!"', lifeMs: 2000, value: 0 },

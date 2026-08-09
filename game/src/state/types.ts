@@ -21,7 +21,7 @@ export type Phase = 'title' | 'intro' | 'playing' | 'boarding' | 'ended'
 /** P0은 2종. 배열 구조는 완성해 두고 P1~P2에서 항목만 추가한다 (GDD §9.4) */
 export type EndingId =
   | 'E-01' | 'E-02' | 'E-03' | 'E-04' | 'E-05'
-  | 'E-06' | 'E-07' | 'E-08' | 'E-09' | 'E-10' | 'E-11'
+  | 'E-06' | 'E-08' | 'E-09' | 'E-11'
   | 'E-12' | 'E-13' | 'E-14' | 'E-15' | 'E-16' | 'E-17' | 'E-18'
 
 /** P1 예약 — 지금은 선언만 */
@@ -283,6 +283,31 @@ export type KnockdownState = Readonly<{
 }>
 
 /**
+ * OBS-07 "도 아세요" 아주머니+학생 강제 대화 — **`AmbushState`와 같은 모양이지만
+ * 합치지 않는다**(위 주석과 같은 이유: 이건 죽지 않는다, 25.6초 뒤 저절로 풀려난다).
+ * 위치는 상태로 안 든다 — `ajummaAt(elapsedMs)`가 시간의 순수 함수라 렌더가 그대로
+ * 다시 읽으면 된다(`systems/obstacles.ts`).
+ */
+export type PreachState = Readonly<{
+  active: boolean
+  phaseMs: number
+}>
+
+/**
+ * OBS-08 좀비폰족 부딪힘 — **`AmbushState`와 같은 모양이지만 합치지 않는다**(위 주석과
+ * 같은 이유: 즉사 컷씬과 환경 방해요소는 다른 사건이다). 위치는 상태로 안 든다 —
+ * `zombieAt(elapsedMs)`가 시간의 순수 함수라 렌더가 그대로 다시 읽으면 된다.
+ *
+ * `variant`는 어느 대사 세트(`systems/zombieTalk.ts`의 `ZOMBIE_TALK_LINES`)를 트는지다 —
+ * 같은 판에서 여러 번 부딪혀도 매번 같은 대사만 나오면 지겹다.
+ */
+export type ZombieTalkState = Readonly<{
+  active: boolean
+  phaseMs: number
+  variant: number
+}>
+
+/**
  * O-04 역류 (P1). 웨이브 자체는 `surgeAt(elapsedMs, seed)` 로 파생되므로 상태가 없다 —
  * 여기 남는 건 **한 번만 일어나야 하는 일**뿐이다.
  */
@@ -425,10 +450,13 @@ export type GameState = Readonly<{
 
   /** 3슬롯 고정. 교통카드·동전은 슬롯 미점유 (GDD §5.2) */
   inventory: readonly (ItemId | null)[]
-  scores: Readonly<{ conscience: number; style: number; knowledge: number }>
+  scores: Readonly<{ style: number; knowledge: number }>
   chase: ChaseState
   ambush: AmbushState
   knockdown: KnockdownState
+  /** OBS-07 아주머니+학생 강제 대화 — 활성 동안 이동·ESC가 잠긴다 */
+  preach: PreachState
+  zombieTalk: ZombieTalkState
   flags: readonly FlagId[]
 
   // ── P1 신설 ──
@@ -447,8 +475,9 @@ export type GameState = Readonly<{
   /** UI-14 교체 창 — 슬롯이 가득 찬 채로 습득한 직후 0.9초 */
   swap: SwapState
   /**
-   * 이번 판에 켜진 방해요소 8종 (`data/obstacles.ts rollObstacles`).
-   * **판정 시스템은 이 배열에 없는 id 를 무시한다** — 조건을 만족해도 침묵한다.
+   * 이번 판에 켜진 방해요소 — OBS-14(플레이어 선택 발동)를 뺀 11종이 매 판 전부 켜진다
+   * (`data/obstacles.ts ACTIVE_OBSTACLES`). **판정 시스템은 이 배열에 없는 id 를
+   * 무시한다** — 조건을 만족해도 침묵한다.
    */
   obstacles: readonly ObsId[]
   /** 방해요소별 재발동 쿨다운 잔여(ms). 키가 없으면 0 */
@@ -503,7 +532,6 @@ export type Action =
   | { t: 'ITEM_SPEND'; slot: number }
   | { t: 'ITEM_USED'; item: ItemId }
   | { t: 'BALANCE'; delta: number; label: string; text?: string }
-  | { t: 'CONSCIENCE'; delta: number }
   | { t: 'SECRET'; id: string }
   | { t: 'FLAG'; id: FlagId; on: boolean }
 
@@ -536,6 +564,22 @@ export type Action =
   | { t: 'KNOCKDOWN_START' }
   /** 체공·착지 진행. 총 길이를 넘기면 `systems/knockdown.ts`가 `END`를 낸다 */
   | { t: 'KNOCKDOWN_TICK'; dtMs: number }
+
+  // ── OBS-07 아주머니+학생 강제 대화 (신규) ──
+  /** 발동 — 이동·ESC가 잠긴다(`systems/movement.ts`·`main.ts escIsFree`) */
+  | { t: 'PREACH_START' }
+  /** 대사 진행. 총 길이를 넘기면 `systems/preach.ts`가 곧바로 `PREACH_END`를 낸다 */
+  | { t: 'PREACH_TICK'; dtMs: number }
+  /** 종료 — 게임을 안 끝낸다. 그냥 풀려난다(`ambush`와의 차이) */
+  | { t: 'PREACH_END' }
+
+  // ── OBS-08 좀비폰족 부딪힘 ──
+  /** 발동 — 이동이 잠기고 대화창이 뜬다. `variant`는 어느 대사 세트를 틀지 */
+  | { t: 'ZOMBIE_TALK_START'; variant: number }
+  /** 대사 진행. 총 길이를 넘기면 `systems/zombieTalk.ts`가 곧바로 `ZOMBIE_TALK_END`를 낸다 */
+  | { t: 'ZOMBIE_TALK_TICK'; dtMs: number }
+  /** 종료 — 이동이 풀린다 */
+  | { t: 'ZOMBIE_TALK_END' }
 
   // ── P1 인파 (O-04) ──
   | { t: 'SURGE_FALL' }

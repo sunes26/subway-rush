@@ -15,7 +15,7 @@ import { resolve } from 'node:path'
 import { FARE, TOTAL_TIME_MS } from '../src/data/tuning'
 import { start } from '../tests/unit/_pilot'
 import { asMarkdown, summarize, sweep, type SweepRow } from '../tests/unit/_sweep'
-import { COST_CAP_SEC, OBSTACLES, rollObstacles, shuffledCostOf, type ObsId } from '../src/data/obstacles'
+import { ACTIVE_OBSTACLES, costOf, OBSTACLES } from '../src/data/obstacles'
 
 const N = Number(process.argv[2] ?? 200)
 const SEEDS = Array.from({ length: N }, (_, i) => i * 3 + 1)
@@ -62,21 +62,11 @@ const endingTable = (): string => {
     .join('\n')
 }
 
-/** P2 — 시드별 활성 방해요소 집계 */
-const OBS_SEEDS = Array.from({ length: N }, (_, i) => i + 1)
-const OBS_SETS = OBS_SEEDS.map((sd) => rollObstacles(sd))
-
-const obstacleTable = (): string => {
-  const bins = new Map<string, number>()
-  for (const set of OBS_SETS) for (const id of set) bins.set(id, (bins.get(id) ?? 0) + 1)
-  return [...bins.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([id, n]) => `| ${id} ${OBSTACLES[id as ObsId].name} | ${n} | ${((n / N) * 100).toFixed(1)}% |`)
+/** P2 — 방해요소는 셔플 없이 매 시드 똑같이 11종 전부 켜진다(디렉터 지시) */
+const obstacleTable = (): string =>
+  ACTIVE_OBSTACLES
+    .map((id) => `| ${id} ${OBSTACLES[id].name} | ${OBSTACLES[id].costSec}s |`)
     .join(String.fromCharCode(10))
-}
-const capViolations = (): number =>
-  OBS_SETS.filter((set) => shuffledCostOf(set) > COST_CAP_SEC).length
-const uniqueSets = (): number => new Set(OBS_SETS.map((s) => s.join(','))).size
 
 const md = `# 지하철 러쉬 — P2 밸런스 스윕 리포트
 
@@ -106,25 +96,26 @@ ${balanceTable()}
 |---|---:|---:|
 ${endingTable()}
 
-> 탑승 **전** 시점의 판정이므로 성공 계열은 나오지 않는다. 절도 루트가 전부 E-10에
-> 걸리는 것이 정상이다 — 양심 −3 하나로 도달하고, 그게 GDD §6.2 의 의도다.
+> 탑승 **전** 시점의 판정이므로 성공 계열은 나오지 않는다. 이 시점엔 모든 루트가
+> 동일하게 E-06(다음 열차)으로 떨어지는 것이 정상이다 — 훔쳤는지 여부는 판정에
+> 반영되지 않는다(적발·즉사는 별도 사건이다).
 
-## 5. 방해요소 활성 분포 (P2)
+## 5. 방해요소 (P2)
 
-시드마다 12종 중 **8종**이 켜진다 (\`data/obstacles.ts rollObstacles\`).
-셔플 대상 4종의 명목 비용 합은 상한 ${COST_CAP_SEC}s 를 넘지 않는다.
+셔플 없이 OBS-14(플레이어 선택 발동)를 뺀 **11종이 매 시드 항상 전부** 켜진다
+(\`data/obstacles.ts ACTIVE_OBSTACLES\`).
 
-| 방해요소 | 활성 시드 수 | 비율 |
-|---|---:|---:|
+| 방해요소 | 명목 비용 |
+|---|---:|
 ${obstacleTable()}
 
-> 상한 위반: ${capViolations()}건 · 서로 다른 조합: ${uniqueSets()}가지
+> 명목 비용 합계: ${costOf(ACTIVE_OBSTACLES)}s (참고치 — 실제 페널티는 판정 쪽 상수다)
 
 ## 6. 판정
 
 - 소프트락: ${rows.filter((r) => !r.passed).length}건
-- [A] 훔치기 평균 ${summarize(rows, 'A-steal').avgSec.toFixed(1)}s · 양심 ${summarize(rows, 'A-steal').avgConscience.toFixed(2)}
-- [C] 말 걸기 평균 ${summarize(rows, 'C-talk').avgSec.toFixed(1)}s · 양심 ${summarize(rows, 'C-talk').avgConscience.toFixed(2)}
+- [A] 훔치기 평균 ${summarize(rows, 'A-steal').avgSec.toFixed(1)}s
+- [C] 말 걸기 평균 ${summarize(rows, 'C-talk').avgSec.toFixed(1)}s
 - [N] 무자원 평균 ${summarize(rows, 'N-skip').avgSec.toFixed(1)}s
 
 자동조종은 단소를 **피하지 않는다**(맞으면서 걷는다). 사람이 스프린트로 회피하면 [A]는

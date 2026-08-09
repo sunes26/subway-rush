@@ -13,6 +13,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { ENDINGS } from '../../src/data/endings'
 import { TRAIN } from '../../src/data/tuning'
 import { CABIN_Y1, DOOR_XS } from '../../src/data/world'
 import {
@@ -158,12 +159,22 @@ describe('어떤 엔딩이 어떤 컷을 받는가', () => {
   /**
    * ★ **이 테스트가 이 파일의 존재 이유다.**
    *
-   * E-09(부정승차 적발) · E-10(양심 파산) · E-11(에스컬레이터 참사) 는 우선순위가
-   * E-04·E-02 보다 높아서 **열차에 타고도** 그쪽이 뜬다. `boarded` 만 보고 컷을
-   * 고르면 양심이 바닥난 판에 한강 일출이 뜬다 — 연출이 위로가 되는 순간이다.
+   * E-09(부정승차 적발) · E-11(에스컬레이터 참사) 은 우선순위가 E-04·E-02 보다 높아서
+   * **열차에 타고도** 그쪽이 뜬다. `boarded` 만 보고 컷을 고르면 부정승차로 적발된
+   * 판에 한강 일출이 뜬다 — 연출이 위로가 되는 순간이다.
+   *
+   * ⚠ **id 를 손으로 안 적는다.** 예전엔 목록에 E-10(양심 파산)을 박아 뒀는데
+   *   upstream 이 양심 축을 없애며 그 엔딩이 사라졌고, 그래도 테스트는 **통과했다** —
+   *   `outroKindOf` 가 없는 id 에도 null 을 주기 때문이다. 실재하지 않는 것을 지키는
+   *   테스트가 되어 있었다. 이제 `ENDINGS` 에서 뽑으므로 엔딩이 늘거나 줄면 같이 따라온다.
    */
   it('탄 채로 끝나는 실패에는 컷이 안 붙는다', () => {
-    for (const id of ['E-09', 'E-10', 'E-11']) {
+    const boardedFails = ENDINGS
+      .map((e) => e.id)
+      .filter((id) => !['E-01', 'E-02', 'E-03', 'E-04', 'E-05', 'E-08', 'E-14'].includes(id))
+    expect(boardedFails).toContain('E-09')
+    expect(boardedFails).toContain('E-11')
+    for (const id of boardedFails) {
       expect(outroKindOf(id, true), id).toBeNull()
     }
   })

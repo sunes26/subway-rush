@@ -21,7 +21,8 @@ describe('선물 퍼즐 엔딩', () => {
     expect(ids).toContain('E-17')
     // 차에 치이면 즉사(디렉터 지시) — 정원이 17에서 18로 늘었다. 같은 이유로 되돌리지 말 것.
     expect(ids).toContain('E-18')
-    expect(ENDINGS.length).toBe(18)
+    // 양심 게이지 폐지로 E-07·E-10 삭제 — 정원이 18에서 16으로 줄었다.
+    expect(ENDINGS.length).toBe(16)
   })
 
   /**
@@ -134,8 +135,7 @@ describe('선물 증정', () => {
     expect(s.inventory).toContain('I-01')
     expect(s.phase).toBe('playing')
     expect(s.endingId).toBe(null)
-    // 양심 +1 은 E-12 히든 엔딩 조건이다 — 개편에서 빠뜨리기 쉬운 자리
-    expect(s.scores.conscience).toBeGreaterThan(0)
+    expect(s.flags).toContain('GRANDPA_HELPED')
   })
 
   it('오답 4종은 전부 E-15 로 끝난다', () => {
