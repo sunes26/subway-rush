@@ -88,6 +88,29 @@ describe('성공 구간 판정', () => {
     expect(b.qte.misses).toBe(0)
     expect(b.qte.pos).toBeGreaterThan(a.qte.pos)
   })
+
+  /**
+   * 회귀 테스트 — **판정은 클릭 그 순간 화면에 보이던 위치를 봐야 한다.**
+   *
+   * 예전엔 `tick`이 이번 프레임의 `ADVANCE`로 마커를 먼저 옮긴 **뒤에** 판정해서,
+   * 플레이어가 실제로 본 위치(성공 구간 안)가 아니라 한 틱 더 진행된 위치(구간 밖)로
+   * 미스 처리되는 일이 있었다 — 특히 진행 방향 쪽 경계에서 "분명 초록인데 미스"가 났다.
+   * 지금은 `ctx.prevPos`(직전 프레임 위치)로 판정하므로, 구간 경계 바로 안쪽에서
+   * 눌러도 이번 틱에 마커가 얼마나 더 갔는지와 무관하게 성공해야 한다.
+   */
+  it('구간을 막 벗어나려는 순간(진행 방향 경계)에 눌러도, 누른 그 위치가 안이면 성공한다', () => {
+    const exitEdge = 0.5 + QTE.zoneHalf - 0.001
+    const s = tap(at(opened(), exitEdge), { pressInteract: true })
+    expect(s.qte.strokes, `pos=${exitEdge}는 성공 구간 안이었다`).toBe(1)
+    expect(s.qte.misses).toBe(0)
+  })
+
+  it('반대로, 구간 막 진입 직전(경계 바로 밖)에 누르면 여전히 미스다', () => {
+    const justOutside = 0.5 + QTE.zoneHalf + 0.001
+    const s = tap(at(opened(), justOutside), { pressInteract: true })
+    expect(s.qte.strokes).toBe(0)
+    expect(s.qte.misses).toBe(1)
+  })
 })
 
 describe('마커 왕복', () => {
