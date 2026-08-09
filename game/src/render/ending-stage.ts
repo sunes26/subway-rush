@@ -26,10 +26,10 @@
  */
 
 import {
-  CanvasTexture, Color, DirectionalLight, DoubleSide, Group, LinearFilter,
-  LinearMipmapLinearFilter, Mesh,
-  MeshBasicMaterial, PlaneGeometry, PointLight, RepeatWrapping, SRGBColorSpace,
-  TextureLoader, type Texture,
+  AdditiveBlending, BufferAttribute, BufferGeometry, CanvasTexture, Color,
+  DirectionalLight, DoubleSide, Group, LinearFilter, LinearMipmapLinearFilter, Mesh,
+  MeshBasicMaterial, PlaneGeometry, PointLight, Points, PointsMaterial,
+  RepeatWrapping, SRGBColorSpace, TextureLoader, type Texture,
 } from 'three'
 import { TRAIN } from '../data/tuning'
 import { FLOOR } from '../data/world'
@@ -408,6 +408,44 @@ const drawHell = (): HTMLCanvasElement => {
   return c
 }
 
+/**
+ * 부드러운 방사형 폴오프 — 가산 판에 쓴다.
+ *
+ * ★ 후처리 블룸을 안 쓰는 대신이다. `render/glow.ts` 헤더에 이 저장소에서 실측한
+ *   근거가 있다(컴포저를 넣으면 톤매핑 경로가 바뀌어 게이트 사인 색이 변한다).
+ *   그쪽은 인스턴스 셰이더로 크게 짜 놨는데, 엔딩은 판이 서너 장이라 텍스처 한 장이면
+ *   충분하다 — 같은 원리, 훨씬 작은 구현.
+ */
+const drawFalloff = (): HTMLCanvasElement => {
+  const [c, g] = canvas(128, 128)
+  const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64)
+  grd.addColorStop(0, 'rgba(255,255,255,1)')
+  grd.addColorStop(0.45, 'rgba(255,255,255,.42)')
+  grd.addColorStop(1, 'rgba(255,255,255,0)')
+  g.fillStyle = grd
+  g.fillRect(0, 0, 128, 128)
+  return c
+}
+
+/**
+ * 유리의 반사 — **창이라는 것을 말해 주는 유일한 단서다.**
+ *
+ * 지금 창은 그림 한 장이라 "벽에 붙인 포스터"로 읽힌다. 실제 차창은 실내를 옅게
+ * 비추고, 그 반사가 **비스듬한 띠**로 지나간다. 그 띠 하나만 얹어도 유리가 생긴다.
+ */
+const drawSheen = (): HTMLCanvasElement => {
+  const [c, g] = canvas(256, 64)
+  const grd = g.createLinearGradient(0, 64, 256, 0)
+  grd.addColorStop(0, 'rgba(255,255,255,0)')
+  grd.addColorStop(0.42, 'rgba(255,255,255,0)')
+  grd.addColorStop(0.5, 'rgba(255,255,255,.55)')
+  grd.addColorStop(0.58, 'rgba(255,255,255,0)')
+  grd.addColorStop(1, 'rgba(255,255,255,0)')
+  g.fillStyle = grd
+  g.fillRect(0, 0, 256, 64)
+  return c
+}
+
 /** 차내 안내판 — 「이번 역」과 「다음 역」. 이 한 장이 WRONG WAY 의 전부다 */
 const drawLed = (wrong: boolean): HTMLCanvasElement => {
   const [c, g] = canvas(512, 64)
@@ -464,6 +502,8 @@ const drawLed = (wrong: boolean): HTMLCanvasElement => {
 const dawnTex = loadOrDraw('ending-dawn', drawDawn, 1, 0.45)
 const hellTex = loadOrDraw('ending-hell', drawHell, 1, 0.55)
 const tunnelTex = texOf(drawTunnel(), 3)
+const falloffTex = texOf(drawFalloff())
+const sheenTex = texOf(drawSheen())
 const ledOk = texOf(drawLed(false))
 const ledWrong = texOf(drawLed(true))
 
@@ -538,6 +578,58 @@ export const buildEndingStage = (): EndingStage => {
   root.add(led)
 
   /**
+   * ★ **빛 번짐** — 창이 밝고 객실이 어두우면 그 경계에서 빛이 샌다.
+   *
+   * 후처리 블룸이 할 일을 가산 판 한 장으로 대신한다(`render/glow.ts` 와 같은 선택).
+   * 창보다 세로로 1.9 배 크게 깔아 창틀 위아래로 번지게 한다 — 이 번짐이 있어야
+   * "창이 실내보다 훨씬 밝다"가 눈에 읽히고, 그게 노출차의 마무리다.
+   */
+  const bleed = new Mesh(
+    new PlaneGeometry(GLASS_W * 0.98, GLASS_H * 1.9),
+    new MeshBasicMaterial({
+      map: falloffTex, transparent: true, opacity: 0, depthWrite: false,
+      blending: AdditiveBlending, toneMapped: false, side: DoubleSide,
+    }),
+  )
+  bleed.position.set(0, GLASS_Z, -GLASS_Y + 0.04)
+  root.add(bleed)
+
+  /**
+   * 유리 반사 — 비스듬한 띠 하나. **이것 하나로 창이 유리가 된다.**
+   * 아주 약하게(0.16) 얹는다. 세게 주면 그림을 덮어 오히려 포스터로 돌아간다.
+   */
+  const sheen = new Mesh(
+    new PlaneGeometry(GLASS_W, GLASS_H),
+    new MeshBasicMaterial({
+      map: sheenTex, transparent: true, opacity: 0, depthWrite: false,
+      blending: AdditiveBlending, toneMapped: false, side: DoubleSide,
+    }),
+  )
+  sheen.position.set(0, GLASS_Z, -GLASS_Y + 0.05)
+  root.add(sheen)
+
+  /**
+   * 불티 — WRONG WAY 전용. **24 장이면 충분하다.**
+   *
+   * 파티클 시스템을 안 만든다. 위치를 시간의 함수로 매 프레임 다시 쓰는 `Points`
+   * 하나면 되고(드로우 콜 1), 그래서 정리할 상태도 없다 — 무대가 꺼지면 같이 꺼진다.
+   */
+  const EMBERS = 24
+  const emberPos = new Float32Array(EMBERS * 3)
+  const emberGeo = new BufferGeometry()
+  emberGeo.setAttribute('position', new BufferAttribute(emberPos, 3))
+  const embers = new Points(
+    emberGeo,
+    new PointsMaterial({
+      map: falloffTex, size: 0.13, transparent: true, opacity: 0, depthWrite: false,
+      blending: AdditiveBlending, toneMapped: false, color: new Color(0xff7a2a),
+      sizeAttenuation: true,
+    }),
+  )
+  embers.frustumCulled = false
+  root.add(embers)
+
+  /**
    * ★ **창밖 빛을 객실 안으로 들여보낸다. 이 컷에서 가장 중요한 물건이다.**
    *
    * 창밖 판은 `MeshBasicMaterial`(unlit)이라 아무리 밝게 그려도 **빛이 0** 이다.
@@ -565,6 +657,9 @@ export const buildEndingStage = (): EndingStage => {
   lavaLight.position.set(0, FLOOR.B2 + 0.35, -GLASS_Y + 0.6)
   root.add(lavaLight)
 
+  const bleedMat = bleed.material as MeshBasicMaterial
+  const sheenMat = sheen.material as MeshBasicMaterial
+  const emberMat = embers.material as PointsMaterial
   const ledMat = led.material as MeshBasicMaterial
   const backMat = back.material as MeshBasicMaterial
   const tunnelMat = tunnel.material as MeshBasicMaterial
@@ -605,6 +700,36 @@ export const buildEndingStage = (): EndingStage => {
        * 창밖이 흐르는 방향은 **진행의 반대**다. 열차가 +x 로 가면 바깥은 −x 로 흐른다.
        * 터널이 풍경보다 빨리 흐른다 — 가까운 것이 빨리 지나가는 그 차이가 거리감이다.
        */
+      /**
+       * 빛 번짐·유리·불티 — 전부 `glow` 에 매인다. 창밖이 안 드러났으면 0 이라,
+       * 터널 구간에서는 아무것도 안 그린다(가산 판이 검은 화면을 들추지 않는다).
+       */
+      const warm = wrong ? 0xff4a14 : 0xffb066
+      if (bleedMat.color.getHex() !== warm) bleedMat.color.setHex(warm)
+      bleedMat.opacity = glow * (wrong ? 0.5 : 0.34) * flash
+      // 유리 반사는 **창이 밝을 때만** 보인다. 어두운 터널에 반사가 있으면 이상하다
+      sheenMat.opacity = glow * 0.16
+      sheenTex.offset.x = scroll * 0.06
+
+      if (wrong) {
+        /**
+         * 불티는 **아래에서 위로** 흐른다(용암이 바닥에 있다). 각 알갱이가 자기
+         * 주기를 갖도록 인덱스로 위상을 흩고, 위로 갈수록 옆으로도 흔들린다.
+         */
+        for (let i = 0; i < EMBERS; i++) {
+          const seed = i * 12.9898
+          const life = ((scroll * 0.42 + (seed % 1)) % 1)
+          emberPos[i * 3] = ((seed * 7.13) % 9) - 4.5 + Math.sin(life * 6 + i) * 0.25
+          emberPos[i * 3 + 1] = GLASS_Z0 - 0.15 + life * (GLASS_H + 0.9)
+          emberPos[i * 3 + 2] = -GLASS_Y + 0.12 + ((seed * 3.7) % 0.35)
+        }
+        emberGeo.attributes.position!.needsUpdate = true
+        // 위로 갈수록 사그라든다 — 끝까지 밝으면 벌레처럼 보인다
+        emberMat.opacity = glow * 0.75
+      } else {
+        emberMat.opacity = 0
+      }
+
       tunnelTex.offset.x = scroll * 0.11
       /**
        * 풍경 속도. 0.018/0.022 였을 때 컷 내내 그림의 8% 밖에 안 흘러 **멈춘 것처럼**
