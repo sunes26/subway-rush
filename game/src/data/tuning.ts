@@ -324,7 +324,7 @@ export const OBSTACLE = {
   wetCooldownMs: 4000,
   // OBS-07 아주머니+학생 — Z1 지상에서 각자 독립된 남북 구간을 왕복한다 (디렉터 지시)
   // 정지 시간은 대화 총 길이가 정한다(`systems/preach.ts` PREACH_LINES) — 여기 별도 상수를 안 둔다
-  preachRangeM: 3.0,
+  preachRangeM: 1.5,
   /** 순찰 왕복 1주기(ms) */
   preachPeriodMs: 10_000,
   /** 말 거는 계열 공용 — 한 번 붙잡히면 그 사람은 한동안 다시 안 붙는다 */

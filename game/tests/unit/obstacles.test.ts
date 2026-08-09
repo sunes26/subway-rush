@@ -31,12 +31,12 @@ const stand = (s: GameState, x: number, y: number, z: number, steps = 4): GameSt
 
 describe('S16-1 각 방해요소가 발동한다', () => {
   it('OBS-07 아주머니 — 반경 안이면 강제 대화가 시작된다', () => {
-    const s = stand(armed(), AUNTIE_AT.x, AUNTIE_AT.y - 2.0, FLOOR.L0)
+    const s = stand(armed(), AUNTIE_AT.x, AUNTIE_AT.y - 1.0, FLOOR.L0)
     expect(s.preach.active).toBe(true)
   })
 
   it('OBS-07 학생 — 아주머니와 독립된 반경이라도 같은 대화가 시작된다', () => {
-    const s = stand(armed(), STUDENT_AT.x, STUDENT_AT.y - 2.0, FLOOR.L0)
+    const s = stand(armed(), STUDENT_AT.x, STUDENT_AT.y - 1.0, FLOOR.L0)
     expect(s.preach.active).toBe(true)
   })
 
@@ -82,18 +82,18 @@ describe('S16-2 짝 아이템이 무효화한다', () => {
     ({ flags: [flag], inventory: [...inv, null, null, null].slice(0, 3) })
 
   it('이어폰 착용 — 아주머니도 무효', () => {
-    const s = stand(armed(wearing('EARBUDS_ON', ['I-05'])), AUNTIE_AT.x, AUNTIE_AT.y - 2, FLOOR.L0)
+    const s = stand(armed(wearing('EARBUDS_ON', ['I-05'])), AUNTIE_AT.x, AUNTIE_AT.y - 1, FLOOR.L0)
     expect(s.timeLeftMs).toBeGreaterThan(180_000 - 1000)
     expect(s.preach.active).toBe(false)
   })
 
   it('이어폰 착용 — 학생도 무효', () => {
-    const s = stand(armed(wearing('EARBUDS_ON', ['I-05'])), STUDENT_AT.x, STUDENT_AT.y - 2, FLOOR.L0)
+    const s = stand(armed(wearing('EARBUDS_ON', ['I-05'])), STUDENT_AT.x, STUDENT_AT.y - 1, FLOOR.L0)
     expect(s.preach.active).toBe(false)
   })
 
   it('이어폰을 **들고만** 있으면 안 막힌다 — 착용해야 한다', () => {
-    const s = stand(armed({ inventory: ['I-05', null, null] }), AUNTIE_AT.x, AUNTIE_AT.y - 2, FLOOR.L0)
+    const s = stand(armed({ inventory: ['I-05', null, null] }), AUNTIE_AT.x, AUNTIE_AT.y - 1, FLOOR.L0)
     expect(s.preach.active).toBe(true)
   })
 
@@ -155,7 +155,7 @@ describe('S16-4 stall 중첩', () => {
 
 describe('S16-5 쿨다운', () => {
   it('연속 발동하지 않는다 — 한 번 붙잡히면 한동안 조용하다', () => {
-    const s = stand(armed(), AUNTIE_AT.x, AUNTIE_AT.y - 2, FLOOR.L0, 4)
+    const s = stand(armed(), AUNTIE_AT.x, AUNTIE_AT.y - 1, FLOOR.L0, 4)
     const t1 = s.timeLeftMs
     const s2 = holdFor(s, {}, 120)                       // 2초 더 서 있는다
     const spent = t1 - s2.timeLeftMs
@@ -166,13 +166,13 @@ describe('S16-5 쿨다운', () => {
 
 describe('S16-6 비활성 방해는 침묵한다', () => {
   it('활성 목록에서 빠지면 조건을 만족해도 아무 일이 없다', () => {
-    const s = stand(start(7, { obstacles: ['OBS-01'] }), AUNTIE_AT.x, AUNTIE_AT.y - 2, FLOOR.L0)
+    const s = stand(start(7, { obstacles: ['OBS-01'] }), AUNTIE_AT.x, AUNTIE_AT.y - 1, FLOOR.L0)
     expect(s.timeLeftMs).toBeGreaterThan(180_000 - 1000)
     expect(s.preach.active).toBe(false)
   })
 
   it('학생 쪽도 마찬가지', () => {
-    const s = stand(start(7, { obstacles: [] }), STUDENT_AT.x, STUDENT_AT.y - 2, FLOOR.L0)
+    const s = stand(start(7, { obstacles: [] }), STUDENT_AT.x, STUDENT_AT.y - 1, FLOOR.L0)
     expect(s.preach.active).toBe(false)
   })
 })
