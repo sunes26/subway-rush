@@ -40,10 +40,12 @@ test.describe('S18-4/5 엔딩 도감', () => {
     // ENDINGS.length 를 직접 참조한다 — 하드코딩된 숫자는 엔딩이 추가·삭제될 때마다
     // 어긋난다. 실제로 17로 하드코딩돼 있던 값이 E-18 추가(18) · 양심 게이지
     // 폐지(16) 두 번 다 안 고쳐진 채 방치돼 있었다.
-    const cells = page.locator('#collection .cell')
+    // ⚠ 마크업이 `.cell`/`.sub`에서 `.slot`/`.pnum`으로 바뀌었다(도감 목록+상세 리디자인)
+    const cells = page.locator('#collection .slot')
     await expect(cells).toHaveCount(ENDINGS.length)
-    await expect(page.locator('#collection .cell.locked')).toHaveCount(ENDINGS.length)
-    await expect(page.locator('#collection .sub')).toContainText(`0 / ${ENDINGS.length}`)
+    await expect(page.locator('#collection .slot.locked')).toHaveCount(ENDINGS.length)
+    await expect(page.locator('#collection .pnum b')).toHaveText('00')
+    await expect(page.locator('#collection .pnum span')).toContainText(`/ ${ENDINGS.length} 발견`)
     // 조건식이 노출되면 안 된다 — 도감이 체크리스트가 되면 수집이 아니라 심부름이다
     const text = await page.locator('#collection').innerText()
     expect(text).not.toContain('>=')
@@ -77,8 +79,9 @@ test.describe('S18-4/5 엔딩 도감', () => {
     await boot(page)
     await page.keyboard.press('KeyC')
     await page.waitForTimeout(250)
-    await expect(page.locator('#collection .cell.got')).toHaveCount(1)
-    await expect(page.locator('#collection .sub')).toContainText('1 / 17')
+    await expect(page.locator('#collection .slot.got')).toHaveCount(1)
+    await expect(page.locator('#collection .pnum b')).toHaveText('01')
+    await expect(page.locator('#collection .pnum span')).toContainText(`/ ${ENDINGS.length} 발견`)
   })
 
   test('같은 엔딩 화면이 떠 있어도 횟수가 한 번만 는다', async ({ page }) => {
