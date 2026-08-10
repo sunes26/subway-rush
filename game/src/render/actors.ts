@@ -20,6 +20,7 @@ import { rampZ } from '../systems/collision'
 import { secondsSinceDoorsOpen, secondsSinceDoorsOpenOpp } from '../systems/disembark'
 import { auntieAt, studentAt, zombieAt } from '../systems/obstacles'
 import { staffAt } from '../systems/staff'
+import { staffTaserLineAt, STAFF_TASER_TASER_LINE_INDEX } from '../systems/staffTaser'
 import { loadNpcRig, type NpcRig } from './npc-rig'
 
 export type Actors = Readonly<{
@@ -192,6 +193,15 @@ const FM_FACING = -Math.PI / 2
 const AMBUSH_OFFICER_DIST_M = 2.4
 
 /**
+ * 계단 하차인파 우산질 강제엔딩(E-11) 역무원 — 좌표를 안 두는 이유·거리 근거 모두
+ * `AMBUSH_OFFICER_DIST_M`과 같다(같은 "플레이어 정면에 마주 선다" 연출). 값을 그대로
+ * 재사용하지 않고 이름을 따로 둔 이유: 두 강제엔딩이 같은 상수를 공유하면, 나중에
+ * 한쪽만 거리를 조정할 때(예: 테이저 모션이 더 짧아 더 가까이 서야 한다) 이름이
+ * "AMBUSH" 인 상수를 고쳐야 해서 의도가 헷갈린다.
+ */
+const TASER_OFFICER_DIST_M = AMBUSH_OFFICER_DIST_M
+
+/**
  * 에스컬레이터 승객 — **장식이지만 우산은 맞는다** (디렉터 지시 2026-08-07:
  * "에스컬레이터를 빼곡히 채워줘" → *"다른 승객은 우산에 닿았을때 안 날라가는디?"*).
  *
@@ -233,7 +243,7 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
    * `loadNpcRig` 이 스켈레톤까지 복제하므로 셋이 각자 움직인다(얕은 복제는 본을 공유한다).
    * 브라우저가 같은 URL 을 캐시하므로 네트워크 비용은 1회다.
    */
-  const [gp, cp0, cp1, cp2, aj, zp, ss, cl, fm, ao, st, ...riders] = await Promise.all([
+  const [gp, cp0, cp1, cp2, aj, zp, ss, cl, fm, ao, to, st, ...riders] = await Promise.all([
     loadOr(`${dir}gp_character_rigged.glb`, 'GP', YAW_FIX.gp),
     loadOr(`${dir}cp_character_rigged.glb`, 'CP0', YAW_FIX.cp),
     loadOr(`${dir}cp_character_rigged.glb`, 'CP1', YAW_FIX.cp),
@@ -247,6 +257,11 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
     // 개찰구 매복 역무원 — 방해요소 `ss`(OBS-13 순찰)와 별개다. OBS-13이 이번 판에 안 뽑히면
     // `ss`는 몸이 없다(`obsOff`) — 매복은 그 롤과 무관하게 **항상** 일어나야 하므로 전용 인스턴스를 둔다
     loadOr(`${dir}ss_character_rigged.glb`, 'AO', YAW_FIX.ss),
+    // 계단 하차인파 우산질 강제엔딩(E-11) 역무원 — `ao`(개찰구 매복)와 같은 이유로 전용
+    // 인스턴스를 둔다. 두 강제엔딩은 트리거 조건이 서로 독립이라(하나는 EARBUDS_STOLEN+
+    // 위치, 하나는 tally.pushes) 이론상 같은 판에서 둘 다 `active`가 될 수 있다 — 리그를
+    // 공유하면 둘 중 하나가 자리를 잃는다.
+    loadOr(`${dir}ss_character_rigged.glb`, 'TO', YAW_FIX.ss),
     // OBS-07 학생 — 아주머니 파트너 룩(포니테일·백팩, ajp_character_rigged.glb)을 이 장면의
     // 학생으로 쓴다(디렉터 지시). 아주머니(`aj`)와 마찬가지로 OBS-07 전용 인스턴스다 —
     // 둘은 이제 한 세트로 같이 켜지고 같이 꺼진다(`obsOff` 가 둘 다 'OBS-07' 을 본다)
@@ -255,9 +270,10 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
   ])
   const cps = [cp0, cp1, cp2] as const
   // FM 은 전용 glb 라 이름 충돌은 없지만, e2e 접두어 매칭(위 헤더 주석 참고)이 기대하는
-  // 안정된 이름을 위해 명시적으로 붙인다. AO/ST/rider 는 여전히 공유 glb 라 충돌 회피가 필요하다.
+  // 안정된 이름을 위해 명시적으로 붙인다. AO/TO/ST/rider 는 여전히 공유 glb 라 충돌 회피가 필요하다.
   fm.root.name = 'npc:fishcake-man'
   ao.root.name = 'npc:ambush-officer'
+  to.root.name = 'npc:taser-officer'
   st.root.name = 'npc:preach-student'
   for (const r of riders) r.root.name = 'npc:esc-rider'
   const riderAnchors: readonly Anchor[] = RIDER_SPOTS.map((spot) =>
@@ -633,6 +649,25 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
   }
 
   /**
+   * 계단 하차인파 우산질 강제엔딩(E-11) 역무원 — `syncAmbushOfficer`와 완전히 같은
+   * 패턴이다(좌표를 안 두고 `s.staffTaser.active` 동안만 플레이어 정면에 마주 선다).
+   * 대사 표·마지막 줄 인덱스만 `systems/staffTaser.ts` 것을 쓴다.
+   */
+  const syncTaserOfficer = (s: GameState, dtSec: number): void => {
+    if (!s.staffTaser.active) { to.setVisible(false); return }
+    const p = s.player.pos
+    const facing = s.player.facing
+    const x = p.x + Math.cos(facing) * TASER_OFFICER_DIST_M
+    const y = p.y + Math.sin(facing) * TASER_OFFICER_DIST_M
+    to.place(x, y, p.z, facing + Math.PI)
+    to.setVisible(true)
+
+    const { index } = staffTaserLineAt(s.staffTaser.phaseMs)
+    to.play(index >= STAFF_TASER_TASER_LINE_INDEX ? 'SS_TaserFire' : 'SS_Idle')
+    to.update(dtSec)
+  }
+
+  /**
    * 하차 인파 40명 — 자리는 순수함수(`data/crowd.ts disembarkAt`)가 정한다.
    * 걷는 클립이 없다(`cp_character_rigged.glb` 는 Idle·MoveAside뿐) — 제자리 자세로
    * 미끄러지듯 이동한다. 눈에 띄면 그때 걷기 클립을 추가하거나 렌더 방식을 바꾼다
@@ -682,6 +717,7 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
       syncClerk(s, dtSec)
       syncFishcake(s, dtSec)
       syncAmbushOfficer(s, dtSec)
+      syncTaserOfficer(s, dtSec)
       syncDisembark(s, dtSec)
       syncDisembarkOpp(s, dtSec)
     },
@@ -691,7 +727,7 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
       for (const r of riders) r.dispose()
       aj.dispose(); zp.dispose(); ss.dispose()
       cl.dispose()
-      fm.dispose(); ao.dispose(); st.dispose()
+      fm.dispose(); ao.dispose(); to.dispose(); st.dispose()
       for (const r of disembarkRigs) r.dispose()
       for (const r of disembarkRigs2) r.dispose()
     },

@@ -132,7 +132,12 @@ describe('S18-0 조건이 쓰는 플래그에 발행처가 있다', () => {
   })
 })
 
-describe('S18-1 신규 8종이 각각 도달 가능하다', () => {
+/**
+ * P2 신규 8종 중 7종은 `resolveEnding`으로 직접 도달 가능하다. E-11 하나만 예외다 —
+ * 우산 밀기 10회 누적은 조건을 만족하는 즉시 역무원 강제 컷씬(`systems/staffTaser.ts`)이
+ * 열리므로, `resolveEnding`이 판정하는 시점(열차 출발)에는 이미 게임이 끝나 있다.
+ */
+describe('S18-1 신규 8종 중 7종이 각각 도달 가능하다 (E-11은 강제 컷씬으로 이관)', () => {
   it('E-05 지하철 마스터 (TRUE)', () => {
     expect(at(trueRun())).toBe('E-05')
   })
@@ -142,8 +147,14 @@ describe('S18-1 신규 8종이 각각 도달 가능하다', () => {
     expect(at({ boarded: false, flags })).toBe('E-12')
   })
 
-  it('E-11 에스컬레이터 참사 — 우산 밀기 3회', () => {
-    expect(at({ tally: tally({ pushes: 3 }) })).toBe('E-11')
+  /**
+   * E-11 은 더 이상 여기 없다. 우산 밀기 트리거가 "3회"에서 "10회 누적"으로 바뀌며
+   * 역무원 강제 컷씬(`systems/staffTaser.ts`)이 붙었다 — E-17 개찰구 매복과 같은
+   * 패턴으로 옮겨졌으므로 `resolveEnding`을 안 탄다(`when`이 항상 거짓). 정의·재현
+   * 가능성은 `tests/unit/staff-taser.test.ts` 가 전담한다.
+   */
+  it('E-11 은 resolveEnding 으로 도달할 수 없다 — 강제 컷씬으로 옮겨졌다', () => {
+    expect(at({ tally: tally({ pushes: 999 }) })).not.toBe('E-11')
   })
 
   it('E-09 부정승차 적발 — 역무원이 낸 플래그', () => {
@@ -165,19 +176,22 @@ describe('S18-1 신규 8종이 각각 도달 가능하다', () => {
   })
 
   /**
-   * ⚠ 아래 `toBe(12)` 는 **"엔딩 12종"이라는 제목의 잔재가 아니다.** `E-15`·`E-16` 은
-   * 강제 엔딩이라 `resolveEnding` 을 아예 타지 않으므로(파일 상단 `at()` 은
-   * `resolveEnding` 을 부른다) 여기 모이는 집합엔 절대 안 섞여야 한다. 12는
-   * "resolveEnding 으로 도달 가능한 엔딩 수는 정확히 12개다 — E-15~E-18 은 그중에
-   * 없다"는 불변식을 인코딩한 값이다. 총 엔딩 수(16종)에 맞춰 16으로 "고치면"
+   * ⚠ 아래 `toBe(11)` 는 **"엔딩 11종"이라는 제목의 잔재가 아니다.** `E-15`·`E-16`·`E-11`
+   * 은 강제 엔딩이라 `resolveEnding` 을 아예 타지 않으므로(파일 상단 `at()` 은
+   * `resolveEnding` 을 부른다) 여기 모이는 집합엔 절대 안 섞여야 한다. 11은
+   * "resolveEnding 으로 도달 가능한 엔딩 수는 정확히 11개다 — E-11·E-15~E-18 은
+   * 그중에 없다"는 불변식을 인코딩한 값이다. 총 엔딩 수(16종)에 맞춰 16으로 "고치면"
    * 이 가드가 무력화된다.
+   *
+   * E-11 이 예전엔 이 집합의 한 자리였다("우산 밀기 3회") — 트리거가 "10회 누적 +
+   * 역무원 강제 컷씬"으로 바뀌며 E-17 과 같은 처지가 됐고(`data/endings.ts` 참고),
+   * 그래서 12 → 11 로 줄었다.
    */
-  it('12종 전부 한 번씩은 나온다', () => {
+  it('11종 전부 한 번씩은 나온다', () => {
     const seen = new Set<EndingId>([
       at(trueRun()),
       at({ boarded: true, tally: tally({ coinsEarned: 3000 }) }),
       at({ boarded: false, flags: ['WALLET_RETURNED', 'GRANDPA_HELPED'] }),
-      at({ tally: tally({ pushes: 3 }) }),
       at({ flags: ['BUSTED'] }),
       at({ boarded: false, flags: ['TOILET_USED'] }),
       at({ boarded: true, timeLeftMs: 40_000, flags: ['OPPOSITE_SIDE'] }),
@@ -199,7 +213,7 @@ describe('S18-1 신규 8종이 각각 도달 가능하다', () => {
      * 그러므로 **엔딩을 더할 때는 조건에 쓰는 플래그의 발행처를 먼저 확인한다.**
      * 아래 위 `S18-0` 이 그것을 자동으로 막는다.
      */
-    expect(seen.size, [...seen].sort().join(',')).toBe(12)
+    expect(seen.size, [...seen].sort().join(',')).toBe(11)
   })
 })
 

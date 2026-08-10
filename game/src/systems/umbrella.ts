@@ -16,12 +16,18 @@
  * ★ 밀기 계수(`PUSH` · E-11)를 내는 곳은 **이 파일 하나뿐이다.** 예전 슬롯 키 경로는
  *   지웠다 — 두 경로가 남으면 같은 엔딩 조건이 경로마다 다른 속도로 찬다.
  *
- * ── 인파벽 3인 + 에스컬레이터 승객(장식)
+ * ── 인파벽 3인 + 에스컬레이터 승객(장식) + 계단 하차인파(양방향)
  * 처음엔 `CP_IDS` 3인만 훑었다. *"다른 승객은 우산에 닿았을때 안 날라가는디?"* — 맞는
  * 지적이다. 화면에 서 있는 사람이면 다 맞아야지, "판정 대상이냐 장식이냐"는 플레이어
  * 눈에는 안 보이는 구분이다. `data/crowd.ts` 의 승객 좌표를 **같은 반경·같은 방식**으로
  * 훑는다 — 별도 시스템으로 안 쪼갠 이유가 바로 이거다(경로가 갈리면 나중에 또 하나만
  * 빼먹은 채 남는다).
+ *
+ * 계단 하차인파(`systems/disembark.ts disembarkSweepSpots`/`disembarkSweepSpotsOpp`)도
+ * 같은 이유로 이 표에 합쳐 훑는다(디렉터 확정 — E-11 트리거를 "우산 밀기 10회 누적"으로
+ * 바꾸며 대상이 인파벽 3인 + 장식 승객 10인만으로는 10회에 잘 안 닿는다는 게 드러났다).
+ * `sweepTargets`가 `GameState`를 받게 된 것도 이 때문이다 — 하차 인파는 시간의 함수라
+ * 매 스텝 다시 계산해야 한다(고정 좌표인 `CP_IDS`·`RIDER_SPOTS`와 다르다).
  */
 
 import { CP_IDS, byId } from '../data/interactables'
@@ -30,19 +36,22 @@ import { UMBRELLA } from '../data/tuning'
 import { ESCALATOR, FLOOR } from '../data/world'
 import type { Action, GameState } from '../state/types'
 import { rampZ } from './collision'
+import { disembarkSweepSpots, disembarkSweepSpotsOpp } from './disembark'
 
 export type UmbrellaCtx = Readonly<{ dtMs: number }>
 
-/** 훑기 대상 하나 — 인파벽·장식 승객이 같은 모양으로 들어온다 */
+/** 훑기 대상 하나 — 인파벽·장식 승객·하차 인파가 같은 모양으로 들어온다 */
 type SweepTarget = Readonly<{ id: string; x: number; y: number; z: number }>
 
-const sweepTargets = (): readonly SweepTarget[] => [
+const sweepTargets = (s: GameState): readonly SweepTarget[] => [
   ...CP_IDS
     .map((id) => byId(id))
     .filter((it): it is NonNullable<typeof it> => !!it)
     .map((it) => ({ id: it.id, x: it.x, y: it.y, z: it.z })),
   // 좌표가 전부 ESCALATOR rect 안이라 rampZ 는 실제로 null 을 안 낸다 — 타입만 맞춘다
   ...RIDER_SPOTS.map((r) => ({ id: r.id, x: r.x, y: r.y, z: rampZ(ESCALATOR, r.x, r.y) ?? FLOOR.B1 })),
+  ...disembarkSweepSpots(s),
+  ...disembarkSweepSpotsOpp(s),
 ]
 
 /**
@@ -69,7 +78,7 @@ export const umbrellaSystem = (s: GameState, ctx: UmbrellaCtx): Action[] => {
    */
   let toasted = s.tally.pushes > 0
 
-  for (const it of sweepTargets()) {
+  for (const it of sweepTargets(s)) {
     if (s.act.consumed.includes(it.id)) continue        // 이미 비켰거나 날아갔다
     // 층이 다르면 안 닿는다 — 대합실(B1)의 인파를 승강장(B2)에서 훑을 수는 없다
     if (Math.abs(it.z - p.z) > 1.2) continue

@@ -27,6 +27,7 @@ import type { GameState } from './state/types'
 import { ambushCamera, ambushCollapseT } from './systems/ambush'
 import { knockdownCamera, knockdownT } from './systems/knockdown'
 import { carHits } from './systems/roadHazard'
+import { staffTaserCamera, staffTaserCollapseT } from './systems/staffTaser'
 import { lightIsGreen, lightRemainSec, rebuildDynamics, tick } from './systems/tick'
 import { createDebug } from './ui/debug'
 import { createDialog } from './ui/dialog'
@@ -1028,8 +1029,9 @@ const frame = (now: number): void => {
   // 매복이든 교통사고든 **쓰러지는 것은 하나**라 같은 페이드를 쓴다(진행도만 다른 데서 온다)
   const alive = state.phase === 'playing'
   const collapseT = alive && state.ambush.active ? ambushCollapseT(state.ambush.phaseMs)
-    : alive && state.knockdown.active ? knockdownT(state.knockdown.phaseMs)
-      : 0
+    : alive && state.staffTaser.active ? staffTaserCollapseT(state.staffTaser.phaseMs)
+      : alive && state.knockdown.active ? knockdownT(state.knockdown.phaseMs)
+        : 0
   // 1.7 배속으로 사라진다 — 낙하가 끝나기 전에 이미 비어 있어야 무너지는 그림만 남는다
   const hudFade = (1 - collapseT * 1.7).toFixed(3)
   const hudOpacity = collapseT > 0 ? (Number(hudFade) > 0 ? hudFade : '0') : ''
@@ -1076,6 +1078,25 @@ const frame = (now: number): void => {
       stage.camera.rotation.z += cam.rollRad
       stage.camera.rotation.x += cam.pitchRad
       // 감전 경련 — 세 축 모두 흔든다(한 축만 흔들면 "떤다"가 아니라 "미끄러진다"로 보인다)
+      if (cam.joltM > 0) {
+        stage.camera.position.x += (Math.random() - 0.5) * cam.joltM
+        stage.camera.position.y += (Math.random() - 0.5) * cam.joltM
+        stage.camera.position.z += (Math.random() - 0.5) * cam.joltM
+      }
+    }
+  }
+
+  /**
+   * 계단 하차인파 우산질 강제엔딩(E-11) — 위 매복(E-17)과 완전히 같은 합성이다.
+   * `staffTaserCamera`가 내부에서 `ambushCamera`(같은 `AMBUSH_CAM` 튜닝)를 그대로
+   * 재사용하므로 궤적도 동일하다 — 대사 길이만 다를 뿐 "경련 → 낙하 → 착지"는 같은 몸짓이다.
+   */
+  if (state.staffTaser.active) {
+    const cam = staffTaserCamera(state.staffTaser.phaseMs)
+    if (cam.dropM > 0 || cam.joltM > 0) {
+      stage.camera.position.y -= cam.dropM
+      stage.camera.rotation.z += cam.rollRad
+      stage.camera.rotation.x += cam.pitchRad
       if (cam.joltM > 0) {
         stage.camera.position.x += (Math.random() - 0.5) * cam.joltM
         stage.camera.position.y += (Math.random() - 0.5) * cam.joltM

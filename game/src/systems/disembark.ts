@@ -58,6 +58,42 @@ export const activeDisembarkOpp = (s: GameState): readonly DisembarkSpot[] => {
   return out
 }
 
+/** 순번 있는 자리 하나 — 같은 사람을 우산으로 두 번 세지 않으려면 안정된 id 가 필요하다 */
+export type DisembarkSweepSpot = Readonly<{ id: string; x: number; y: number; z: number }>
+
+/**
+ * 우산 훑기(`systems/umbrella.ts`) 전용 — `activeDisembark`와 같은 순번·같은 자리를
+ * 돌지만 **순번 있는 id 를 같이 낸다.** `activeDisembark`는 배열 index 가 매 프레임
+ * 걷고 있는 사람만 남기고 압축돼 있어(길이·순서가 계속 바뀐다) 그 index 를 id 로 쓰면
+ * 같은 사람이 프레임마다 다른 id 로 읽혀 `act.consumed` 로 중복 방지를 못 한다.
+ * 그래서 `disembarkAt` 을 직접 0..count-1 로 돌며 원래 순번(`DISM-i`)을 id 로 붙인다.
+ *
+ * `activeDisembark`/`activeDisembarkOpp` 자체는 손대지 않는다 — `disembarkSystem`의
+ * 부딪힘 판정(반환 타입에 `facing` 포함)이 이미 그 시그니처를 그대로 쓰고 있다.
+ */
+export const disembarkSweepSpots = (s: GameState): readonly DisembarkSweepSpot[] => {
+  const t = secondsSinceDoorsOpen(s)
+  if (t < 0) return []
+  const out: DisembarkSweepSpot[] = []
+  for (let i = 0; i < DISEMBARK.count; i++) {
+    const p = disembarkAt(i, t, s.gates.workingIds)
+    if (p) out.push({ id: `DISM-${i}`, x: p.x, y: p.y, z: p.z })
+  }
+  return out
+}
+
+/** 반대 방면 버전 — `disembarkSweepSpots`와 같은 식, 게이트 목록이 필요 없다 */
+export const disembarkSweepSpotsOpp = (s: GameState): readonly DisembarkSweepSpot[] => {
+  const t = secondsSinceDoorsOpenOpp(s)
+  if (t < 0) return []
+  const out: DisembarkSweepSpot[] = []
+  for (let i = 0; i < DISEMBARK.count; i++) {
+    const p = disembarkAtOpp(i, t)
+    if (p) out.push({ id: `DISM-OPP-${i}`, x: p.x, y: p.y, z: p.z })
+  }
+  return out
+}
+
 export const disembarkSystem = (s: GameState, ctx: DisembarkCtx): Action[] => {
   if (s.phase !== 'playing') return []
 

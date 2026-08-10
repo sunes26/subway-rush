@@ -117,15 +117,29 @@ export const ENDINGS: readonly EndingDef[] = [
       s.flags.includes('WALLET_RETURNED') &&
       s.flags.includes('GRANDPA_HELPED'),
   },
+  /**
+   * 계단 하차인파 우산질 강제엔딩 — **역무원이 직접 낸다**(`systems/staffTaser.ts`).
+   * 트리거가 "우산 밀기 누적 3회"에서 **10회**로 바뀌면서(디렉터 지시) 조건이
+   * `resolveEnding`의 단일 비교식으로 남을 수 없게 됐다: 10명째에 걸리는 순간
+   * 역무원이 나타나 대사 5줄 → 테이저 발사까지 흐르는 강제 컷씬이 붙었기 때문이다
+   * (`E-17` 개찰구 매복과 같은 사정). 그래서 `E-17`과 같은 패턴으로 옮긴다 — `when`을
+   * 항상 거짓으로 고정하고 `staffTaserSystem`이 `{ t: 'END', endingId: 'E-11' }`을
+   * 직접 낸다.
+   *
+   * ⚠ `priority`는 **84 그대로 유지한다.** 강제 엔딩 그룹(priority 1~4)으로 옮기지
+   *   않는다 — 84는 "즉사는 집계보다 위여야 한다"는 불변식(E-09보다 위)의 자리이고,
+   *   `when`이 거짓인 이상 `resolveEnding`이 이 항목을 절대 고르지 않으므로 정렬
+   *   순서상의 실질적인 역할은 없다. 그래도 자리를 지키는 이유는 그 불변식을 읽는
+   *   사람(과 주석)이 "E-11이 왜 여기 있는가"를 다시 유추하지 않게 하기 위해서다.
+   */
   {
     id: 'E-11',
     priority: 84,
-    title: '에스컬레이터 참사',
-    line: '…뒤를 돌아보지 말자.',
+    title: '우산 값은 한다',
+    line: '…돌아볼 걸음이 없다.',
     hint: '우산은 길을 여는 물건이지 미는 물건이 아니다.',
     tone: 'fail',
-    // GDD §9.4 "우산으로 인파 밀기 3회 이상". 즉사 2종 중 하나 — 명백한 고의 행동이다
-    when: (s) => s.tally.pushes >= 3,
+    when: () => false,
   },
   {
     /**

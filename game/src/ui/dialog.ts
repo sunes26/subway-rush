@@ -15,6 +15,7 @@ import { GIFT_CORRECT, GIFT_ITEMS, itemDef, MASK_PRICE, SHOP_PRICE } from '../da
 import { QTE } from '../data/tuning'
 import { AMBUSH_DIALOGUE_MS, ambushCollapseT, ambushLineAt } from '../systems/ambush'
 import { knockdownT } from '../systems/knockdown'
+import { STAFF_TASER_DIALOGUE_MS, staffTaserCollapseT, staffTaserLineAt } from '../systems/staffTaser'
 import { branchesFor, hasItem } from '../systems/interact'
 import { PREACH_TOTAL_MS, preachLineAt } from '../systems/preach'
 import { zombieTalkLineAt, zombieTalkTotalMs } from '../systems/zombieTalk'
@@ -204,6 +205,16 @@ export const createDialog = (mount: HTMLElement): Dialog => {
         <div class="bar"><i id="ambush-bar"></i></div>
       </div>
     </div>
+    <div id="staff-taser">
+      <div class="actor-card">
+        <div class="frame" id="staff-taser-frame"><img id="staff-taser-portrait" src="" alt=""></div>
+        <div class="tag" id="staff-taser-who"></div>
+      </div>
+      <div class="conv">
+        <div class="bubble"><div class="kick">DIALOGUE</div><p id="staff-taser-line"></p></div>
+        <div class="bar"><i id="staff-taser-bar"></i></div>
+      </div>
+    </div>
     <div id="preach">
       <div class="actor-card">
         <div class="frame" id="preach-frame"><img id="preach-portrait" src="" alt=""></div>
@@ -284,6 +295,12 @@ export const createDialog = (mount: HTMLElement): Dialog => {
   const ambushPortrait = $<HTMLImageElement>('ambush-portrait')
   const ambushLine = $('ambush-line')
   const ambushBar = $('ambush-bar')
+  const staffTaser = $('staff-taser')
+  const staffTaserFrame = $('staff-taser-frame')
+  const staffTaserWho = $('staff-taser-who')
+  const staffTaserPortrait = $<HTMLImageElement>('staff-taser-portrait')
+  const staffTaserLine = $('staff-taser-line')
+  const staffTaserBar = $('staff-taser-bar')
   const preach = $('preach')
   const preachWho = $('preach-who')
   const preachPortrait = $<HTMLImageElement>('preach-portrait')
@@ -544,10 +561,12 @@ export const createDialog = (mount: HTMLElement): Dialog => {
       // 매복(테이저)이든 교통사고든 **쓰러지면 같은 암전**이다 — 진행도만 다른 데서 온다
       const alive = s.phase === 'playing'
       const collapseT = alive && s.ambush.active ? ambushCollapseT(s.ambush.phaseMs)
-        : alive && s.knockdown.active ? knockdownT(s.knockdown.phaseMs)
-          : 0
+        : alive && s.staffTaser.active ? staffTaserCollapseT(s.staffTaser.phaseMs)
+          : alive && s.knockdown.active ? knockdownT(s.knockdown.phaseMs)
+            : 0
       const collapsing = collapseT > 0
       const showAmbush = s.ambush.active && !collapsing
+      const showStaffTaser = s.staffTaser.active && !collapsing
 
       /**
        * 암전 — 쓰러짐의 **마지막 30%** 에서만 깔린다(`BLACKOUT_FROM`).
@@ -577,6 +596,31 @@ export const createDialog = (mount: HTMLElement): Dialog => {
         // 진행바는 **대사 구간**만 잰다 — 쓰러지는 동안엔 이 패널 자체가 없다
         const overall = Math.min(1, s.ambush.phaseMs / AMBUSH_DIALOGUE_MS)
         ambushBar.style.transform = `scaleX(${overall.toFixed(3)})`
+      }
+
+      /**
+       * ── 계단 하차인파 우산질 강제엔딩(E-11) — `#ambush`와 완전히 같은 구조·같은 크롬이다
+       * (디렉터 지시로 통일). 화자가 역무원 하나뿐인 매복과 달리 여기도 `??`→역무원
+       * 순서가 있다 — `??` 구간은 초상화를 감춘다. 역무원 초상화는 매복과 **같은 사진**
+       * (`AO_PORTRAIT`)을 쓴다 — 둘 다 "역무원"이라는 같은 직군이고, 전용 사진을 새로
+       * 만들 이유가 없다.
+       */
+      if (staffTaser.className !== (showStaffTaser ? 'on' : '')) {
+        staffTaser.className = showStaffTaser ? 'on' : ''
+      }
+      if (showStaffTaser) {
+        const { line } = staffTaserLineAt(s.staffTaser.phaseMs)
+        staffTaserWho.textContent = line.speaker
+        staffTaserWho.className = `tag${line.speaker === '역무원' ? ' danger' : ''}`
+        staffTaserLine.textContent = line.text
+        if (line.speaker === '??') {
+          staffTaserFrame.style.display = 'none'
+        } else {
+          staffTaserFrame.style.display = ''
+          staffTaserPortrait.src = AO_PORTRAIT
+        }
+        const overallTaser = Math.min(1, s.staffTaser.phaseMs / STAFF_TASER_DIALOGUE_MS)
+        staffTaserBar.style.transform = `scaleX(${overallTaser.toFixed(3)})`
       }
 
       /**

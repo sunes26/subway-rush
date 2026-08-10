@@ -94,7 +94,8 @@ describe('S11-2~S11-4 O-03 해결 3경로', () => {
       expect(s.act.consumed, `${id} 가 날아간다`).toContain(id)
       expect(s.knocks.some((k) => k.id === id), '날아간 방향이 남는다').toBe(true)
     }
-    expect(s.tally.pushes, 'E-11 계수기 3회 — 이 엔딩이 도달 가능해졌다').toBe(3)
+    // E-11(강제 컷씬) 트리거는 10회 누적이다 — 3인을 훑어 3회가 쌓인다는 사실만 여기서 본다
+    expect(s.tally.pushes, 'E-11 계수기 3회 — 10회 누적 중 일부다').toBe(3)
     expect(s.scores.style, '사용 아이템 종류 +1 (여러 번 써도 1)').toBe(1)
     expect(s.inventory.includes('I-09'), '우산은 그대로 남는다').toBe(true)
     expect(crowdSolids(s).length, '길이 완전히 열렸다').toBe(0)

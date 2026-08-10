@@ -14,7 +14,7 @@ import { GRANDPA_ID } from '../data/interactables'
 import { ACTIVE_OBSTACLES, rollQueues, type ObsId } from '../data/obstacles'
 import { GATES, SPAWN, TRAFFIC_LIGHT, zoneAt } from '../data/world'
 import type { Action, ActState, AmbushState, ChaseState, Drop, GameState, Fx, HandState, ItemId,
-  KnockdownState, PreachState, QteState, SurgeState, SwapState, TallyState,
+  KnockdownState, PreachState, QteState, StaffTaserState, SurgeState, SwapState, TallyState,
   ZombieTalkState } from './types'
 
 const MAX_FX = 12
@@ -58,6 +58,9 @@ const EMPTY_CHASE: ChaseState = {
 }
 
 const EMPTY_AMBUSH: AmbushState = { active: false, phaseMs: 0 }
+
+/** 계단 하차인파 우산질 강제엔딩(E-11) 초기값 — `EMPTY_AMBUSH`와 같은 모양 */
+const EMPTY_STAFF_TASER: StaffTaserState = { active: false, phaseMs: 0 }
 
 const EMPTY_KNOCKDOWN: KnockdownState = { active: false, phaseMs: 0 }
 
@@ -184,6 +187,7 @@ export const initialState = (seed: number, freeplay = false): GameState => {
     scores: { style: 0, knowledge: 0 },
     chase: EMPTY_CHASE,
     ambush: EMPTY_AMBUSH,
+    staffTaser: EMPTY_STAFF_TASER,
     knockdown: EMPTY_KNOCKDOWN,
     preach: EMPTY_PREACH,
     zombieTalk: EMPTY_ZOMBIE_TALK,
@@ -825,6 +829,14 @@ export const reducer = (s: GameState, a: Action): GameState => {
 
     case 'AMBUSH_TICK':
       return { ...s, ambush: { ...s.ambush, phaseMs: s.ambush.phaseMs + a.dtMs } }
+
+    // ─────────────────── 계단 하차인파 우산질 강제엔딩 (E-11, 신규) ───────────────────
+
+    case 'STAFF_TASER_START':
+      return s.staffTaser.active ? s : { ...s, staffTaser: { active: true, phaseMs: 0 } }
+
+    case 'STAFF_TASER_TICK':
+      return { ...s, staffTaser: { ...s.staffTaser, phaseMs: s.staffTaser.phaseMs + a.dtMs } }
 
     // ─────────────────── 차에 치임 (E-18) ───────────────────
 

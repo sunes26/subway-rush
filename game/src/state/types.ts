@@ -270,6 +270,23 @@ export type AmbushState = Readonly<{
 }>
 
 /**
+ * 계단 하차인파 우산질 강제엔딩 — 우산 스윕 누적(`tally.pushes`)이 10회에 닿으면
+ * 발동하는 강제 컷씬(E-11). `AmbushState`와 **같은 모양이지만 합치지 않는다**(위
+ * `KnockdownState`와 같은 이유 — 서로 다른 사건이고, 하나로 묶으면 "무엇 때문에
+ * 멈춰 섰는가"를 상태에서 못 읽는다).
+ *
+ * 위치는 상태로 안 든다 — `AmbushState`와 같은 근거로, 이동이 잠기는 순간
+ * `player.pos`가 그대로 고정되므로 렌더가 그 값을 그대로 읽으면 된다.
+ *
+ * `phaseMs`는 `systems/staffTaser.ts`의 대사 표(`STAFF_TASER_LINES`) 누적 시간과
+ * 비교해 몇 번째 대사인지·언제 끝나는지를 판정한다.
+ */
+export type StaffTaserState = Readonly<{
+  active: boolean
+  phaseMs: number
+}>
+
+/**
  * E-18 차에 치임 — 붕 떴다가 쓰러지는 동안의 상태(`systems/knockdown.ts`).
  *
  * `AmbushState` 와 모양이 같지만 **합치지 않는다.** 둘은 동시에 살아 있을 수 없는 게
@@ -458,6 +475,7 @@ export type GameState = Readonly<{
   scores: Readonly<{ style: number; knowledge: number }>
   chase: ChaseState
   ambush: AmbushState
+  staffTaser: StaffTaserState
   knockdown: KnockdownState
   /** OBS-07 아주머니+학생 강제 대화 — 활성 동안 이동·ESC가 잠긴다 */
   preach: PreachState
@@ -563,6 +581,12 @@ export type Action =
   | { t: 'AMBUSH_START' }
   /** 대사 진행. 총 길이를 넘기면 `systems/ambush.ts`가 곧바로 `END`를 낸다 */
   | { t: 'AMBUSH_TICK'; dtMs: number }
+
+  // ── 계단 하차인파 우산질 강제엔딩 (E-11, 신규) ──
+  /** 발동 — 이동이 잠긴다(`systems/movement.ts`) */
+  | { t: 'STAFF_TASER_START' }
+  /** 대사 진행. 총 길이를 넘기면 `systems/staffTaser.ts`가 곧바로 `END`를 낸다 */
+  | { t: 'STAFF_TASER_TICK'; dtMs: number }
 
   // ── 차에 치임 (E-18) ──
   /** 충돌 — 이동이 잠기고 카메라가 떠오르기 시작한다 */

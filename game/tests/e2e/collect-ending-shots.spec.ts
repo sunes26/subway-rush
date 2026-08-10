@@ -29,8 +29,6 @@ const boot = async (page: Page): Promise<void> => {
   })
 }
 
-const V = (z: number): number => z // 가독용 — 층 고도 그대로 쓴다
-
 type Shot = Readonly<{
   id: string
   /** 플레이어 위치(월드) */

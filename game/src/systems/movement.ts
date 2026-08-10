@@ -33,10 +33,13 @@ import { WET_ZONE } from './obstacles'
  *
  * 좀비폰족(`zombieTalk.active`)도 같은 이유다 — 8초짜리 자동 대화 중에 걸어서
  * 빠져나가면 마주 서 있어야 할 두 사람이 서로 다른 곳을 보고 대사만 흘러나온다.
+ *
+ * 계단 하차인파 우산질 강제엔딩(`staffTaser.active`, E-11)도 매복과 같은 이유로
+ * 잠근다 — 역무원이 잡으러 나온 순간 도망칠 수 있으면 "받아랏!!"이 성립하지 않는다.
  */
 const isTalkLocked = (s: GameState): boolean =>
   s.act.busyKind === 'story' || s.ambush.active || s.act.dialogId === FISHCAKE_ID ||
-  s.preach.active || s.zombieTalk.active ||
+  s.preach.active || s.zombieTalk.active || s.staffTaser.active ||
   // 차에 치이면 조작이 통째로 끝난다 — 날아가는 동안 걸어 다니면 안 된다
   s.knockdown.active
 

@@ -25,6 +25,7 @@ import { obstacleSystem } from './obstacles'
 import { preachSystem } from './preach'
 import { staffSystem } from './staff'
 import { qteSystem } from './qte'
+import { staffTaserSystem } from './staffTaser'
 import { zombieTalkSystem } from './zombieTalk'
 import {
   psdDoors, psdDoors2, trainAt, trainClock, trainClock2, trainSystem, trainSystem2,
@@ -158,6 +159,13 @@ export const tick = (state: GameState, dtMs: number, ctx: TickCtx): GameState =>
    *  다음 스텝이다 — 예전 슬롯 키 경로와 같은 한 프레임이라 체감이 달라지지 않는다.)
    */
   s = applyAll(s, umbrellaSystem(s, { dtMs }))
+
+  /**
+   * 계단 하차인파 우산질 강제엔딩(E-11) — 우산 훑기 바로 뒤다. 같은 스텝에 10번째
+   * 밀기가 나면 그 즉시 `tally.pushes`를 보고 발동해야 "10명째에 바로 잡힌다"가 된다.
+   * 개찰구 매복(`ambushSystem`)과 같은 순서 근거 — 판정 시스템 뒤, 문/게이트 앞.
+   */
+  s = applyAll(s, staffTaserSystem(s, { dtMs }))
 
   const gateActions = gatesSystem(s)
   s = applyAll(s, gateActions)
