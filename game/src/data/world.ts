@@ -11,7 +11,7 @@
  * 문서에 치수가 없는 소품(자판기·벤치 등)은 여기서 정하고 `// 신규` 로 표시한다.
  */
 
-import type { Rect } from '../core/math'
+import { clamp, rectContains, type Rect } from '../core/math'
 
 export type ZoneId = 'Z1' | 'Z2' | 'Z3' | 'Z4' | 'Z5'
 
@@ -46,6 +46,26 @@ export type Ramp = Readonly<{
   /** 이송 방향 (+1 = axis 증가 방향) */
   carryDir: 1 | -1
 }>
+
+/**
+ * 램프 위 z. rect 밖이면 null.
+ *
+ * **데이터 계층에 둔 이유**: 경사면 위에 서는 것은 플레이어만이 아니다. 사인·NPC 자리
+ * 같은 정적 좌표표(`data/interactables.ts`)도 같은 계산이 필요한데, 그쪽이
+ * `systems/collision.ts` 를 부르면 계층이 거꾸로 뒤집힌다. 반대로 여기 있으면 양쪽이
+ * 같은 식을 쓴다 — `systems/collision.ts` 의 `rampZ` 는 이 함수의 이름만 바꾼 것이다.
+ *
+ * 계산을 안 나눠 두었을 때 실제로 난 사고: 인파벽 3인(`ACT-CP*`)의 z 를 `FLOOR.B1` 로
+ * 손으로 적어 뒀는데 그 x(96.6~99.0)에서 에스컬레이터는 이미 내려가고 있어서
+ * 셋이 각각 0.46 · 1.16 · 1.85 m 씩 **공중에 떠 있었다.**
+ */
+export const rampZAt = (r: Ramp, x: number, y: number): number | null => {
+  if (!rectContains(r.rect, x, y)) return null
+  const [minA, maxA] = r.axis === 'x' ? [r.rect[0], r.rect[2]] : [r.rect[1], r.rect[3]]
+  const v = r.axis === 'x' ? x : y
+  const t = clamp((v - minA) / (maxA - minA), 0, 1)
+  return r.zAtMin + (r.zAtMax - r.zAtMin) * t
+}
 
 /** 충돌 박스. z0 = 바닥 고도, h = 충돌 높이. */
 export type Solid = Readonly<{

@@ -8,7 +8,7 @@ import { branchesFor, giftBranches, grandpaBranches } from '../../src/systems/in
 import { chaseSystem } from '../../src/systems/chase'
 import { GIFT_STALL_ID, GRANDPA_ID, INTERACTABLES } from '../../src/data/interactables'
 import { DECOR } from '../../src/data/decor'
-import { GIFT_ITEMS } from '../../src/data/items'
+import { GIFT_CORRECT, GIFT_ITEMS, MASK_PRICE, shopPriceOf } from '../../src/data/items'
 import { CLERK_POS } from '../../src/render/actors'
 
 describe('선물 퍼즐 엔딩', () => {
@@ -50,11 +50,58 @@ describe('편의점 매대', () => {
     ])
   })
 
-  /** note 가 서로 다르면 그 자체가 정답 힌트가 된다 — 전부 비어 있어야 한다 */
-  it('구매 전에는 전부 고를 수 있고 note 가 비어 있다', () => {
-    const b = giftBranches(start(1))
+  /** note 가 서로 다르면 그 자체가 정답 힌트가 된다 — 살 수 있으면 전부 비어 있어야 한다 */
+  it('돈이 있으면 전부 고를 수 있고 note 가 비어 있다', () => {
+    const b = giftBranches(start(1, { cardBalance: 1000 }))
     expect(b.every((x) => x.enabled)).toBe(true)
     expect(b.every((x) => x.note === '')).toBe(true)
+  })
+
+  /**
+   * 선물은 유상이 됐다(디렉터 지시 2026-08-10). 시작 잔액은 항상 0원이므로
+   * **매대에 처음 서면 아무것도 못 산다** — 동전을 줍거나 자판기를 긁고 와야 한다.
+   */
+  it('잔액 0원이면 다섯 다 잠기고 사유가 붙는다', () => {
+    const b = giftBranches(start(1))
+    expect(b.every((x) => !x.enabled)).toBe(true)
+    expect(b.every((x) => x.note === '돈이 부족하다')).toBe(true)
+  })
+
+  it('가격표가 정답을 흘리지 않는다 — 정답이 최고가도 최저가도 아니다', () => {
+    const prices = GIFT_ITEMS.map((id) => shopPriceOf(id))
+    const answer = shopPriceOf(GIFT_CORRECT)
+    expect(Math.min(...prices)).toBeLessThan(answer)
+    expect(prices.filter((p) => p === answer).length,
+      '같은 값의 후보가 하나 더 있어야 값으로 특정이 안 된다').toBeGreaterThan(1)
+  })
+
+  /** 매대에서 [1] 양갱을 실제로 사 본다 — 대화 → 슬롯키까지 물리 입력과 같은 길 */
+  const buyGiftAt = (balance: number, key: number): GameState => {
+    const stall = INTERACTABLES.find((i) => i.id === GIFT_STALL_ID)!
+    const s0 = put(start(7, { cardBalance: balance }), stall.x, stall.y - 1.1, stall.z)
+    const yaw = yawTo(s0, stall.x, stall.y)
+    return tap(tap(s0, { pressInteract: true }, yaw), { pressSlot: key }, yaw)
+  }
+
+  it('사면 적힌 값만큼 잔액이 깎인다', () => {
+    const s = buyGiftAt(300, 1)                       // [1] 양갱 200원
+    expect(s.inventory).toContain(GIFT_CORRECT)
+    expect(s.cardBalance).toBe(300 - shopPriceOf(GIFT_CORRECT))
+    expect(s.flags).toContain('GIFT_BOUGHT')
+  })
+
+  it('잔액이 모자라면 사유만 나오고 아무것도 안 바뀐다', () => {
+    const s = buyGiftAt(100, 1)                       // 200원짜리를 100원으로
+    expect(s.inventory).not.toContain(GIFT_CORRECT)
+    expect(s.cardBalance).toBe(100)
+    expect(s.flags).not.toContain('GIFT_BOUGHT')
+    expect(s.act.denyText).toBe('돈이 부족하다')
+  })
+
+  it('싼 것은 같은 잔액으로 살 수 있다 — 막힌 게 아니라 값이 다른 것이다', () => {
+    const s = buyGiftAt(100, 2)                       // [2] 바나나우유 100원
+    expect(s.inventory).toContain(GIFT_ITEMS[1])
+    expect(s.cardBalance).toBe(0)
   })
 
   it('한 번 사면 전부 잠긴다', () => {
@@ -300,7 +347,7 @@ describe('마스크 — 선물 퍼즐과 무관한 별개 구매', () => {
    */
   const stall = INTERACTABLES.find((i) => i.id === GIFT_STALL_ID)!
   const openStall = (patch: Partial<GameState> = {}): GameState => {
-    const s0 = put(start(7, { cardBalance: 1500, ...patch }), stall.x, stall.y - 1.1, stall.z)
+    const s0 = put(start(7, { cardBalance: MASK_PRICE, ...patch }), stall.x, stall.y - 1.1, stall.z)
     return tap(s0, { pressInteract: true }, yawTo(s0, stall.x, stall.y))
   }
   const buyMask = (patch: Partial<GameState> = {}): GameState => {
@@ -325,10 +372,12 @@ describe('마스크 — 선물 퍼즐과 무관한 별개 구매', () => {
     expect(s.flags).toContain('MASK_ON')
   })
 
-  it('마스크를 사도 GIFT_BOUGHT 는 안 켜진다 — 선물 5지는 그대로 열려 있다', () => {
+  it('마스크를 사도 GIFT_BOUGHT 는 안 켜진다 — 선물 5지가 잠기지 않는다', () => {
     const s = buyMask()
     expect(s.flags).not.toContain('GIFT_BOUGHT')
-    expect(giftBranches(s).every((x) => x.enabled)).toBe(true)
+    // 잔액은 마스크에 다 썼으니 "돈이 부족하다"다 — 잠긴 이유가 **구매 완료가 아니어야** 한다
+    expect(giftBranches(s).every((x) => x.note !== '이미 골랐다')).toBe(true)
+    expect(giftBranches({ ...s, cardBalance: 1000 }).every((x) => x.enabled)).toBe(true)
   })
 
   it('잔액이 모자라면 못 산다', () => {
@@ -337,7 +386,7 @@ describe('마스크 — 선물 퍼즐과 무관한 별개 구매', () => {
   })
 
   it('6번 칸의 note 가 상태를 반영한다', () => {
-    const before = branchesFor(start(7, { cardBalance: 1500 }), GIFT_STALL_ID).find((b) => b.key === 6)!
+    const before = branchesFor(start(7, { cardBalance: MASK_PRICE }), GIFT_STALL_ID).find((b) => b.key === 6)!
     expect(before.enabled).toBe(true)
     expect(before.note).toBe('')
 
@@ -348,7 +397,7 @@ describe('마스크 — 선물 퍼즐과 무관한 별개 구매', () => {
 
   it('한 번 사면 다시 눌러도 재차감되지 않는다', () => {
     const owned = buyMask()
-    const opened = openStall({ ...owned, cardBalance: 1500 })
+    const opened = openStall({ ...owned, cardBalance: MASK_PRICE })
     const balanceBefore = opened.cardBalance
     const s = tap(opened, { pressSlot: 6 }, yawTo(opened, stall.x, stall.y))
     expect(s.cardBalance).toBe(balanceBefore)

@@ -74,6 +74,7 @@ ORDER = [
     "hq_entrance.py",            # ← 지상 출입구 계단통 내부 마감
     "hq_street.py",              # ← 지상 가로 — 도로 양쪽 건물군 · 횡단보도 신호등
     "hq_fixups.py",              # ← 플레이 중 눈으로 잡힌 결함 (개구부 뒤에 와야 한다)
+    "hq_opp_direction.py",       # ← 반대 방면(B_ 복제) 행선 문안 — 문안 패스 뒤에 온다
     "hq_move_lost_and_found.py", # ← 유실물센터, 다목적 화장실 정문 앞 → 옆
     "hq_train.py",               # ← 차문/안전문 두 짝 분리 + 객실 실내
     "hq_ad_placeholder.py",      # ← 광고판 원색을 플레이스홀더 카드로 (재질 패스 — merge 앞)

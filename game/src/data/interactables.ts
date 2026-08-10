@@ -9,7 +9,7 @@
  * 그래서 이 테이블에 색 필드가 없다. 없는 게 설계다.
  */
 
-import { FLOOR } from './world'
+import { ESCALATOR, FLOOR, rampZAt } from './world'
 import { COIN } from './tuning'
 import { makeRng } from '../core/rng'
 import type { ItemId } from '../state/types'
@@ -25,7 +25,6 @@ export type InteractKind =
   | 'story'     // 할아버지 인생 이야기 완청 15.0s
   // ── P2 ──
   | 'return'    // 유실물 반납 2.0s — 비상게이트가 열린다
-  | 'call'      // 인터폰 호출 0.5s — 역무원을 기다리는 −15s 가 뒤따른다
   | 'enter'     // 문을 열고 들어간다 1.2s (화장실 · 반대편 승강장)
   | 'inspect'   // 살펴본다 0.8s · 이동 가능 · 획득 없음
 
@@ -121,6 +120,94 @@ export const FISHCAKE_REACTION: Readonly<Record<1 | 2, string>> = {
   1: '"…음, 그런가. 그럼 자네가 가지고 가게."',
   2: '"허허, 역시 그렇지. 사실 이건 내 거라네. 자네 양심이 어떤가 한번 떠본 걸세. ' +
     '자네는 내 시험을 통과했어. 이건 그 보상이네."',
+}
+
+// ═══════════════ 역무원 — 인터폰(OBJ-22) · 순찰(ACT-08) ═══════════════
+//
+// 둘은 **같은 사람**이다. 인터폰 너머의 목소리가 개찰구 안쪽을 도는 그 역무원이고,
+// 그래서 인터폰에서 어떻게 굴었는지가 나중에 마주쳤을 때 인사말로 돌아온다
+// (디렉터 지시 2026-08-10: "대화 결과에 따라 다음 상호작용 반응이 달라야 한다").
+//
+// 상태는 플래그 두 장으로만 센다.
+//   · `INTERCOM_DENIED` — 한 번 거절당했다 (거짓말했거나 재촉했거나)
+//   · `INTERCOM_RUDE`   — 그중 **재촉·반말** 쪽이었다. 거절 사유가 다르면 대사도 달라야 한다
+// 열어 줬는지는 `EMERGENCY_OPEN` 이 이미 안다 — 플래그를 하나 더 만들면 두 진실이 갈린다.
+
+export const INTERCOM_ID = 'OBJ-22'
+
+/**
+ * 순찰 역무원(ACT-08) — **테이블에 좌표가 없다.**
+ *
+ * 위치가 `systems/staff.ts staffAt(elapsedMs)` 의 함수라 정적 표에 못 적는다.
+ * `systems/interact.ts` 가 매 프레임 후보를 만들어 넣는다(`patrolStaffTarget`).
+ * 여기서는 **id 와 라벨만** 원천으로 둔다 — `ui/dialog.ts` 가 이름을 여기서 읽는다.
+ */
+export const PATROL_STAFF_ID = 'ACT-STAFF'
+export const PATROL_STAFF_LABEL = '역무원'
+
+/** 인터폰 상태 — 대사·분기가 모두 이 넷 중 하나로 갈린다 */
+export type IntercomMood = 'fresh' | 'opened' | 'denied' | 'rude'
+
+export const intercomMood = (flags: readonly string[]): IntercomMood =>
+  flags.includes('EMERGENCY_OPEN') ? 'opened'
+    : flags.includes('INTERCOM_RUDE') ? 'rude'
+      : flags.includes('INTERCOM_DENIED') ? 'denied'
+        : 'fresh'
+
+export const INTERCOM_GREETING: Readonly<Record<IntercomMood, string>> = {
+  fresh: '"…네, 홍대입구역 통제실입니다. 무슨 일이시죠?"',
+  opened: '"아까 그 승객분이시죠. 비상문은 열어 뒀습니다 — 얼른 가세요."',
+  denied: '"…아까 그분이시네요. 단말기는 정상으로 확인됐습니다만."',
+  rude: '"………(잠시 침묵) …또 무슨 일이십니까."',
+}
+
+/**
+ * 선택 후 반응. 붕어빵 아저씨와 같은 규약이다 — 고른 뒤 대화창을 바로 닫지 않고
+ * 이 대사를 한 번 더 보여준다. 상대가 뭐라고 답했는지가 이 상호작용의 결과 자체다.
+ *
+ * `fresh` 3지 중 **1번만 문을 연다.** 나머지 둘은 이유가 서로 달라서(둘러댐 / 재촉)
+ * 다음 인사말이 갈린다.
+ */
+export const INTERCOM_REACTION: Readonly<Record<IntercomMood, Readonly<Record<1 | 2 | 3, string>>>> = {
+  fresh: {
+    1: '"…네. 지금 열어 드리겠습니다. 다음부터는 역무실로 오세요."',
+    2: '"단말기요? …잠시만요, 확인 좀 해 보고요. (뚝)"',
+    3: '"승객분, 저희도 절차라는 게 있습니다. 그렇게는 못 열어 드립니다."',
+  },
+  denied: {
+    1: '"…알겠습니다. 열어 드릴 테니 계단에서는 뛰지 마세요."',
+    2: '(수화기를 내려놓았다)',
+    3: '',
+  },
+  rude: {
+    1: '"…한 번만입니다. 다음엔 안 됩니다."',
+    2: '(수화기를 내려놓았다)',
+    3: '',
+  },
+  opened: {
+    1: '(수화기를 내려놓았다)',
+    2: '',
+    3: '',
+  },
+}
+
+/**
+ * 순찰 역무원 인사말 — 인터폰에서 어떻게 굴었는지를 **여기서 되돌려받는다.**
+ * 순찰 구간(x 63.5~70.5)은 개찰구 안쪽이라 여기까지 왔다면 이미 문은 지난 뒤다.
+ * 그래서 이 대화에는 문을 여는 선택지가 없다 — 길과 시간만 준다.
+ */
+export const STAFF_GREETING: Readonly<Record<IntercomMood, string>> = {
+  fresh: '"네, 무슨 일이신가요?"',
+  opened: '"아, 아까 인터폰 주셨던 분. 비상문 잘 지나오셨네요."',
+  denied: '"…아까 단말기 고장이라고 하셨던 분 맞으시죠. 확인해 보니 멀쩡하던데요."',
+  rude: '"…아까 인터폰에 대고 소리치시던 분이군요. 무슨 일이십니까."',
+}
+
+/** `2` 번 길 안내는 반대 방면 승강장의 존재를 알려 준다 — 실제로 쓸모가 있는 정보다 */
+export const STAFF_REACTION: Readonly<Record<1 | 2 | 3, string>> = {
+  1: '',    // 남은 시간을 읽어 주는 대사라 상태가 필요하다 — `staffTimeLine()` 이 만든다
+  2: '"직진하시면 신도림 방면, 게이트 지나 북쪽으로 꺾으면 신촌 방면입니다."',
+  3: '"예, 조심히 가세요."',
 }
 
 /** 자판기 3대 — `OBJ-06/07/08-VEND*` 솔리드 중심과 **같은 좌표**다 */
@@ -247,11 +334,17 @@ export const INTERACTABLES: readonly Interactable[] = [
    * P1은 1인으로 축약했다(`docs/P1-TECH-PLAN.md` §4 의 빚 목록). 1인이면 우산 한 번으로
    * 끝나서 E-11("우산으로 밀기 3회")이 **도달 불가**였고, 15초 정체라는 GDD 의 실패 비용도
    * 나오지 않았다. 진입부를 따라 x 로 늘어세운다 — 통로가 좁아 옆으로 못 지난다.
+   *
+   * ⚠ z 는 **에스컬레이터 경사면에서 잰다.** `FLOOR.B1` 로 적어 뒀더니 셋이 공중에 떴다 —
+   *   램프는 x 95.8 에서 이미 내려가기 시작하므로 이 셋(96.6·97.8·99.0)의 발밑은
+   *   −6.46 · −7.16 · −7.85 다. 값 차이가 x 를 따라 커져서 **뒤에 선 사람일수록 더 높이**
+   *   떠 보였다(디렉터 지적 2026-08-10). 이 z 는 렌더(`render/actors.ts anchorOf`) ·
+   *   우산 훑기(`systems/umbrella.ts` 의 층 검사) · 미니맵이 전부 같이 읽는다.
    */
   ...([96.6, 97.8, 99.0] as const).map((x, i): Interactable => ({
     id: CP_IDS[i] as string,
     kind: 'aside',
-    x, y: 2.2, z: FLOOR.B1,
+    x, y: 2.2, z: rampZAt(ESCALATOR, x, 2.2) ?? FLOOR.B1,
     label: i === 0 ? '캐리어 든 승객' : i === 1 ? '이어폰 낀 승객' : '장바구니 든 승객',
     once: true,
   })),
@@ -298,12 +391,22 @@ export const INTERACTABLES: readonly Interactable[] = [
     once: true,
   },
   {
-    // 인터폰 `OBJ-22-INTERCOM` at(58.2, 30, 0.5, 0.5) → 남쪽 면 y 29.75 (GDD 시크릿 8)
-    id: 'OBJ-22',
-    kind: 'call',
+    /**
+     * 인터폰 `OBJ-22-INTERCOM` at(58.2, 30, 0.5, 0.5) → 남쪽 면 y 29.75 (GDD 시크릿 8)
+     *
+     * 예전엔 `kind: 'call'` — 버튼을 0.5초 누르면 **−15초**를 물고 문이 열리는, 선택이
+     * 없는 거래였다. 디렉터 지시(2026-08-10)로 시간 페널티를 걷어내고 **선택지 있는
+     * 대화**로 바꿨다: 어떻게 부탁하느냐가 문이 열리는지를 가른다.
+     *
+     * `once: false` 인 이유가 그것이다 — 거절당했으면 **다시 걸 수 있어야** 한다.
+     * 한 번만 되면 "안 열림"이 곧 되돌릴 수 없는 실패가 되고, 그건 이 게임이 방해요소에
+     * 대해 지켜 온 규칙(§6.2 "벌은 주되 문은 닫지 않는다")과 정면으로 어긋난다.
+     */
+    id: INTERCOM_ID,
+    kind: 'talk',
     x: 58.2, y: 29.4, z: FLOOR.B1 + 0.9,
     label: '역무원 호출 인터폰',
-    once: true,
+    once: false,
   },
   {
     /**

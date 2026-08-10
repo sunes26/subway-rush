@@ -3,11 +3,12 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { byId } from '../../src/data/interactables'
+import { byId, INTERCOM_ID, PATROL_STAFF_ID } from '../../src/data/interactables'
 import { EMERGENCY, STAFF } from '../../src/data/tuning'
 import { EMERGENCY_GATE, FLOOR } from '../../src/data/world'
 import type { FlagId, GameState } from '../../src/state/types'
 import { emergencyDoor } from '../../src/systems/emergency'
+import { greetingFor, patrolStaffTarget } from '../../src/systems/interact'
 import { inVision, staffAt } from '../../src/systems/staff'
 import { holdFor, put, start, tap, wait, yawTo } from './_pilot'
 
@@ -109,13 +110,64 @@ describe('S17-3~5 비상게이트 3경로', () => {
     expect(s.act.denyText.length).toBeGreaterThan(0)
   })
 
-  it('인터폰 — 문이 열리고 −15s', () => {
-    const it = byId('OBJ-22')!
-    const s0 = put(start(7), it.x, it.y - 1.1, FLOOR.B1)
+  /**
+   * 인터폰은 이제 **선택지 있는 대화**다(디렉터 지시 2026-08-10). 예전엔 `E` 한 번에
+   * −15초를 물고 무조건 열렸다 — 아래 테스트들이 그 거래가 되살아나지 않게 지킨다.
+   */
+  const atIntercom = (patch: Partial<GameState> = {}): { s: GameState; yaw: number } => {
+    const it = byId(INTERCOM_ID)!
+    const s0 = put(start(7, patch), it.x, it.y - 1.1, FLOOR.B1)
     const yaw = yawTo(s0, it.x, it.y)
-    const s = wait(tap(s0, { pressInteract: true }, yaw), 1400, yaw)
+    return { s: tap(s0, { pressInteract: true }, yaw), yaw }
+  }
+
+  it('인터폰 — E 는 대화창만 연다 (문은 아직 안 열린다)', () => {
+    const { s } = atIntercom()
+    expect(s.act.dialogId).toBe(INTERCOM_ID)
+    expect(s.flags).not.toContain('EMERGENCY_OPEN')
+  })
+
+  it('[1] 정중히 부탁 — 문이 열리고 시간은 안 깎인다', () => {
+    const { s: opened, yaw } = atIntercom()
+    const s = tap(opened, { pressSlot: 1 }, yaw)
     expect(s.flags).toContain('EMERGENCY_OPEN')
-    expect(180_000 - s.timeLeftMs).toBeGreaterThan(EMERGENCY.intercomWaitMs)
+    // 예전 −15s 통행료가 사라졌다는 것이 이 줄의 전부다
+    expect(180_000 - s.timeLeftMs).toBeLessThan(2_000)
+  })
+
+  it('[3] 재촉 — 거절당하고 무례로 기록된다', () => {
+    const { s: opened, yaw } = atIntercom()
+    const s = tap(opened, { pressSlot: 3 }, yaw)
+    expect(s.flags).not.toContain('EMERGENCY_OPEN')
+    expect(s.flags).toContain('INTERCOM_DENIED')
+    expect(s.flags).toContain('INTERCOM_RUDE')
+  })
+
+  it('[2] 둘러대기 — 거절당하지만 무례는 아니다', () => {
+    const { s: opened, yaw } = atIntercom()
+    const s = tap(opened, { pressSlot: 2 }, yaw)
+    expect(s.flags).toContain('INTERCOM_DENIED')
+    expect(s.flags).not.toContain('INTERCOM_RUDE')
+  })
+
+  it('거절당해도 다시 걸어 사과하면 열린다 — 되돌릴 수 없는 실패가 아니다', () => {
+    const { s: opened, yaw } = atIntercom()
+    const denied = tap(opened, { pressSlot: 3 }, yaw)          // 재촉 → 거절
+    const closed = tap(denied, { pressInteract: true }, yaw)   // 반응 대사를 닫는다
+    const again = tap(closed, { pressInteract: true }, yaw)    // 다시 건다
+    expect(again.act.dialogId).toBe(INTERCOM_ID)
+    const s = tap(again, { pressSlot: 1 }, yaw)                // 사과
+    expect(s.flags).toContain('EMERGENCY_OPEN')
+  })
+
+  it('통화 결과에 따라 다음 인사말이 갈린다', () => {
+    const fresh = start(7)
+    const rude = start(7, { flags: ['INTERCOM_DENIED', 'INTERCOM_RUDE'] as FlagId[] })
+    const lied = start(7, { flags: ['INTERCOM_DENIED'] as FlagId[] })
+    const lines = [fresh, rude, lied].map((x) => greetingFor(x, INTERCOM_ID))
+    expect(new Set(lines).size, '세 상태가 서로 다른 대사를 쓴다').toBe(3)
+    // 순찰 역무원도 같은 이력을 읽는다 — 인터폰 너머의 목소리가 그 사람이다
+    expect(greetingFor(rude, PATROL_STAFF_ID)).not.toBe(greetingFor(fresh, PATROL_STAFF_ID))
   })
 
   it('닫혀 있으면 문이 충돌체다 · 열리면 사라진다', () => {
@@ -145,12 +197,38 @@ describe('S17-3~5 비상게이트 3경로', () => {
   })
 })
 
+describe('S17-7 순찰 역무원 말 걸기', () => {
+  it('OBS-13 이 켜진 판에서만 대상이 된다 — 몸이 없으면 프롬프트도 없다', () => {
+    expect(patrolStaffTarget(armed())).not.toBeNull()
+    expect(patrolStaffTarget(start(7, { obstacles: [] }))).toBeNull()
+  })
+
+  it('자리가 순찰을 따라 움직인다 — 정적 테이블이면 못 하는 일', () => {
+    const s = armed()
+    const now = patrolStaffTarget(s)!
+    const later = patrolStaffTarget({ ...s, elapsedMs: s.elapsedMs + STAFF.periodMs / 4 })!
+    expect(Math.abs(later.x - now.x)).toBeGreaterThan(1)
+  })
+
+  it('E 로 대화창이 열리고, 고르면 대답이 나온다', () => {
+    const s0 = inFront(armed())
+    const pose = staffAt(s0.elapsedMs)
+    const yaw = yawTo(s0, pose.x, pose.y)
+    const opened = tap(s0, { pressInteract: true }, yaw)
+    expect(opened.act.dialogId).toBe(PATROL_STAFF_ID)
+    const s = tap(opened, { pressSlot: 2 }, yaw)
+    expect(s.act.dialogChoice).toBe(2)
+    // 길 안내는 상태를 안 바꾼다 — 순찰 구간은 이미 개찰구 안쪽이다
+    expect(s.flags).not.toContain('EMERGENCY_OPEN')
+  })
+})
+
 describe('S17-6 잔액 0원 시드에서도 완주 경로가 있다', () => {
   it('인터폰만으로 개찰을 통과할 수 있다 (자판기 없이)', () => {
-    const it = byId('OBJ-22')!
+    const it = byId(INTERCOM_ID)!
     let s = put(start(3, { cardBalance: 0 }), it.x, it.y - 1.1, FLOOR.B1)
     const yaw = yawTo(s, it.x, it.y)
-    s = wait(tap(s, { pressInteract: true }, yaw), 1400, yaw)
+    s = tap(tap(s, { pressInteract: true }, yaw), { pressSlot: 1 }, yaw)
     expect(s.flags).toContain('EMERGENCY_OPEN')
     s = holdFor(put(s, EMERGENCY_GATE.x, EMERGENCY_GATE.y, FLOOR.B1), { moveY: 1 }, 60)
     expect(s.gates.passed, '요금이 없어도 문은 지날 수 있다').toBe(true)

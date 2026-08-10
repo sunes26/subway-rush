@@ -90,6 +90,35 @@ const CP_ASIDE_SEC = 0.45
 
 type Anchor = Readonly<{ x: number; y: number; z: number }>
 
+/**
+ * 우산 넉백 궤적 — **인파벽 3인 · 에스컬레이터 승객 · 계단 하차 인파가 같은 식을 쓴다.**
+ *
+ * 원래는 인파벽 안에만 있던 코드다. 판정(`systems/umbrella.ts`)은 이미 세 무리를 한
+ * 표로 훑는데 그림은 인파벽·승객 둘만 그려서, **계단 인파는 맞아도 그냥 걸어 올라갔다**
+ * (디렉터 지적 2026-08-10). 궤적이 한 곳에 있어야 다음에 대상이 하나 더 늘어도 안 갈린다.
+ *
+ * @param home  맞은 순간의 발밑 자리. 하차 인파는 시간 함수라 **그 순간을 캡처해서** 넘긴다
+ * @param sec   맞은 뒤 경과(s). 경과는 상태에 안 남긴다 — 이미 끝난 판정의 연출이다
+ */
+const knockPose = (
+  home: Anchor, knock: Readonly<{ dx: number; dy: number }>, sec: number,
+): { at: Anchor; roll: number; facing: number } => {
+  const t = Math.min(1, sec / (UMBRELLA.knockMs / 1000))
+  // 거리는 감속(easeOut) — 맞는 순간이 제일 빠르다
+  const d = UMBRELLA.knockM * (1 - (1 - t) * (1 - t))
+  // 높이는 포물선. t=0.5 에서 정점, 착지에서 정확히 0으로 돌아온다
+  const lift = UMBRELLA.knockLiftM * 4 * t * (1 - t)
+  return {
+    at: { x: home.x + knock.dx * d, y: home.y + knock.dy * d, z: home.z + lift },
+    /**
+     * 구르는 회전. `place()` 는 `rotation.y` 만 건드리므로 x 를 덮어써도 안전하다.
+     * 끝값 π/2 는 **널브러진 자세**다 — 다 돌고 나서 다시 벌떡 서면 맞은 것이 안 읽힌다.
+     */
+    roll: (Math.PI * 2 + Math.PI / 2) * t,
+    facing: Math.atan2(knock.dy, knock.dx),
+  }
+}
+
 const anchorOf = (id: string): Anchor => {
   const it = byId(id)
   if (it) return { x: it.x, y: it.y, z: it.z }
@@ -320,6 +349,21 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
   const cpKnockSec: number[] = [0, 0, 0]
   /** 에스컬레이터 승객용 — 같은 방식, 인원수만 다르다 */
   const riderKnockSec: number[] = RIDER_SPOTS.map(() => 0)
+  /**
+   * 계단 하차 인파용 — 경과에 **맞은 자리**까지 같이 남긴다.
+   *
+   * 인파벽·에스컬레이터 승객은 자리가 고정이라 `home` 을 로드 시 한 번 잡아 두면 됐다.
+   * 하차 인파는 시간의 함수(`disembarkAt`)라 **그대로 두면 발밑이 계속 계단을 올라가고**
+   * 그 위에서 포물선을 그린다 — 날아가면서 동시에 걸어 올라가는 그림이 된다.
+   * 그래서 맞은 첫 프레임의 자리를 캡처해서 고정한다. 캡처 뒤로는 `disembarkAt` 을 안 본다
+   * (그 순번이 소멸 시각을 지나 `null` 이 되어도 널브러진 몸은 그 자리에 남는다).
+   */
+  const makeKnockLog = (): { sec: number[]; home: (Anchor | null)[] } => ({
+    sec: Array.from({ length: DISEMBARK.count }, () => 0),
+    home: Array.from({ length: DISEMBARK.count }, () => null),
+  })
+  const dismKnock = makeKnockLog()
+  const dismKnockOpp = makeKnockLog()
 
   /** 프롭 토글은 상태가 바뀐 프레임에만 — 매 프레임 traverse 결과를 다시 쓰지 않는다 */
   let propHyojason: boolean | null = null
@@ -396,18 +440,9 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
       const knock = s.knocks.find((k) => k.id === id)
       if (knock) {
         cpKnockSec[i] = (cpKnockSec[i] ?? 0) + dtSec
-        const t = Math.min(1, (cpKnockSec[i] ?? 0) / (UMBRELLA.knockMs / 1000))
-        // 거리는 감속(easeOut) — 맞는 순간이 제일 빠르다
-        const d = UMBRELLA.knockM * (1 - (1 - t) * (1 - t))
-        // 높이는 포물선. t=0.5 에서 정점, 착지에서 정확히 0으로 돌아온다
-        const lift = UMBRELLA.knockLiftM * 4 * t * (1 - t)
-        const at: Anchor = { x: home.x + knock.dx * d, y: home.y + knock.dy * d, z: home.z + lift }
-        rig.place(at.x, at.y, at.z, Math.atan2(knock.dy, knock.dx))
-        /**
-         * 구르는 회전. `place()` 는 `rotation.y` 만 건드리므로 x 를 여기서 덮어써도 안전하다.
-         * 끝값 π/2 는 **널브러진 자세**다 — 다 돌고 나서 다시 벌떡 서면 맞은 것이 안 읽힌다.
-         */
-        rig.root.rotation.x = (Math.PI * 2 + Math.PI / 2) * t
+        const { at, roll, facing } = knockPose(home, knock, cpKnockSec[i] ?? 0)
+        rig.place(at.x, at.y, at.z, facing)
+        rig.root.rotation.x = roll
 
         const visible = near(s, at)
         rig.setVisible(visible)
@@ -452,12 +487,9 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
       const knock = s.knocks.find((k) => k.id === spot.id)
       if (knock) {
         riderKnockSec[i] = (riderKnockSec[i] ?? 0) + dtSec
-        const t = Math.min(1, (riderKnockSec[i] ?? 0) / (UMBRELLA.knockMs / 1000))
-        const d = UMBRELLA.knockM * (1 - (1 - t) * (1 - t))
-        const lift = UMBRELLA.knockLiftM * 4 * t * (1 - t)
-        const kAt: Anchor = { x: at.x + knock.dx * d, y: at.y + knock.dy * d, z: at.z + lift }
-        rig.place(kAt.x, kAt.y, kAt.z, Math.atan2(knock.dy, knock.dx))
-        rig.root.rotation.x = (Math.PI * 2 + Math.PI / 2) * t
+        const { at: kAt, roll, facing } = knockPose(at, knock, riderKnockSec[i] ?? 0)
+        rig.place(kAt.x, kAt.y, kAt.z, facing)
+        rig.root.rotation.x = roll
 
         const visible = near(s, kAt)
         rig.setVisible(visible)
@@ -673,11 +705,42 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
    * 미끄러지듯 이동한다. 눈에 띄면 그때 걷기 클립을 추가하거나 렌더 방식을 바꾼다
    * (디렉터 지시로 일단 이대로 진행).
    */
-  const syncDisembark = (s: GameState, dtSec: number): void => {
-    const t = secondsSinceDoorsOpen(s)
-    for (let i = 0; i < disembarkRigs.length; i++) {
-      const rig = disembarkRigs[i] as NpcRig
-      const spot = t >= 0 ? disembarkAt(i, t, s.gates.workingIds) : null
+  /**
+   * 두 방면 공통. 다른 것은 **리그 풀 · 문 열림 시각 · 자리 함수 · id 접두어**뿐이라
+   * 한 함수로 묶는다 — 예전엔 그대로 복사해 뒀고, 그래서 넉백을 붙일 곳이 두 군데였다.
+   *
+   * id 접두어(`DISM-` / `DISM-OPP-`)는 `systems/disembark.ts disembarkSweepSpots` 가
+   * 우산 판정에 쓰는 것과 **같은 규칙**이어야 한다. 다르면 맞은 사람과 날아가는 사람이 갈린다.
+   */
+  const syncDisembarkPool = (
+    s: GameState, dtSec: number,
+    rigs: readonly NpcRig[], t: number, idPrefix: string,
+    log: { sec: number[]; home: (Anchor | null)[] },
+    spotAt: (i: number) => { x: number; y: number; z: number; facing: number } | null,
+  ): void => {
+    for (let i = 0; i < rigs.length; i++) {
+      const rig = rigs[i] as NpcRig
+      const spot = t >= 0 ? spotAt(i) : null
+
+      // 우산에 맞았는가 — 맞았으면 자리 함수 대신 캡처해 둔 자리에서 포물선을 그린다
+      const knock = s.knocks.find((k) => k.id === `${idPrefix}${i}`)
+      if (knock) {
+        const home = log.home[i] ?? (spot ? { x: spot.x, y: spot.y, z: spot.z } : null)
+        if (home) {
+          log.home[i] = home
+          log.sec[i] = (log.sec[i] ?? 0) + dtSec
+          const { at, roll, facing } = knockPose(home, knock, log.sec[i] ?? 0)
+          rig.place(at.x, at.y, at.z, facing)
+          rig.root.rotation.x = roll
+          const visible = nearObs(s, at.x, at.y, at.z)
+          rig.setVisible(visible)
+          if (!visible) continue
+          rig.play('CP_MoveAside', true)
+          rig.update(dtSec)
+          continue
+        }
+      }
+
       if (!spot) { rig.setVisible(false); continue }
       rig.place(spot.x, spot.y, spot.z, spot.facing)
       const visible = nearObs(s, spot.x, spot.y, spot.z)
@@ -688,20 +751,17 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
     }
   }
 
+  const syncDisembark = (s: GameState, dtSec: number): void => {
+    const t = secondsSinceDoorsOpen(s)
+    syncDisembarkPool(s, dtSec, disembarkRigs, t, 'DISM-', dismKnock,
+      (i) => disembarkAt(i, t, s.gates.workingIds))
+  }
+
   /** 반대 방면 하차 인파 — 게이트 선택이 없어 `disembarkAtOpp` 만 순번으로 돈다 */
   const syncDisembarkOpp = (s: GameState, dtSec: number): void => {
     const t = secondsSinceDoorsOpenOpp(s)
-    for (let i = 0; i < disembarkRigs2.length; i++) {
-      const rig = disembarkRigs2[i] as NpcRig
-      const spot = t >= 0 ? disembarkAtOpp(i, t) : null
-      if (!spot) { rig.setVisible(false); continue }
-      rig.place(spot.x, spot.y, spot.z, spot.facing)
-      const visible = nearObs(s, spot.x, spot.y, spot.z)
-      rig.setVisible(visible)
-      if (!visible) continue
-      rig.play('CP_Idle')
-      rig.update(dtSec)
-    }
+    syncDisembarkPool(s, dtSec, disembarkRigs2, t, 'DISM-OPP-', dismKnockOpp,
+      (i) => disembarkAtOpp(i, t))
   }
 
   return {

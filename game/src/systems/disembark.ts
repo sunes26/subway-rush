@@ -97,8 +97,15 @@ export const disembarkSweepSpotsOpp = (s: GameState): readonly DisembarkSweepSpo
 export const disembarkSystem = (s: GameState, ctx: DisembarkCtx): Action[] => {
   if (s.phase !== 'playing') return []
 
-  // 부딪힘 판정은 두 방면 인파를 합쳐서 본다 — 어느 쪽이든 부딪힌 순간에 밀린다
-  const crowd = [...activeDisembark(s), ...activeDisembarkOpp(s)]
+  /**
+   * 부딪힘 판정은 두 방면 인파를 합쳐서 본다 — 어느 쪽이든 부딪힌 순간에 밀린다.
+   *
+   * ★ 순번 있는 자리(`disembarkSweepSpots`)를 쓰고 **우산에 날아간 사람은 뺀다.**
+   *   `activeDisembark` 는 id 가 없어서 그 구분을 못 한다 — 그대로 두면 방금 날려버린
+   *   사람에게 계속 떠밀린다(널브러진 몸이 사람을 미는 꼴이다).
+   */
+  const crowd = [...disembarkSweepSpots(s), ...disembarkSweepSpotsOpp(s)]
+    .filter((c) => !s.act.consumed.includes(c.id))
   if (crowd.length === 0) return []
 
   /**

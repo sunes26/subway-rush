@@ -6,11 +6,13 @@
 
 import { describe, expect, it } from 'vitest'
 import { RIDER_SPOTS } from '../../src/data/crowd'
+import { byId, CP_IDS } from '../../src/data/interactables'
 import { AISLE, INTERACT, SURGE } from '../../src/data/tuning'
-import { FLOOR, PLATFORM } from '../../src/data/world'
+import { ESCALATOR, FLOOR, PLATFORM, rampZAt } from '../../src/data/world'
 import { applyAll } from '../../src/state/reducer'
 import type { GameState, ItemId } from '../../src/state/types'
 import { crowdSolids, surgeAt, surgeAtMs } from '../../src/systems/crowd'
+import { disembarkSweepSpots, disembarkSystem } from '../../src/systems/disembark'
 import { goto, holdFor, put, start, tap, wait, yawTo } from './_pilot'
 
 /** ACT-CP 좌표 — `data/interactables.ts` 와 같은 값 */
@@ -287,5 +289,37 @@ describe('S11-9 역류가 열차·탑승을 깨뜨리지 않는다', () => {
     s = holdFor(r.s, { moveY: 1 }, 40, Math.PI / 2)
     expect(s.boarded, '탑승').toBe(true)
     expect(s.player.pos.x, '승강장 x 범위 안').toBeGreaterThan(PLATFORM.xMin)
+  })
+})
+
+describe('S11-10 인파벽·하차인파는 발이 땅에 닿아 있다 (2026-08-10 회귀)', () => {
+  it('인파벽 3인의 z 가 에스컬레이터 경사면과 정확히 같다', () => {
+    const wall = CP_IDS.map((id) => byId(id)!)
+    expect(wall.length).toBe(3)
+    for (const it of wall) {
+      const ground = rampZAt(ESCALATOR, it.x, it.y)
+      expect(ground, `${it.id} 는 에스컬레이터 위에 있다`).not.toBeNull()
+      expect(it.z).toBeCloseTo(ground as number, 6)
+    }
+    /**
+     * 예전 값(`FLOOR.B1` 고정)이 되살아나면 여기서 걸린다 — x 가 커질수록 더 높이 떴다.
+     * 셋의 z 가 서로 달라야 경사면을 따라간 것이다.
+     */
+    const zs = wall.map((it) => it.z)
+    expect(new Set(zs).size, '세 사람의 발밑 높이가 서로 다르다').toBe(3)
+    expect(Math.max(...zs) - Math.min(...zs)).toBeGreaterThan(1.0)
+  })
+
+  it('우산에 날아간 하차 인파는 더 이상 플레이어를 밀지 않는다', () => {
+    // 문이 열린 직후 계단을 오르는 사람들 한가운데에 선다
+    const base = { ...start(7), elapsedMs: 120_000 }
+    const spots = disembarkSweepSpots(base)
+    const first = spots[0]
+    if (!first) return                       // 이 시드·시각에 아무도 안 걷고 있으면 볼 것이 없다
+    const at = put(base, first.x, first.y, first.z)
+    const before = disembarkSystem(at, { dtMs: 16 })
+    const knocked = { ...at, act: { ...at.act, consumed: [...at.act.consumed, first.id] } }
+    const after = disembarkSystem(knocked, { dtMs: 16 })
+    expect(before.length, '원래는 밀린다').toBeGreaterThanOrEqual(after.length)
   })
 })

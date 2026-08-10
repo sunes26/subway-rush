@@ -197,8 +197,14 @@ export const createHud = (mount: HTMLElement): Hud => {
        */
       const playing = s.phase === 'playing' || s.phase === 'boarding'
       if (playing !== lastPlaying) { el.className = playing ? '' : 'off'; lastPlaying = playing }
+      /**
+       * "화면을 클릭하면 시점이 잠깁니다" — **선택창이 열려 있는 동안은 거짓말이다.**
+       * 그 동안은 `main.ts` 가 포인터 락을 막고 있어서(마우스로 선택지를 눌러야 하므로)
+       * 클릭해도 안 잠긴다. 화면이 못 지킬 약속을 하고 있으면 안 된다.
+       */
       lockHint.className =
-        firstPerson && !pointerLocked && (s.phase === 'playing' || s.phase === 'boarding') ? 'on' : ''
+        firstPerson && !pointerLocked && !s.act.dialogId &&
+        (s.phase === 'playing' || s.phase === 'boarding') ? 'on' : ''
       cross.className = firstPerson && pointerLocked ? 'on' : ''
       const ledMsg = ledText(s)
       if (ledMsg !== lastLed) { led.textContent = ledMsg; lastLed = ledMsg }

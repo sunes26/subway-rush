@@ -9,10 +9,15 @@
  */
 
 import type { InputFrame } from '../core/input'
-import { FISHCAKE_GREETING, FISHCAKE_ID, GIFT_STALL_ID, GRANDPA_ID, INTERACTABLES, byId,
-  coinValue, isCoin, isVending, type InteractKind, type Interactable } from '../data/interactables'
-import { GIFT_CORRECT, GIFT_ITEMS, itemDef, MASK_PRICE } from '../data/items'
+import { FISHCAKE_GREETING, FISHCAKE_ID, FISHCAKE_REACTION, GIFT_STALL_ID, GRANDPA_ID,
+  INTERACTABLES, INTERCOM_GREETING, INTERCOM_ID, INTERCOM_REACTION, PATROL_STAFF_ID,
+  PATROL_STAFF_LABEL, STAFF_GREETING, STAFF_REACTION, byId, coinValue, intercomMood, isCoin,
+  isVending, type InteractKind, type Interactable, type IntercomMood }
+  from '../data/interactables'
+import { GIFT_CORRECT, GIFT_ITEMS, itemDef, shopPriceOf } from '../data/items'
 import { CHASE, EMERGENCY, INTERACT, SLOTS, STAMINA } from '../data/tuning'
+import { FLOOR } from '../data/world'
+import { staffAt } from './staff'
 import type { Action, Drop, GameState, ItemId } from '../state/types'
 
 export type ActCtx = Readonly<{ dtMs: number; input: InputFrame; cameraYaw: number }>
@@ -42,7 +47,6 @@ const durationOf = (kind: InteractKind): number => {
     case 'scratch': return 0     // QTE 열기 — 즉시
     // ── P2 ──
     case 'return': return EMERGENCY.walletReturnMs
-    case 'call': return 500      // 버튼을 누르는 시간. 기다리는 −15s 는 완료 시 청구된다
     case 'enter': return 1200
     case 'inspect': return 800
   }
@@ -65,6 +69,29 @@ const autoWearActions = (s: GameState, item: ItemId): readonly Action[] => {
     // 디렉터 지시 — "OO 착용" 대신 두루뭉실한 능력 힌트(`cost`)를 보여준다
     { t: 'FX', kind: 'toast', text: def.cost ?? `${def.name} 착용`, lifeMs: 1400, value: 0 },
   ]
+}
+
+/**
+ * 순찰 역무원(ACT-08)을 이번 프레임의 상호작용 대상으로 만든다 — 없으면 `null`.
+ *
+ * 정적 테이블에 못 넣는 이유가 둘이다.
+ *  1. **위치가 시간의 함수다.** `staffAt(elapsedMs)` 가 비상게이트 앞을 왕복한다.
+ *  2. **이번 판에 없을 수 있다.** OBS-13 이 안 뽑혔으면 몸이 아예 없다
+ *     (`render/actors.ts obsOff`). 몸이 없는 대상에 프롬프트가 뜨면 허공에 말을 건다.
+ *
+ * 순찰 구간은 x 63.5~70.5 로 **개찰구 안쪽**이다 — 여기까지 왔다면 문은 이미 지난 뒤라
+ * 이 대화에는 문을 여는 선택지가 없다(`staffBranches`). 길과 시간만 준다.
+ */
+export const patrolStaffTarget = (s: GameState): Interactable | null => {
+  if (!s.obstacles.includes('OBS-13')) return null
+  const pose = staffAt(s.elapsedMs)
+  return {
+    id: PATROL_STAFF_ID,
+    kind: 'talk',
+    x: pose.x, y: pose.y, z: FLOOR.B1,
+    label: PATROL_STAFF_LABEL,
+    once: false,
+  }
 }
 
 /** 드랍을 상호작용 대상으로 승격 */
@@ -90,6 +117,9 @@ export const candidates = (s: GameState): readonly Interactable[] => {
     if (Math.abs(d.z - pz) > SAME_FLOOR_M) continue
     out.push(dropTarget(d))
   }
+  // 순찰 역무원 — 자리가 매 프레임 바뀌므로 정적 표가 아니라 여기서 만든다
+  const staff = patrolStaffTarget(s)
+  if (staff && Math.abs(staff.z - pz) <= SAME_FLOOR_M) out.push(staff)
   return out
 }
 
@@ -147,13 +177,21 @@ export const slotOf = (s: GameState, item: ItemId): number =>
 
 export const hasItem = (s: GameState, item: ItemId): boolean => slotOf(s, item) >= 0
 
-/** 대상을 찾는다 — 정적 테이블 우선, 없으면 드랍 */
-const resolve = (s: GameState, id: string): Interactable | null => {
+/**
+ * 대상을 찾는다 — 정적 테이블 우선, 없으면 드랍, 마지막이 순찰 역무원.
+ *
+ * `candidates()` 가 넣어 준 것은 여기서도 반드시 찾을 수 있어야 한다. 안 그러면
+ * 프롬프트는 뜨는데 `E` 가 아무 일도 안 하는 대상이 생긴다.
+ */
+export const resolveTarget = (s: GameState, id: string): Interactable | null => {
   const st = byId(id)
   if (st) return st
   const d = s.drops.find((x) => x.id === id)
-  return d ? dropTarget(d) : null
+  if (d) return dropTarget(d)
+  return id === PATROL_STAFF_ID ? patrolStaffTarget(s) : null
 }
+
+const resolve = resolveTarget
 
 /** 거리 안에 있는가 — 슬롯 사용의 대상 판정용 */
 const within = (s: GameState, it: Interactable, m: number): boolean =>
@@ -285,16 +323,6 @@ const complete = (s: GameState): Action[] => {
       ]
     }
 
-    /** [P2] 인터폰 호출 — 시크릿 8. 값은 시간으로 낸다 */
-    case 'call':
-      return [
-        { t: 'TIME_PENALTY', ms: EMERGENCY.intercomWaitMs, label: '역무원 대기' },
-        { t: 'FLAG', id: 'EMERGENCY_OPEN', on: true },
-        { t: 'SECRET', id: 'intercom' },
-        { t: 'ACT_CONSUME', id },
-        { t: 'FX', kind: 'toast', text: '"…네, 지금 나갑니다." 비상문이 열렸다', lifeMs: 2800, value: 0 },
-      ]
-
     /** [P2] 문을 열고 들어간다 — 화장실(E-13) · 반대편 승강장(E-08) */
     case 'enter': {
       const toilet = id === 'OBJ-14-WC'
@@ -346,6 +374,16 @@ export type Branch = Readonly<{
   key: 1 | 2 | 3 | 4 | 5 | 6; label: string; enabled: boolean; note: string
 }>
 
+/**
+ * 고른 뒤 **대화창을 안 닫고 상대의 대답을 한 번 더 보여주는** 상대들.
+ *
+ * 붕어빵 아저씨 하나였을 때는 `isFishcake` 조건이 코드 세 군데에 박혀 있었다. 인터폰과
+ * 역무원이 같은 문법을 쓰게 되면서 그 가정을 표로 뺀다 — `ui/dialog.ts` 도 같은 집합을 읽는다.
+ */
+export const REACTION_DIALOGS: ReadonlySet<string> = new Set([
+  FISHCAKE_ID, INTERCOM_ID, PATROL_STAFF_ID,
+])
+
 /** 할아버지 3분기 — UI와 시스템이 **같은 함수**를 읽는다. 회색 처리와 실제 차단이 갈라지지 않게 */
 export const grandpaBranches = (s: GameState): readonly Branch[] => [
   {
@@ -365,20 +403,27 @@ export const grandpaBranches = (s: GameState): readonly Branch[] => [
 ]
 
 /**
- * 편의점 선물 5지 — **note 를 전부 비운다.**
+ * 편의점 선물 5지 — **살 수 있을 때는 note 를 전부 비운다.**
  *
  * 다른 분기는 note 로 비용·이득을 알려주지만(`'+1.5s'`) 여기서는 그것이 곧
  * 정답 힌트가 된다. 값이 서로 다르면 "비싼 게 정답" 같은 추론이 생긴다.
  * 힌트는 바닥 양갱(`OBJ-19-HINT*`)이 진다.
+ *
+ * 잔액 부족만 예외다(디렉터 지시 2026-08-10로 선물이 유상이 됐다). 그 문구는
+ * **카드에 이미 적혀 있는 가격**을 다시 말할 뿐이라 정답에 대해 아무것도 안 흘린다 —
+ * 정답(`I-12` 200원)이 최고가도 최저가도 아니게 값을 묶어 둔 이유가 그것이다.
  */
 export const giftBranches = (s: GameState): readonly Branch[] => {
   const bought = s.flags.includes('GIFT_BOUGHT')
-  return GIFT_ITEMS.map((id, i) => ({
-    key: (i + 1) as Branch['key'],
-    label: itemDef(id).name,
-    enabled: !bought,
-    note: bought ? '이미 골랐다' : '',
-  }))
+  return GIFT_ITEMS.map((id, i) => {
+    const poor = s.cardBalance < shopPriceOf(id)
+    return {
+      key: (i + 1) as Branch['key'],
+      label: itemDef(id).name,
+      enabled: !bought && !poor,
+      note: bought ? '이미 골랐다' : poor ? '돈이 부족하다' : '',
+    }
+  })
 }
 
 /**
@@ -397,30 +442,82 @@ export const fishcakeBranches = (_s: GameState): readonly Branch[] => [
  */
 const maskBranch = (s: GameState): Branch => {
   const owned = hasItem(s, 'I-06')
+  const price = shopPriceOf('I-06')
   return {
     key: 6,
     label: itemDef('I-06').name,
-    enabled: !owned && s.cardBalance >= MASK_PRICE,
-    note: owned ? '이미 샀다' : s.cardBalance < MASK_PRICE ? '돈이 부족하다' : '',
+    enabled: !owned && s.cardBalance >= price,
+    note: owned ? '이미 샀다' : s.cardBalance < price ? '돈이 부족하다' : '',
   }
 }
+
+/**
+ * 인터폰 분기 — 상태(`intercomMood`)마다 선택지 자체가 다르다.
+ *
+ * `note` 는 **첫 통화에서만 비운다.** 어느 말투가 문을 여는지 미리 보여주면 그게 곧
+ * 답이고, 이 상호작용에는 그것 말고 고를 거리가 없다(붕어빵 아저씨 2지와 같은 규약).
+ * 두 번째부터는 이미 결과를 봤으므로 숨길 것이 없다 — 그래서 그때는 note 를 적는다.
+ */
+export const intercomBranches = (s: GameState): readonly Branch[] => {
+  switch (intercomMood(s.flags)) {
+    case 'fresh':
+      return [
+        { key: 1, label: '"비상문 좀 열어 주실 수 있을까요?"', enabled: true, note: '' },
+        { key: 2, label: '"카드 단말기가 고장 난 것 같은데요."', enabled: true, note: '' },
+        { key: 3, label: '"빨리 좀 열어요, 열차 놓친다고요!"', enabled: true, note: '' },
+      ]
+    case 'opened':
+      // 이미 열려 있다 — 다시 열 것이 없으니 끊는 선택지 하나뿐이다
+      return [{ key: 1, label: '(수화기를 내려놓는다)', enabled: true, note: '' }]
+    default:
+      return [
+        { key: 1, label: '"죄송합니다. 다시 정중히 부탁드릴게요."', enabled: true, note: '비상문' },
+        { key: 2, label: '(수화기를 내려놓는다)', enabled: true, note: '' },
+      ]
+  }
+}
+
+/**
+ * 순찰 역무원 분기 — **문을 여는 선택지가 없다.** 순찰 구간이 개찰구 안쪽이라
+ * 여기까지 왔으면 문은 이미 지난 뒤다(`patrolStaffTarget` 헤더 참고).
+ */
+export const staffBranches = (_s: GameState): readonly Branch[] => [
+  { key: 1, label: '"열차 언제 오나요?"', enabled: true, note: '' },
+  { key: 2, label: '"승강장이 어느 쪽인가요?"', enabled: true, note: '' },
+  { key: 3, label: '"아닙니다, 죄송합니다."', enabled: true, note: '' },
+]
 
 /** 대화 상대 → 분기표. UI 와 시스템이 **같은 함수**를 읽는다 */
 export const branchesFor = (s: GameState, dialogId: string): readonly Branch[] =>
   dialogId === GRANDPA_ID ? grandpaBranches(s)
     : dialogId === GIFT_STALL_ID ? [...giftBranches(s), maskBranch(s)]
       : dialogId === FISHCAKE_ID ? fishcakeBranches(s)
-        : []
+        : dialogId === INTERCOM_ID ? intercomBranches(s)
+          : dialogId === PATROL_STAFF_ID ? staffBranches(s)
+            : []
 
-/** 선물 구매 — 1회 한정. 되돌리기가 없으므로 여기서 플래그를 못 박는다 */
+/**
+ * 선물 구매 — 1회 한정, **유상**(디렉터 지시 2026-08-10).
+ *
+ * 잔액 검사는 여기서 다시 하지 않는다. `dialogPick` 이 `giftBranches` 의 `enabled` 를
+ * 먼저 보고 못 사면 사유만 내고 끝난다 — 검사를 두 곳에 두면 언젠가 한쪽만 고쳐진다.
+ * 되돌리기가 없으므로 플래그는 여기서 못 박는다.
+ */
 const buyGift = (_s: GameState, key: Branch['key']): Action[] => {
   const item = GIFT_ITEMS[key - 1]
   if (!item) return []
+  const price = shopPriceOf(item)
+  const name = itemDef(item).name
   return [
     { t: 'DIALOG', id: null },
+    { t: 'BALANCE', delta: -price, label: name },
     { t: 'PICKUP', item, slot: -1, dropId: null },
     { t: 'FLAG', id: 'GIFT_BOUGHT', on: true },
-    { t: 'FX', kind: 'toast', text: `${itemDef(item).name}을(를) 샀다`, lifeMs: 1800, value: 0 },
+    {
+      t: 'FX', kind: 'toast',
+      text: `${name}을(를) 샀다 — ${price.toLocaleString('ko-KR')}원`,
+      lifeMs: 1800, value: 0,
+    },
   ]
 }
 
@@ -428,7 +525,7 @@ const buyGift = (_s: GameState, key: Branch['key']): Action[] => {
 const buyMaskFromShop = (s: GameState): Action[] => {
   return [
     { t: 'DIALOG', id: null },
-    { t: 'BALANCE', delta: -MASK_PRICE, label: '마스크' },
+    { t: 'BALANCE', delta: -shopPriceOf('I-06'), label: '마스크' },
     { t: 'PICKUP', item: 'I-06', slot: -1, dropId: null },
     ...autoWearActions(s, 'I-06'),
     { t: 'FX', kind: 'toast', text: '마스크를 샀다', lifeMs: 1800, value: 0 },
@@ -460,6 +557,104 @@ const fishcakeChoice = (_s: GameState, key: Branch['key']): Action[] => {
   return base
 }
 
+/**
+ * 인터폰 — **말투가 문을 가른다.**
+ *
+ * 예전엔 버튼을 누르면 −15초를 물고 무조건 열렸다(`kind: 'call'`). 선택이 없으니
+ * 시간만 깎는 통행료였고, 시크릿 8이라는 이름값을 못 했다. 지금은 셋 중 하나만 열린다.
+ *
+ * 거절당해도 **다시 걸 수 있다** — 인터폰은 `once: false` 다. 두 번째 통화의 사과
+ * 선택지는 열어 준다(거절 사유가 무엇이었든). 다른 것은 대사뿐이다: 어떤 이유로
+ * 거절당했는지가 `INTERCOM_RUDE` 로 남아 인사말과 반응이 갈린다.
+ *
+ * `TIME_PENALTY` 를 안 낸다 — 값은 이제 시간이 아니라 **대화 자체**다.
+ */
+const intercomChoice = (s: GameState, key: Branch['key']): Action[] => {
+  const mood = intercomMood(s.flags)
+  const open: Action[] = [
+    { t: 'FLAG', id: 'EMERGENCY_OPEN', on: true },
+    { t: 'SECRET', id: 'intercom' },
+  ]
+
+  if (mood === 'opened') return [{ t: 'DIALOG', id: null }]
+
+  if (mood === 'fresh') {
+    if (key === 1) return [...open, { t: 'DIALOG_CHOSEN', key: 1 }]
+    if (key === 2) {
+      return [{ t: 'FLAG', id: 'INTERCOM_DENIED', on: true }, { t: 'DIALOG_CHOSEN', key: 2 }]
+    }
+    return [
+      { t: 'FLAG', id: 'INTERCOM_DENIED', on: true },
+      { t: 'FLAG', id: 'INTERCOM_RUDE', on: true },
+      { t: 'DIALOG_CHOSEN', key: 3 },
+    ]
+  }
+
+  // 재통화 — [1] 사과하고 다시 부탁 / [2] 끊는다
+  if (key !== 1) return [{ t: 'DIALOG', id: null }]
+  return [...open, { t: 'DIALOG_CHOSEN', key: 1 }]
+}
+
+/**
+ * 순찰 역무원 — 정보만 준다. 상태를 바꾸는 선택지가 하나도 없는 유일한 대화다
+ * (문은 여기서 못 연다 — `staffBranches` 헤더 참고).
+ */
+const staffChoice = (_s: GameState, key: Branch['key']): Action[] =>
+  [{ t: 'DIALOG_CHOSEN', key: key === 1 ? 1 : key === 2 ? 2 : 3 }]
+
+/**
+ * 역무원이 읽어 주는 남은 시간 — 표의 다른 대사와 달리 상태가 필요해서 함수다
+ * (`STAFF_REACTION[1]` 이 빈 문자열인 이유).
+ */
+const staffTimeLine = (s: GameState): string => {
+  const total = Math.max(0, Math.ceil(s.timeLeftMs / 1000))
+  const m = Math.floor(total / 60)
+  const r = total % 60
+  const when = m > 0 ? `${m}분 ${r}초` : `${r}초`
+  return `"곧 들어옵니다. ${when} 남았네요 — 뛰지는 마시고요."`
+}
+
+// ─────────────── 대화 문안 해석 (UI 가 읽는다) ───────────────
+//
+// 어떤 대사가 나갈지는 **판정과 같은 규칙**이라 여기에 둔다. `ui/dialog.ts` 가 조건을
+// 다시 짜면 화면과 실제 결과가 갈린다 — `branchesFor` 를 UI 와 공유하는 것과 같은 이유다.
+
+export const greetingFor = (s: GameState, dialogId: string): string =>
+  dialogId === INTERCOM_ID ? INTERCOM_GREETING[intercomMood(s.flags)]
+    : dialogId === PATROL_STAFF_ID ? STAFF_GREETING[intercomMood(s.flags)]
+      : '"이 시간에 여긴 어쩐 일인가?"'
+
+/**
+ * 인터폰 반응 대사.
+ *
+ * 고른 **직후**라 플래그는 이미 갱신돼 있다 — 그래서 `intercomMood` 를 그대로 쓰면
+ * [1]을 골라 문이 열린 순간 상태가 `opened` 가 되어 "(수화기를 내려놓았다)" 가 나온다.
+ * 고른 시점의 상태를 되짚어야 한다. 되짚기가 성립하는 이유:
+ *
+ *  · `key 2` · `key 3` 은 **첫 통화에만 있다** (재통화 [2]는 반응 없이 바로 끊는다)
+ *  · `key 1` 은 `INTERCOM_DENIED` 가 켜져 있으면 재통화의 사과, 아니면 첫 통화의 정중
+ *
+ * 즉 (key, DENIED/RUDE) 세 갈래로 원래 상태가 유일하게 정해진다.
+ */
+export const intercomReactionFor = (s: GameState, key: 1 | 2 | 3): string => {
+  const denied = s.flags.includes('INTERCOM_DENIED')
+  const mood: IntercomMood = key === 1 && denied
+    ? (s.flags.includes('INTERCOM_RUDE') ? 'rude' : 'denied')
+    : 'fresh'
+  return INTERCOM_REACTION[mood][key]
+}
+
+/** 역무원 반응 대사 — [1]만 상태를 읽는다(남은 시간) */
+export const staffReactionFor = (s: GameState, key: 1 | 2 | 3): string =>
+  key === 1 ? staffTimeLine(s) : STAFF_REACTION[key]
+
+/** 반응 대사 한 곳 — 상대별로 갈라 준다. UI 는 이 함수 하나만 부른다 */
+export const reactionFor = (s: GameState, dialogId: string, key: 1 | 2 | 3): string =>
+  dialogId === FISHCAKE_ID ? (FISHCAKE_REACTION[key === 1 ? 1 : 2] ?? '')
+    : dialogId === INTERCOM_ID ? intercomReactionFor(s, key)
+      : dialogId === PATROL_STAFF_ID ? staffReactionFor(s, key)
+        : ''
+
 /** [1] 훔치기 — 즉시. 0.6초 뒤 단소가 날아온다(O-14). UI는 그걸 미리 말하지 않는다 */
 const steal = (): Action[] => [
   { t: 'DIALOG', id: null },
@@ -486,6 +681,8 @@ const dialogPick = (s: GameState, key: Branch['key']): Action[] => {
   if (!b.enabled) return [{ t: 'ACT_DENY', text: b.note }]
   if (id === GIFT_STALL_ID) return key === 6 ? buyMaskFromShop(s) : buyGift(s, key)
   if (id === FISHCAKE_ID) return fishcakeChoice(s, key)
+  if (id === INTERCOM_ID) return intercomChoice(s, key)
+  if (id === PATROL_STAFF_ID) return staffChoice(s, key)
   if (key === 1) return steal()
   const kind: InteractKind = key === 2 ? 'give' : 'story'
   return [
@@ -695,11 +892,11 @@ export const interactSystem = (s: GameState, ctx: ActCtx): Action[] => {
   if (s.act.dialogId) {
     const isFishcake = s.act.dialogId === FISHCAKE_ID
     /**
-     * 붕어빵 아저씨 반응 대사 — 골랐지만 아직 안 닫힌 상태(`dialogChoice`).
+     * 반응 대사 — 골랐지만 아직 안 닫힌 상태(`dialogChoice`).
      * 클릭(=E) 한 번이면 그제야 닫힌다. `dialogPick`을 다시 태우지 않는다 —
-     * 이미 골랐다(두 번 고르면 `PICKUP`이 두 번 나간다).
+     * 이미 골랐다(두 번 고르면 `PICKUP`이 두 번 나가고 문이 두 번 열린다).
      */
-    if (isFishcake && s.act.dialogChoice !== 0) {
+    if (REACTION_DIALOGS.has(s.act.dialogId) && s.act.dialogChoice !== 0) {
       if (f.pressCancel || f.pressInteract) return [...out, { t: 'DIALOG', id: null }]
       return out
     }
