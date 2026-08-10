@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { GRANDPA_ID } from '../../src/data/interactables'
-import { CHASE, JUMP, SPEED } from '../../src/data/tuning'
+import { CHASE, JUMP, SPEED, STEP_MS } from '../../src/data/tuning'
 import { FLOOR } from '../../src/data/world'
 import type { GameState } from '../../src/state/types'
 import { benchPos, chaseSolids, standPos } from '../../src/systems/chase'
@@ -26,9 +26,9 @@ const afterSteal = (seed = 7): GameState => {
   return tap(opened, { pressSlot: 1 }, yaw)
 }
 
-/** 서쪽(−x)으로 도망친다. yaw=0 기준 moveY=−1 이 −x 다 */
-const flee = (s: GameState, ms: number, sprint = false): GameState =>
-  holdFor(s, { moveY: -1, sprint }, Math.round(ms / (1000 / 60)))
+/** 도망친다. yaw=0 기준 moveY=−1 이 −x(서쪽·안전지대 반대), +1 이 +x(동쪽·개찰구) */
+const flee = (s: GameState, ms: number, sprint = false, dir: -1 | 1 = -1): GameState =>
+  holdFor(s, { moveY: dir, sprint }, Math.max(1, Math.round(ms / (1000 / 60))))
 
 describe('S10-1 발동 타이밍', () => {
   it('훔치면 추격이 시작되고 0.6초 발도 구간엔 때리지 않는다', () => {
@@ -77,14 +77,43 @@ describe('S10-2 걷기만으로도 서서히 벌어지고, 스프린트로는 �
     return Math.hypot(s.chase.pos.x - s.player.pos.x, s.chase.pos.y - s.player.pos.y)
   }
 
-  it('할아버지 속도는 걷기(5.0)의 80% — 4.0이다 (디렉터 지시로 하향)', () => {
-    expect(CHASE.speed).toBeCloseTo(SPEED.walk * 0.8, 5)
+  it('할아버지 속도는 걷기(5.0)를 넘는다 — 5.5다 (디렉터 지시로 5.98에서 −8%)', () => {
+    expect(CHASE.speed).toBeCloseTo(5.5, 5)
+    expect(CHASE.speed, '걷기보다 빨라야 스프린트가 강제된다').toBeGreaterThan(SPEED.walk)
   })
 
-  it('걸어서 도망쳐도 (걷기가 더 빠르므로) 거리가 서서히 벌어진다', () => {
-    // 순 속도차는 1.0 m/s(5.0−4.0)지만 발도 직후 가속·선회 구간이 있어 3초 뒤 실측 ≈2.2m —
-    // "못 벗어난다"였던 옛 상한(hitRangeM+0.6=1.8)은 확실히 넘는다는 것만 본다
-    expect(gapAfter(false), '걷기만으로도 서서히 벗어난다').toBeGreaterThan(CHASE.hitRangeM + 0.8)
+  it('개찰구 반대쪽으로 걸어 도망치면 3초 안에 두 대 맞고 끝난다', () => {
+    /**
+     * 순 속도차 −0.5 m/s(5.0−5.5)라 걷기는 **거리를 잃는다.** 안전지대(Z3)를 등지고
+     * 걸으면 도망이 아니라 유예일 뿐이다 — 3초 안에 2대(E-16)가 실측이다.
+     *
+     * 거리(gap)가 아니라 **피격 수**로 잠그는 이유: 스윙 중 할아버지가 멈추므로 거리는
+     * 타격 반경 언저리에서 평형을 이룬다(속도를 올려도 1.2m 근처로 수렴한다). 즉
+     * 거리는 속도 변화에 둔감하고, 판돈이 걸린 값은 **몇 대 맞느냐**다.
+     */
+    let s = afterSteal()
+    s = wait(s, CHASE.drawMs + 60)
+    s = flee(s, 3000)
+    expect(s.chase.hitCount, '걷기 도주 3초').toBeGreaterThanOrEqual(2)
+    expect(s.endingId, '두 대째는 그 자리에서 런이 끝난다').toBe('E-16')
+  })
+
+  it('개찰구로 스프린트하면 한 대도 안 맞고 이탈한다 — 절도 루트의 성립 조건', () => {
+    /**
+     * 이 테스트가 절도 루트의 **하한선**이다. 속도를 더 올려 이게 깨지면 절도는
+     * 도박이 아니라 함정이 된다(GDD §4.1 "판돈" 설계가 무너진다).
+     * 실측(5.5): 1.8초에 x=56 도달 · 무피격 · 스태미너 60 잔여.
+     */
+    let s = wait(afterSteal(), 40)
+    let ms = 0
+    while (ms < 12_000 && s.phase === 'playing' && s.chase.active) {
+      s = flee(s, STEP_MS, true, +1)   // 동쪽(+x) = 개찰구
+      ms += STEP_MS
+    }
+    expect(s.player.pos.x, `${(ms / 1000).toFixed(1)}초 만에 x=${s.player.pos.x.toFixed(1)}`)
+      .toBeGreaterThanOrEqual(CHASE.safeX)
+    expect(s.chase.hitCount, '스프린트 직행은 무피격이어야 한다').toBe(0)
+    expect(s.phase, '런이 끝나면 안 된다').toBe('playing')
   })
 
   it('스프린트로 도망치면 걷기보다 훨씬 빨리 벌어진다', () => {
