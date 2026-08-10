@@ -169,6 +169,7 @@ export const initialState = (seed: number, freeplay = false): GameState => {
       timerMs: 0,
       cooldownMs: 0,
       passed: false,
+      farePaid: false,
       lastReject: null,
       attempts: 0,
     },
@@ -378,12 +379,15 @@ export const reducer = (s: GameState, a: Action): GameState => {
     case 'GATE_ACCEPT':
       return {
         ...s,
-        cardBalance: s.cardBalance - FARE,
+        // 재태그는 무료다 — 요금은 판당 한 번이다 (`systems/gates.ts` 의 분기와 한 쌍)
+        cardBalance: s.gates.farePaid ? s.cardBalance : s.cardBalance - FARE,
         gates: {
           ...s.gates,
           state: 'open',
           activeId: a.gateId,
           timerMs: GATE.passMs,
+          // 돈이 나간 순간이 곧 납부다. 통과 여부(`passed`)와는 별개로 남는다
+          farePaid: true,
           lastReject: null,
           attempts: s.gates.attempts + 1,
         },
