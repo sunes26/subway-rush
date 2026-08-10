@@ -33,3 +33,7 @@ render/hq/
 assets/lightmap_uv.npz*
 game/public/models/map/lightmap/
 game/dist/models/map/lightmap/
+
+# 제출 영상 원본과 작업 파일 — 저장소에 올리지 않는다 (319MB)
+VIDEO/
+assets/untitled.blend

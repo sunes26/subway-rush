@@ -56,16 +56,15 @@ const PULSE_AMP = 0.15
  * E2E 의 "콘솔 에러 0건" 어서션이 깨진다. **의도된 부재는 자리표시자로 그린다.**
  *
  * 여기 없는 id 가 노드를 못 찾으면 그건 여전히 에러다(에셋 갱신 사고 감지선).
- * I-02(동전)는 `items_build.py ITM02_Coin` 으로, I-05(이어폰)는 `ITM05_Earbuds` 로
- * 실제 메시가 생겨 여기서 빠졌다.
+ * I-02(동전)는 `items_build.py ITM02_Coin` 으로, I-05(이어폰)는 `ITM05_Earbuds` 로,
+ * I-08(신문지)는 `ITM08_Paper` 로 실제 메시가 생겨 여기서 빠졌다.
  */
 export const PLACEHOLDER_ITEMS: ReadonlySet<ItemId> =
-  new Set<ItemId>(['I-07', 'I-08', 'I-11'])
+  new Set<ItemId>(['I-07', 'I-11'])
 
 /** 아이템별 자리표시자 색 — 실루엣만으로 구분되게. 전부 회색이면 뭘 주웠는지 모른다 */
 const PLACEHOLDER_LOOK: Readonly<Partial<Record<ItemId, { c: number; w: number; h: number; d: number }>>> = {
   'I-07': { c: 0x6b4a34, w: 0.09, h: 0.20, d: 0.09 },   // 텀블러
-  'I-08': { c: 0xe8e4d8, w: 0.26, h: 0.04, d: 0.19 },   // 접힌 신문
   'I-11': { c: 0x8a3b2f, w: 0.12, h: 0.09, d: 0.03 },   // 지갑
 }
 

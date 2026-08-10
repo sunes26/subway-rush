@@ -825,6 +825,76 @@ for poly in _map.data.polygons:
 shade(_map, False)
 ITEMS["ITM13_RouteMap"] = finish("ITM13_RouteMap", [_map])
 
+# ======================================= ITM-08 신문지 (P2)
+# 물청소 구역(OBS-05)에 까는 소모품. `PLACEHOLDER_LOOK`(props.ts)의 자리표시자
+# 치수(0.26 × 0.04 × 0.19)를 그대로 최종 치수로 쓴다 — 접힌 신문 여러 장이
+# 겹친 두께라 이미 치비 과장이 들어가 있었다.
+#
+# 카드·마스크와 같은 세로 판 규약(원점 = 중심, 손에 쥐는 자리)을 따른다.
+# 텍스처는 쓰지 않는다(노선도가 이 저장소의 유일한 예외). 대신 카드의
+# `card_band`·`card_wave` 와 같은 방법 — **표면과 같은 높이의 색 판**으로
+# 헤드라인 바·기사 텍스트 줄·사진 블록·가운데 접힘선을 낸다.
+#
+# 두꺼운 옆면이 그냥 한 색이면 종이 뭉치가 아니라 플라스틱 블록으로 읽힌다
+# (실측: 첫 버전). 트임면(오른쪽, +X)에 명도 두 단으로 번갈아 색을 칠한
+# 가로줄을 넣어 "겹쳐 접힌 낱장"이라는 신호를 준다.
+NW_, NH_, NT_ = 0.26, 0.19, 0.04
+
+M_NEWS_BODY = new_mat("ITM_PaperBody", "F0EAD8", 0.90)
+M_NEWS_LIT = new_mat("ITM_PaperLit", "F8F4E8", 0.86)
+M_NEWS_EDGE = new_mat("ITM_PaperEdge", "D8CFB6", 0.90)
+M_NEWS_INK = new_mat("ITM_PaperInk", "342E26", 0.72)
+M_NEWS_TEXT = new_mat("ITM_PaperText", "AFA588", 0.80)
+M_NEWS_PHOTO = new_mat("ITM_PaperPhoto", "C4BAA0", 0.78)
+M_NEWS_FOLD = new_mat("ITM_PaperFold", "C9BFA6", 0.90)
+
+_body = plate("news_body", NW_, NH_, 0.007, NT_, M_NEWS_BODY, seg=3, edge_mat=M_NEWS_EDGE)
+_body.data.materials.append(M_NEWS_LIT)          # 슬롯 2 = 깎인 모서리
+bevel(_body, BEVEL_S * 1.4, 2, mat_index=2)
+_parts = [_body]
+
+_ny = -NT_ / 2.0 - FLAT
+
+# 헤드라인 바 — 카드 하단 바와 같은 트릭. 부품을 더 만들지 않고 색으로 구조를 읽힌다.
+_parts.append(plate("news_masthead", NW_ * 0.82, NH_ * 0.14, 0.0015, FLAT * 2, M_NEWS_INK,
+                    seg=1, y=_ny, cz=NH_ * 0.36))
+# 가운데 접힘선 — 실제 신문처럼 좌우 전체 폭을 가로지르는 얕은 선.
+_parts.append(plate("news_fold", NW_ * 0.94, NH_ * 0.02, 0.0008, FLAT * 2, M_NEWS_FOLD,
+                    seg=1, y=_ny, cz=0.0))
+# 사진/그래픽 블록 — 좌하단. 헤드라인 하나로는 '표'로 보이므로 이질적인
+# 사각 하나를 더 얹어 인쇄면이라는 신호를 강화한다.
+_parts.append(plate("news_photo", NW_ * 0.30, NH_ * 0.24, 0.002, FLAT * 2, M_NEWS_PHOTO,
+                    seg=1, y=_ny, cx=-NW_ * 0.20, cz=-NH_ * 0.10))
+# 기사 텍스트 줄 — 우측 칼럼 4줄(문단처럼 폭을 흔든다) + 하단 전폭 2줄.
+_tw = (NW_ * 0.34, NW_ * 0.30, NW_ * 0.34, NW_ * 0.24)
+for _i, _w in enumerate(_tw):
+    _parts.append(plate("news_text%d" % _i, _w, NH_ * 0.028, 0.0008, FLAT * 2, M_NEWS_TEXT,
+                        seg=1, y=_ny, cx=NW_ * 0.15, cz=NH_ * 0.14 - _i * NH_ * 0.075))
+for _i, _w in enumerate((NW_ * 0.90, NW_ * 0.60)):
+    _parts.append(plate("news_textlo%d" % _i, _w, NH_ * 0.026, 0.0008, FLAT * 2, M_NEWS_TEXT,
+                        seg=1, y=_ny, cz=-NH_ * 0.32 - _i * NH_ * 0.07))
+for _p in _parts:
+    shade(_p, False)
+
+# 트임면(+X) 낱장 줄 — YZ 평면 얇은 사각 5개, 명도 두 단을 번갈아 배치.
+_news_hh = NH_ / 2.0 - 0.007
+_news_x = NW_ / 2.0 + FLAT
+_NLINES = 5
+for _i in range(_NLINES):
+    _t0 = _i / _NLINES
+    _t1 = _t0 + (1.0 / _NLINES) * 0.42
+    _z0 = _news_hh - 2.0 * _news_hh * _t0
+    _z1 = _news_hh - 2.0 * _news_hh * _t1
+    _mat = M_NEWS_LIT if _i % 2 == 0 else M_NEWS_EDGE
+    _line = _mesh("news_pageline%d" % _i,
+                  [(_news_x, -NT_ * 0.985 / 2.0, _z1), (_news_x, NT_ * 0.985 / 2.0, _z1),
+                   (_news_x, NT_ * 0.985 / 2.0, _z0), (_news_x, -NT_ * 0.985 / 2.0, _z0)],
+                  [(0, 1, 2, 3)], _mat)
+    shade(_line, False)
+    _parts.append(_line)
+
+ITEMS["ITM08_Paper"] = finish("ITM08_Paper", _parts)
+
 # ======================================= ITM-01 효자손 (기존 자산 복제)
 # 새로 짜지 않는다. mc_character.blend 에 이미 있고 GP(할아버지)가 쓰는
 # 물건이라 형태가 검증돼 있다 — 다만 그 파일 안에만 있어서 **어떤 GLB 로도
