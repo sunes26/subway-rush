@@ -21,7 +21,7 @@ import { secondsSinceDoorsOpen, secondsSinceDoorsOpenOpp } from '../systems/dise
 import { auntieAt, studentAt, zombieAt } from '../systems/obstacles'
 import { staffAt } from '../systems/staff'
 import { staffTaserLineAt, STAFF_TASER_TASER_LINE_INDEX } from '../systems/staffTaser'
-import { loadNpcRig, type NpcRig } from './npc-rig'
+import { loadNpcRig, type NpcRig, type PropPose } from './npc-rig'
 
 export type Actors = Readonly<{
   root: Group
@@ -150,8 +150,30 @@ const noopRig = (): NpcRig => ({
   update: () => {},
   setVisible: () => {},
   setProp: () => {},
+  attachProp: () => {},
   dispose: () => {},
 })
+
+/**
+ * 단소를 **오른손 본으로 옮겨 붙인다** — 에셋 결함의 런타임 우회.
+ *
+ * `gp_character_rigged.glb` 실측:
+ *  · `PR_Danso` 의 부모가 `Chest/Prop.Chest` 다 (가슴 홀스터). 손이 아니다.
+ *  · `GP_Draw`·`GP_Swing`·`GP_Chase` 세 클립 모두 `Prop.Chest` 채널이 **2프레임 상수**
+ *    (translation delta 0,0,0). 즉 **뽑아 드는 동작이 리그에 없다.**
+ *  → 훔치기로 `PR_Hyojason` 이 꺼지면 오른손이 빈 채로 헛스윙하고, 단소는 가슴에
+ *    붙은 채 따라다녔다. 그게 "단소를 안 들고 있다"의 정체다.
+ *
+ * 포즈는 **효자손이 쥐어져 있던 자리를 그대로 쓴다.** 근거는 두 프롭의 축이 같다는 실측이다 —
+ * 둘 다 원점이 손잡이 끝이고 로컬 −Y 로 뻗는다(효자손 0.25m · 단소 0.16m).
+ * 그래서 같은 TRS 를 주면 쥔 방향이 같아진다.
+ */
+const GP_HAND_BONE = 'Prop.R'
+/** `PR_Hyojason` 의 노드 로컬 TRS 를 그대로 옮긴 값 (GLB 실측) */
+const GP_DANSO_HOLD: PropPose = {
+  pos: [0.002, 0.0034, -0.0194],
+  quat: [-0.9156, -0.0835, 0.0629, 0.3883],
+}
 
 /**
  * 캐릭터 배율 — 에셋(0.84~0.92m)을 실척 맵(문 1.9m · 벤치 0.9m)에 맞춘다.
@@ -380,7 +402,13 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
     const handedOver = s.act.consumed.includes(GRANDPA_ID)
     // 효자손은 넘기기 전까지 들고 있고, 단소는 화난 뒤에만 보인다 (GDD §4.1)
     if (propHyojason !== !handedOver) { propHyojason = !handedOver; gp.setProp('PR_Hyojason', propHyojason) }
-    if (propDanso !== angry) { propDanso = angry; gp.setProp('PR_Danso', propDanso) }
+    if (propDanso !== angry) {
+      propDanso = angry
+      // 켜는 순간 가슴 본에서 오른손으로 옮긴다 (위 `GP_DANSO_HOLD` 주석 — 에셋 결함 우회).
+      // 되돌리지 않는다: 화가 풀리는 경로가 없고, 꺼진 프롭의 부모는 화면에 영향이 없다
+      if (angry) gp.attachProp('PR_Danso', GP_HAND_BONE, GP_DANSO_HOLD)
+      gp.setProp('PR_Danso', propDanso)
+    }
 
     /**
      * 일어선 뒤에는 추격 좌표를, 앉아 있는 동안은 벤치를 쓴다.

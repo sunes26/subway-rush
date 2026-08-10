@@ -270,3 +270,45 @@ test('MC · GP · CP 세 리그가 전부 정면을 향한다', async ({ page })
   expect(cp, `CP lean ${cp.toFixed(4)}`).toBeGreaterThan(0)
   expect(mc, `MC lean ${mc.toFixed(4)}`).toBeGreaterThan(0)
 })
+
+/**
+ * O-14 단소는 **오른손에 들려야 한다.**
+ *
+ * 회귀 내력: GLB 에서 `PR_Danso` 의 부모가 `Prop.Chest`(가슴 홀스터)이고, `GP_Draw`·
+ * `GP_Swing`·`GP_Chase` 어느 클립도 그 본에 키가 없다(실측 2프레임 상수). 그래서 화가 나도
+ * 단소는 가슴에 붙은 채고 오른손은 빈 채로 헛스윙했다 — `actors.ts` 가 켜는 순간
+ * 오른손 본으로 옮겨 붙여 고쳤다.
+ *
+ * 손 본 이름은 씬에서 `PropR` 이다 — GLTFLoader 가 `Prop.R` 의 점을 지운다.
+ */
+test('O-14 단소가 화난 순간 오른손 본에 붙는다', async ({ page }) => {
+  await boot(page)
+  await stand(page, 40.4, 13.5, [42, 13.5])
+  await page.evaluate(() => { window.__game!.set({ flags: ['GRANDPA_ANGRY'] }) })
+  await page.waitForTimeout(700)
+
+  const probe = await page.evaluate(() => {
+    const cam = (window as unknown as { __camera?: { parent: unknown } }).__camera
+    let root = cam as unknown as { parent: unknown | null; getObjectByName(n: string): unknown }
+    while ((root as { parent: unknown | null }).parent) {
+      root = (root as { parent: { parent: unknown | null; getObjectByName(n: string): unknown } }).parent
+    }
+    type Node = { visible: boolean; parent: { name: string } | null; matrixWorld: { elements: number[] } }
+    const danso = root.getObjectByName('PR_Danso') as Node | undefined
+    const hand = root.getObjectByName('PropR') as Node | undefined
+    if (!danso || !hand) return null
+    const a = danso.matrixWorld.elements, b = hand.matrixWorld.elements
+    return {
+      visible: danso.visible,
+      parent: danso.parent?.name ?? null,
+      distToHand: Math.hypot(a[12]! - b[12]!, a[13]! - b[13]!, a[14]! - b[14]!),
+    }
+  })
+
+  expect(probe, '단소·오른손 본을 씬에서 못 찾았다').not.toBeNull()
+  expect(probe!.visible, '화가 났는데 단소가 안 보인다').toBe(true)
+  expect(probe!.parent, `단소 부모가 ${probe!.parent} 다 — 손이 아니다`).toBe('PropR')
+  // 손잡이 오프셋(2cm) × CHAR_SCALE 1.6 ≈ 3.2cm. 가슴에 남아 있으면 20cm 넘게 벌어진다
+  expect(probe!.distToHand, `손과 ${(probe!.distToHand * 100).toFixed(1)}cm 떨어져 있다`)
+    .toBeLessThan(0.08)
+})

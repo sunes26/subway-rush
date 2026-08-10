@@ -39,7 +39,25 @@ export type NpcRig = Readonly<{
   setVisible(on: boolean): void
   /** 프롭 서브메시 show/hide — 이름 접두어로 찾는다 (예: 'PR_Danso') */
   setProp(namePrefix: string, on: boolean): void
+  /**
+   * 프롭을 **다른 본 밑으로 옮겨 붙인다** — 붙인 자리의 로컬 TRS까지 지정한다.
+   *
+   * 에셋이 프롭을 잘못된 본에 물고 있고 애니가 그 본을 안 움직일 때의 탈출구다
+   * (GP 단소: `Prop.Chest` 에 붙어 있는데 `GP_Draw`·`GP_Swing` 어느 클립도 그 본에
+   * 키가 없다 — 실측 2프레임 상수). 리그를 다시 익스포트하는 대신 런타임에 옮긴다.
+   *
+   * 멱등이다 — 이미 그 부모면 붙이는 일은 건너뛰고 TRS만 다시 쓴다.
+   */
+  attachProp(namePrefix: string, parentName: string, local: PropPose): void
   dispose(): void
+}>
+
+/** 본에 붙일 때 쓰는 로컬 TRS. `scale` 은 생략하면 건드리지 않는다 */
+export type PropPose = Readonly<{
+  pos: readonly [number, number, number]
+  /** 쿼터니언 (x, y, z, w) */
+  quat: readonly [number, number, number, number]
+  scale?: number
 }>
 
 export const loadNpcRig = async (
@@ -208,6 +226,24 @@ export const loadNpcRig = async (
     setVisible(on) { root.visible = on },
     setProp(namePrefix, on) {
       for (const o of propsFor(namePrefix)) o.visible = on
+    },
+    attachProp(namePrefix, parentName, local) {
+      /**
+       * ⚠ **본 이름은 GLB 의 것과 다르다.** GLTFLoader 가 애니 바인딩에 쓸 수 없는 문자
+       * (`. : / [ ]`)를 이름에서 **지운다** — GLB 의 `Prop.R` 은 씬에서 `PropR` 이다
+       * (실측: 단소의 부모가 `Prop.Chest` 가 아니라 `PropChest` 로 나왔다).
+       * 호출부가 GLB 실측 이름을 그대로 쓸 수 있도록 여기서 두 이름을 다 본다.
+       */
+      const parent = model.getObjectByName(parentName)
+        ?? model.getObjectByName(parentName.replace(/[.:/[\]]/g, ''))
+      if (!parent) return        // 리그에 없는 본 — 조용히 둔다 (`play()` 와 같은 규약)
+      for (const o of propsFor(namePrefix)) {
+        // `add()` 가 기존 부모에서 떼어 낸다. 캐시는 여전히 유효하다 — 트리 안에 남는다
+        if (o.parent !== parent) parent.add(o)
+        o.position.set(local.pos[0], local.pos[1], local.pos[2])
+        o.quaternion.set(local.quat[0], local.quat[1], local.quat[2], local.quat[3])
+        if (local.scale !== undefined) o.scale.setScalar(local.scale)
+      }
     },
     dispose() {
       mixer.stopAllAction()
