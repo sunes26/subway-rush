@@ -1900,6 +1900,118 @@ for _row, _h in enumerate(LK_ROWS):
         _di += 1
     _z += _h
 
+# ======================================= ITM-07 텀블러 커피 (P2)
+# 마지막까지 자리표시자 상자였던 둘 중 하나. `PLACEHOLDER_LOOK`(props.ts)의
+# 치수(0.09 × 0.20 × 0.09)를 그대로 최종 치수로 쓴다 — 실물 테이크아웃 컵보다
+# 크지만 이 저장소의 치비 과장(기존 소품 ×1.5)에 이미 맞춰진 값이다.
+#
+# 회전체다. 신문지·카드가 쓰는 판(`plate`) 규약이 여기서는 안 통한다 — 원통은
+# `revolve` 로 고리를 쌓는다(탄산음료 캔과 같은 방법).
+#
+# 실루엣을 셋으로 끊는다: **위로 벌어지는 컵 / 가운데 골판 홀더 / 짙은 뚜껑**.
+# 한 덩이 원기둥이면 54px 슬롯 아이콘에서 그냥 막대로 읽힌다(실측: 첫 버전).
+# 홀더는 별도 회전체로 띄워 감고, 세로 골은 부품을 늘리지 않고 `mat_fn` 의
+# 세로 줄무늬로 낸다 — 호 길이 11mm 마다 명도가 갈린다.
+CUP_R0, CUP_R1, CUP_HZ = 0.0320, 0.0420, 0.100      # 밑·몸통 최대 반경, 반높이
+CUP_SEG = 16
+
+M_CUP_BODY = new_mat("ITM_CupBody", "F4EFE4", 0.88)
+M_CUP_SHADE = new_mat("ITM_CupShade", "E2D9C7", 0.90)
+M_CUP_LID = new_mat("ITM_CupLid", "4A3A30", 0.74)
+M_CUP_LIDLIT = new_mat("ITM_CupLidLit", "6B5445", 0.72)
+M_CUP_SLEEVE = new_mat("ITM_CupSleeve", "B8794A", 0.88)
+M_CUP_SLEEVE_DK = new_mat("ITM_CupSleeveDeep", "96603A", 0.90)
+
+# (z, 반경). 뚜껑은 립 → 경사 → 마시는 구멍 융기 순으로 세 단이다.
+_cup_rings = [
+    (-CUP_HZ, 0.0285),
+    (-CUP_HZ + 0.004, CUP_R0),
+    (-0.020, 0.0378),
+    (0.052, CUP_R1),
+    (0.060, CUP_R1),                 # 컵 립
+    (0.064, 0.0445),                 # 뚜껑이 컵을 물고 있는 턱
+    (0.078, 0.0440),
+    (0.088, 0.0392),                 # 뚜껑 경사
+    (0.096, 0.0286),
+    (CUP_HZ, 0.0176),                # 마시는 구멍 주변 융기
+]
+#            바닥 밑단  몸통  몸통  립   턱   뚜껑  경사  경사  꼭대기
+_cup_rows = [1, 0, 0, 1, 2, 3, 2, 2, 3]
+_cup = revolve("cup_body", _cup_rings, CUP_SEG,
+               [M_CUP_BODY, M_CUP_SHADE, M_CUP_LID, M_CUP_LIDLIT], _cup_rows)
+shade(_cup, True)
+
+
+def _cup_stripe(u, z, mi):
+    """홀더 세로 골 — 호 길이 11mm 마다 명도를 번갈아 준다."""
+    return mi if int(math.floor(u / 0.011)) % 2 == 0 else mi + 1
+
+
+_slv = revolve("cup_sleeve",
+               [(-0.030, 0.0390), (-0.012, 0.0403), (0.014, 0.0418), (0.022, 0.0421)],
+               CUP_SEG, [M_CUP_SLEEVE, M_CUP_SLEEVE_DK],
+               [0, 0, 0], _cup_stripe)
+shade(_slv, True)
+
+ITEMS["ITM07_Coffee"] = finish("ITM07_Coffee", [_cup, _slv])
+
+# ======================================= ITM-11 유실물 지갑 (P2)
+# 벤치 밑(`OBJ-11-WALLET`)에서 줍고 유실물센터 창구에 맡기면 비상게이트가
+# 열리는 물건(GDD 부록 A 시크릿 3). 자리표시자 치수(0.12 × 0.09 × 0.03) 유지.
+#
+# 신문지와 같은 판 규약이지만 **읽혀야 하는 신호가 다르다.** 신문지는 "인쇄면",
+# 지갑은 "가죽 + 안에 뭐가 들어 있다"다. 그래서 인쇄 대신 (1) 테두리 스티치
+# (2) 왼쪽 접힘 이음 (3) 위로 삐져나온 카드 — 셋으로 짠다. 삐져나온 카드가
+# 없으면 그냥 갈색 비누로 보인다(실측: 첫 버전).
+WL_W, WL_H, WL_T = 0.12, 0.09, 0.030
+
+M_WL_BODY = new_mat("ITM_WalletBody", "8A4033", 0.86)
+M_WL_LIT = new_mat("ITM_WalletLit", "A6584A", 0.84)
+M_WL_DEEP = new_mat("ITM_WalletDeep", "6B3026", 0.88)
+M_WL_STITCH = new_mat("ITM_WalletStitch", "E0C9A8", 0.82)
+M_WL_CARD = new_mat("ITM_WalletCard", "EFEDE6", 0.80)
+
+_wl = plate("wl_body", WL_W, WL_H, 0.010, WL_T, M_WL_BODY, seg=3, edge_mat=M_WL_LIT)
+_wl.data.materials.append(M_WL_DEEP)             # 슬롯 2 = 깎인 모서리
+bevel(_wl, BEVEL_S * 1.6, 2, mat_index=2)
+_parts = [_wl]
+
+_wy = -WL_T / 2.0 - FLAT
+
+# 테두리 스티치 — 네 변에 실선 하나씩. 판을 넷 얹는 것이 원 하나 그리는 것보다 싸다.
+_st_in = 0.008
+for _nm, _w, _h, _cx, _cz in (
+    ("wl_st_top", WL_W - _st_in * 2.4, 0.0022, 0.0, WL_H / 2.0 - _st_in),
+    ("wl_st_bot", WL_W - _st_in * 2.4, 0.0022, 0.0, -(WL_H / 2.0 - _st_in)),
+    ("wl_st_lft", 0.0022, WL_H - _st_in * 2.4, -(WL_W / 2.0 - _st_in), 0.0),
+    ("wl_st_rgt", 0.0022, WL_H - _st_in * 2.4, WL_W / 2.0 - _st_in, 0.0),
+):
+    _parts.append(plate(_nm, _w, _h, 0.0008, FLAT * 2, M_WL_STITCH,
+                        seg=1, y=_wy, cx=_cx, cz=_cz))
+
+# 왼쪽 접힘 이음 — 반으로 접히는 지갑의 등. 여기만 명도를 떨어뜨린다.
+_parts.append(plate("wl_spine", 0.0060, WL_H * 0.86, 0.0015, FLAT * 2, M_WL_DEEP,
+                    seg=1, y=_wy, cx=-WL_W * 0.40))
+# 스냅 단추 — 오른쪽 가운데. 정사각 라운드로 원을 흉내 낸다(부품 하나 아낀다).
+_parts.append(plate("wl_snap", 0.0150, 0.0150, 0.0075, FLAT * 3, M_WL_STITCH,
+                    seg=4, y=_wy, cx=WL_W * 0.36))
+
+for _p in _parts:
+    shade(_p, False)
+
+# 삐져나온 카드 두 장 — 윗변 위로 10mm·6.5mm. 몸통과 **다른 두께**(얇게)라
+# 실루엣에서도 "안에 든 것"으로 읽힌다. 스티치보다 뒤(+Y)에 두어 겹치지 않는다.
+for _i, (_cw, _ch, _cx, _lift, _mat) in enumerate((
+    (0.052, 0.020, -WL_W * 0.14, 0.0070, M_WL_CARD),
+    (0.034, 0.018, WL_W * 0.22, 0.0045, M_WL_STITCH),
+)):
+    _card = plate("wl_card%d" % _i, _cw, _ch, 0.0015, WL_T * 0.42, _mat,
+                  seg=2, cx=_cx, cz=WL_H / 2.0 - 0.007 + _lift)
+    shade(_card, False)
+    _parts.append(_card)
+
+ITEMS["ITM11_Wallet"] = finish("ITM11_Wallet", _parts)
+
 # --------------------------------------------------------------------- 검산
 def _family(mat):
     """색 계열 이름. 채도가 낮으면 전부 'neutral', 아니면 30도 색상 버킷."""

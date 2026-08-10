@@ -51,22 +51,21 @@ const PULSE_SEC = 1.6
 const PULSE_AMP = 0.15
 
 /**
- * P2 신규 5종은 **전용 메시가 없다** — `docs/P2-SPEC.md` §10 이 P3로 미룬 항목이다.
- * 없는 노드를 조용히 넘기면 화면에 아무것도 안 서고, `console.error` 로 알리면
- * E2E 의 "콘솔 에러 0건" 어서션이 깨진다. **의도된 부재는 자리표시자로 그린다.**
+ * 전용 메시가 없는 아이템 — 없는 노드를 조용히 넘기면 화면에 아무것도 안 서고,
+ * `console.error` 로 알리면 E2E 의 "콘솔 에러 0건" 어서션이 깨진다.
+ * **의도된 부재는 자리표시자로 그린다.** 여기 없는 id 가 노드를 못 찾으면 그건
+ * 여전히 에러다(에셋 갱신 사고 감지선).
  *
- * 여기 없는 id 가 노드를 못 찾으면 그건 여전히 에러다(에셋 갱신 사고 감지선).
- * I-02(동전)는 `items_build.py ITM02_Coin` 으로, I-05(이어폰)는 `ITM05_Earbuds` 로,
- * I-08(신문지)는 `ITM08_Paper` 로 실제 메시가 생겨 여기서 빠졌다.
+ * **지금은 비어 있다.** P2 신규 5종이 전부 실제 메시를 얻었다 —
+ * I-02(`ITM02_Coin`) · I-05(`ITM05_Earbuds`) · I-08(`ITM08_Paper`) ·
+ * I-07(`ITM07_Coffee`) · I-11(`ITM11_Wallet`), 전부 `tools/items_build.py` 다.
+ * 비었다고 지우지 않는다: 이 집합이 없으면 다음에 메시 없는 아이템이 들어올 때
+ * 자리표시자 대신 콘솔 에러가 나고 그 E2E 가 깨진다 — 그때 여기 한 줄만 넣으면 된다.
  */
-export const PLACEHOLDER_ITEMS: ReadonlySet<ItemId> =
-  new Set<ItemId>(['I-07', 'I-11'])
+export const PLACEHOLDER_ITEMS: ReadonlySet<ItemId> = new Set<ItemId>()
 
 /** 아이템별 자리표시자 색 — 실루엣만으로 구분되게. 전부 회색이면 뭘 주웠는지 모른다 */
-const PLACEHOLDER_LOOK: Readonly<Partial<Record<ItemId, { c: number; w: number; h: number; d: number }>>> = {
-  'I-07': { c: 0x6b4a34, w: 0.09, h: 0.20, d: 0.09 },   // 텀블러
-  'I-11': { c: 0x8a3b2f, w: 0.12, h: 0.09, d: 0.03 },   // 지갑
-}
+const PLACEHOLDER_LOOK: Readonly<Partial<Record<ItemId, { c: number; w: number; h: number; d: number }>>> = {}
 
 const placeholderCache = new Map<ItemId, Object3D>()
 
