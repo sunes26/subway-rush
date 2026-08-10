@@ -211,8 +211,6 @@ export const EMERGENCY = {
   passX: 62.0,
   /** 요금은 개찰구와 같다 — 문이 다르다고 값이 달라질 이유가 없다 */
   fare: 1400,
-  /** 인터폰 대기(ms) — 역무원이 나오는 시간 */
-  intercomWaitMs: 15_000,
   /** 지갑 반납 소요(ms) */
   walletReturnMs: 2000,
 } as const

@@ -5,9 +5,9 @@
  * 예측 불가능한 떨림까지 얹어 온다 — 이 맵에는 손해다.
  */
 
-import { clamp, rectContains, rectOverlapsCircle, type Rect } from '../core/math'
+import { rectContains, rectOverlapsCircle, type Rect } from '../core/math'
 import { MOVE } from '../data/tuning'
-import { RAMPS, SLABS, SOLIDS, type Ramp, type Slab, type Solid } from '../data/world'
+import { rampZAt, RAMPS, SLABS, SOLIDS, type Ramp, type Slab, type Solid } from '../data/world'
 
 // ─────────────────── 브로드페이즈: 균일 그리드 해시 ───────────────────
 
@@ -59,14 +59,13 @@ const queryNear = (x: number, y: number, r: number): Solid[] => {
 
 // ─────────────────── 지면 샘플링 ───────────────────
 
-/** 램프 위 z. rect 밖이면 null. */
-export const rampZ = (r: Ramp, x: number, y: number): number | null => {
-  if (!rectContains(r.rect, x, y)) return null
-  const [minA, maxA] = r.axis === 'x' ? [r.rect[0], r.rect[2]] : [r.rect[1], r.rect[3]]
-  const v = r.axis === 'x' ? x : y
-  const t = clamp((v - minA) / (maxA - minA), 0, 1)
-  return r.zAtMin + (r.zAtMax - r.zAtMin) * t
-}
+/**
+ * 램프 위 z. rect 밖이면 null.
+ *
+ * 구현은 `data/world.ts rampZAt` 하나뿐이다 — 정적 좌표표도 같은 식이 필요해서
+ * 데이터 계층으로 내렸다(그쪽 헤더 주석 참고). 여기서는 이름만 유지한다.
+ */
+export const rampZ = rampZAt
 
 export type Ground = Readonly<{ z: number; rampId: string | null; ramp: Ramp | null }>
 

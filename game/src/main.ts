@@ -11,7 +11,7 @@ import { resolveSeed } from './core/rng'
 import { CAMERA, FPV, MAX_FRAME_MS, MAX_STEPS_PER_FRAME, MOVE, STEP_MS } from './data/tuning'
 import { FLOOR, GATES, GATE_BODY, GATE_LAMP_Z, TRAFFIC_LIGHT, Y_OFFSET_OPP,
   ZONE_NAMES } from './data/world'
-import { byId, FISHCAKE_ID, GIFT_STALL_ID, GRANDPA_ID, type InteractKind } from './data/interactables'
+import { byId, type InteractKind } from './data/interactables'
 import { CHAR_SCALE, loadActors, type Actors } from './render/actors'
 import { createCameraRig } from './render/camera-rig'
 import { buildTraffic, type Traffic } from './render/cars'
@@ -191,7 +191,6 @@ const OBSERVE_NOTE: Readonly<Record<InteractKind, string>> = {
   give: 'E — 건넨다',
   story: 'E — 이야기를 듣는다',
   return: 'E — 맡긴다',
-  call: 'E — 호출한다',
   enter: 'E — 들어간다',
   inspect: 'E — 살펴본다',
 }
@@ -1038,16 +1037,20 @@ const frame = (now: number): void => {
   if (hud.el.style.opacity !== hudOpacity) hud.el.style.opacity = hudOpacity
   dialog.sync(state)
   /**
-   * 마우스로 고르는 대화 3종(할아버지·편의점·붕어빵 아저씨) — **매 프레임** 강제한다.
+   * **선택창이 열려 있으면 마우스를 놓아준다** — 매 프레임 강제한다.
    *
    * 예전엔 `dialogId` 가 바뀌는 순간에만 한 번 풀었다. 그러면 대화가 열려 있는 동안
    * 패널 밖(작은 패널이라 여백이 넓다)을 클릭하면 `core/input.ts` 의 "락 안 걸려 있으면
    * 좌클릭 = 재진입" 규칙에 걸려 시선 회전이 도로 살아났다 — `setPointerLockAllowed`가
    * 재진입 자체를 막는다.
+   *
+   * ⚠ 예전엔 상대 셋(할아버지·편의점·붕어빵)을 **이름으로 나열**했다. 인터폰·역무원이
+   * 네 번째·다섯 번째 `talk` 이 되자 그 목록이 조용히 낡아서, 선택지를 클릭하려고
+   * 마우스를 움직이면 화면이 돌아갔다(디렉터 지적 2026-08-10). `dialogId` 가 서 있다는
+   * 것 자체가 곧 "지금 화면에 고를 것이 떠 있다"이므로 **목록을 두지 않는다** —
+   * 대화 상대가 늘어도 여기를 다시 고칠 일이 없다.
    */
-  const wantsMouse = state.act.dialogId === GIFT_STALL_ID || state.act.dialogId === GRANDPA_ID ||
-    state.act.dialogId === FISHCAKE_ID
-  input.setPointerLockAllowed(!wantsMouse)
+  input.setPointerLockAllowed(state.act.dialogId === null)
   screens.sync(state)
   recordIfEnded(state)
   debug.sync(state)

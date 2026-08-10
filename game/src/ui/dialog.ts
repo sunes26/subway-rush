@@ -9,14 +9,15 @@
  * 이 파일은 `state.act` / `state.qte` 를 **그리기만** 한다.
  */
 
-import { byId, FISHCAKE_GREETING, FISHCAKE_ID, FISHCAKE_REACTION, GIFT_STALL_ID, GRANDPA_ID }
-  from '../data/interactables'
-import { GIFT_CORRECT, GIFT_ITEMS, itemDef, MASK_PRICE, SHOP_PRICE } from '../data/items'
+import { byId, FISHCAKE_GREETING, FISHCAKE_ID, GIFT_STALL_ID, GRANDPA_ID, INTERCOM_ID,
+  intercomMood, PATROL_STAFF_ID, PATROL_STAFF_LABEL } from '../data/interactables'
+import { GIFT_CORRECT, GIFT_ITEMS, itemDef, shopPriceOf } from '../data/items'
 import { QTE } from '../data/tuning'
 import { AMBUSH_DIALOGUE_MS, ambushCollapseT, ambushLineAt } from '../systems/ambush'
 import { knockdownT } from '../systems/knockdown'
 import { STAFF_TASER_DIALOGUE_MS, staffTaserCollapseT, staffTaserLineAt } from '../systems/staffTaser'
-import { branchesFor, hasItem } from '../systems/interact'
+import { branchesFor, greetingFor, hasItem, reactionFor, REACTION_DIALOGS }
+  from '../systems/interact'
 import { PREACH_TOTAL_MS, preachLineAt } from '../systems/preach'
 import { zombieTalkLineAt, zombieTalkTotalMs } from '../systems/zombieTalk'
 import type { GameState, ItemId } from '../state/types'
@@ -353,8 +354,8 @@ export const createDialog = (mount: HTMLElement): Dialog => {
   let shopSel = 0
   let shopOpenFor: string | null = null
 
-  /** 마스크는 `GIFT_ITEMS` 밖이라 `SHOP_PRICE`(꾸밈값)에 없다 — 실가격을 따로 읽는다 */
-  const priceOf = (id: ItemId): number => id === MASK_ITEM ? MASK_PRICE : SHOP_PRICE[id] ?? 0
+  /** 값은 `data/items.ts` 가 단일 원천이다 — 판정(`giftBranches`)이 읽는 그 함수 */
+  const priceOf = shopPriceOf
 
   const renderDetail = (): void => {
     const id = SHOP_ITEMS[shopSel] ?? SHOP_ITEMS[0]
@@ -456,10 +457,23 @@ export const createDialog = (mount: HTMLElement): Dialog => {
       // 편의점 매대(`GIFT_STALL_ID`)는 아래 `#shop` 이 대신 그리므로 여기서는 뺀다
       const isShop = s.act.dialogId === GIFT_STALL_ID
       const isFishcake = s.act.dialogId === FISHCAKE_ID
+      /**
+       * 역무원 계열 — 인터폰과 순찰 역무원. 초상화·인사말·반응 대사가 같은 규약이다
+       * (같은 사람이다 — `data/interactables.ts` 의 역무원 절 참고).
+       */
+      const isOfficer = s.act.dialogId === INTERCOM_ID || s.act.dialogId === PATROL_STAFF_ID
+      // 반응 대사가 있는 상대는 고른 뒤(`dialogChoice`) 화면이 바뀌므로 키에 넣는다
+      const hasReaction = !!s.act.dialogId && REACTION_DIALOGS.has(s.act.dialogId)
       // 붕어빵 아저씨는 단계(`dialogStep`)가 바뀔 때마다 새로 그려야 한다 — 클릭마다 대사가 다르다
+      /**
+       * 역무원 대사는 **인터폰 이력에 따라 갈린다** — 그 상태를 키에 넣는다.
+       * 안 넣으면 통화 결과가 바뀐 뒤에도 이전 인사말이 남는다(같은 상대·같은 단계라
+       * 키가 안 변한다). 실제 플레이에서는 창을 닫았다 여는 사이 키가 `''` 로 떨어져
+       * 우연히 갱신되지만, 그 우연에 기대면 다음에 조용히 어긋난다.
+       */
       const dlgKey = s.act.dialogId && !isShop
-        ? `${s.act.dialogId}:${isFishcake ? s.act.dialogStep : 0}:${isFishcake ? s.act.dialogChoice : 0}` +
-          `:${s.inventory.join(',')}`
+        ? `${s.act.dialogId}:${isFishcake ? s.act.dialogStep : 0}:${hasReaction ? s.act.dialogChoice : 0}` +
+          `:${isOfficer ? intercomMood(s.flags) : ''}:${s.inventory.join(',')}`
         : ''
       if (dlgKey !== lastDlg) {
         if (dlgKey) {
@@ -469,8 +483,15 @@ export const createDialog = (mount: HTMLElement): Dialog => {
            * 매대에서 연 선택창에도 "할아버지"가 떴다. `byId` 가 `systems/interact.ts`
            * 의 상호작용 테이블과 같은 원천이므로 여기서 갈릴 일이 없다.
            */
-          dlgWho.textContent = byId(s.act.dialogId!)?.label ?? ''
-          dlgPortrait.src = isFishcake ? FM_PORTRAIT : GP_PORTRAIT
+          /**
+           * 순찰 역무원은 자리가 시간의 함수라 **정적 표에 없다**(`byId` 가 null).
+           * 라벨은 `data/interactables.ts` 가 상수로 들고 있다 — 이름의 원천은 여전히 한 곳이다.
+           */
+          dlgWho.textContent = s.act.dialogId === PATROL_STAFF_ID
+            ? PATROL_STAFF_LABEL
+            : byId(s.act.dialogId!)?.label ?? ''
+          // 인터폰 너머의 목소리도 이 역무원이다 — 매복 역무원 초상화를 그대로 쓴다
+          dlgPortrait.src = isFishcake ? FM_PORTRAIT : isOfficer ? AO_PORTRAIT : GP_PORTRAIT
 
           /**
            * 붕어빵 아저씨는 인사말을 **클릭으로 한 줄씩** 넘긴다 — 마지막 줄 전까지는
@@ -479,14 +500,19 @@ export const createDialog = (mount: HTMLElement): Dialog => {
            * 예전엔 여기서 바로 닫고 토스트로 반응을 띄웠는데, 대화창과 끊겨 보였다.
            * 그 외 상대는 예전처럼 고정 인사말 + 즉시 선택지다.
            */
-          const reacting = isFishcake && s.act.dialogChoice !== 0
+          const reacting = hasReaction && s.act.dialogChoice !== 0
           const greetingDone = !isFishcake || s.act.dialogStep >= FISHCAKE_GREETING.length - 1
+          /**
+           * 인사말·반응 대사는 **시스템이 정한다**(`greetingFor`·`reactionFor`).
+           * 인터폰은 이전 통화 결과에 따라 인사말이 갈리는데, 그 조건을 UI가 다시 짜면
+           * 화면과 실제 분기가 어긋난다 — `branchesFor` 를 공유하는 것과 같은 이유다.
+           */
           dlgLine.textContent = reacting
-            ? (FISHCAKE_REACTION[s.act.dialogChoice as 1 | 2] ?? '')
+            ? reactionFor(s, s.act.dialogId!, s.act.dialogChoice as 1 | 2 | 3)
             : isFishcake
               ? (FISHCAKE_GREETING[Math.min(s.act.dialogStep, FISHCAKE_GREETING.length - 1)] ?? '')
-              : '"이 시간에 여긴 어쩐 일인가?"'
-          const showNext = isFishcake && (reacting || !greetingDone)
+              : greetingFor(s, s.act.dialogId!)
+          const showNext = (isFishcake && !greetingDone) || reacting
           // ⚠ `next` 를 **반드시 남긴다** — CSS 가 `#dlg .bubble .next` 로 잡으므로
           //   `'on'` 만 넣으면 셀렉터가 통째로 빗나가 우측 하단 배치가 안 먹는다(실제로 그랬다)
           dlgNext.className = showNext ? 'next on' : 'next'
@@ -670,8 +696,11 @@ export const createDialog = (mount: HTMLElement): Dialog => {
 
         const selId = SHOP_ITEMS[shopSel] ?? SHOP_ITEMS[0]
         const selLocked = lockedAt(shopSel)
-        // 선물은 항상 무료(시작 잔액 0원이라도 사야 하므로)다 — 잔액 부족은 마스크만 겪는다
-        const selAfford = selId === MASK_ITEM ? s.cardBalance >= MASK_PRICE : true
+        /**
+         * 선물도 이제 **실제로 돈을 낸다**(디렉터 지시 2026-08-10) — 잔액 부족이
+         * 마스크만의 사정이 아니게 됐다. 여섯 칸 모두 같은 식으로 잰다.
+         */
+        const selAfford = !selId || s.cardBalance >= priceOf(selId)
         shopBuy.disabled = selLocked || !selAfford
         shopBuy.textContent = selLocked ? '구매 완료' : !selAfford ? '잔액 부족' : '구매'
       }

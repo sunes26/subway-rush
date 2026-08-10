@@ -62,6 +62,15 @@ export type FlagId =
   // ── 붕어빵 아저씨 분실물 (신규) ──
   /** [1]"내가 가진다" 선택 — 개찰구 x≥57 매복(E-17)의 단일 조건 */
   | 'EARBUDS_STOLEN'
+  // ── 역무원 인터폰 (OBJ-22) ──
+  /**
+   * 인터폰에서 한 번 거절당했다. 다시 걸 수 있고, 그때 인사말·선택지가 달라진다
+   * (`data/interactables.ts intercomMood`). 열어 줬는지는 `EMERGENCY_OPEN` 이 안다 —
+   * "열렸다"를 여기에 또 적으면 두 진실이 갈린다.
+   */
+  | 'INTERCOM_DENIED'
+  /** 거절 사유가 **재촉·반말**이었다 — 거짓말로 거절당한 것과 다음 대사가 다르다 */
+  | 'INTERCOM_RUDE'
 
 export type GateState = 'idle' | 'tagging' | 'open' | 'reject'
 
@@ -171,12 +180,14 @@ export type ActState = Readonly<{
    */
   dialogStep: number
   /**
-   * 선택 이후 반응 대사 단계 — 0이면 아직 안 골랐다. 지금은 붕어빵 아저씨만 쓴다:
-   * 고르면(`DIALOG_CHOSEN`) 대화창은 안 닫고 반응 대사(`FISHCAKE_REACTION`)를 먼저
-   * 보여준다 — 골랐다고 바로 닫으면 아저씨 대답이 대화창이 아니라 **토스트**로
-   * 따로 떠서 방금까지 읽던 대화창과 끊겨 보였다(디렉터 지적으로 갱신).
+   * 선택 이후 반응 대사 단계 — 0이면 아직 안 골랐다. 고르면(`DIALOG_CHOSEN`) 대화창은
+   * 안 닫고 반응 대사를 먼저 보여준다 — 골랐다고 바로 닫으면 상대의 대답이 대화창이
+   * 아니라 **토스트**로 따로 떠서 방금까지 읽던 대화창과 끊겨 보였다(디렉터 지적).
+   *
+   * 쓰는 상대: 붕어빵 아저씨(`FISHCAKE_REACTION`) · 인터폰(`INTERCOM_REACTION`) ·
+   * 순찰 역무원(`STAFF_REACTION`). 인터폰이 3지라 값이 3까지 있다.
    */
-  dialogChoice: 0 | 1 | 2
+  dialogChoice: 0 | 1 | 2 | 3
 }>
 
 /** 바닥에 떨어진 아이템 — 슬롯 교체 시 생긴다. 되돌아가 주울 수 있다 */
@@ -549,7 +560,7 @@ export type Action =
   /** 클릭 진행형 인사말 한 칸 전진 — 지금은 붕어빵 아저씨 전용 */
   | { t: 'DIALOG_ADVANCE' }
   /** 선택 확정 — 대화는 안 닫고 반응 대사 단계로 넘어간다 (지금은 붕어빵 아저씨 전용) */
-  | { t: 'DIALOG_CHOSEN'; key: 1 | 2 }
+  | { t: 'DIALOG_CHOSEN'; key: 1 | 2 | 3 }
   /** slot < 0 이면 빈 칸 자동 선택. 가득 차면 slot 0 을 바닥에 떨군다 */
   | { t: 'PICKUP'; item: ItemId; slot: number; dropId: string | null }
   | { t: 'ITEM_SPEND'; slot: number }
