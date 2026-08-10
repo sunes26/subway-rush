@@ -1,0 +1,72 @@
+지하철 러쉬 (SUBWAY RUSH) — 외부 소재 크레딧
+===========================================
+
+이 게임에 포함된 외부 저작물과 그 라이선스입니다.
+전체 목록과 반입 경위는 저장소의 AI 활용 기술 문서 8장에 있습니다.
+
+
+3D 모델
+-------
+
+"Hyundai Elec City FCEV 2022" by Abdelrahman Elbaqsawi
+  https://sketchfab.com/3d-models/hyundai-elec-city-fcev-2022-6ad252e20f004a3bbfb2d6e1dae62192
+  CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/
+  변경함: 저폴리 감축과 머티리얼 교체 후 Z1_GROUND.glb 에 병합.
+
+"Back-scratching" by ArtNinja (TurboSquid, product 928994)
+  https://www.turbosquid.com/3d-models/back-scratching-928994
+  TurboSquid Standard License. 최종 제품에 포함하는 용도로만 사용.
+
+"LowPoly Subway Street Entrance" by Hurly Burly Studios (Unity Asset Store)
+  Standard Unity Asset Store EULA. 병합된 glTF 로만 배포하며 단독 재배포는 하지 않음.
+
+Poly Haven 소품 7종 — 소화기 · 분리수거함 · 공중전화 · 화분 · 물청소 표지 · CCTV · 맨홀
+  https://polyhaven.com/
+  CC0 1.0. 표기 의무는 없으나 출처를 밝혀 둡니다.
+
+Kenney — Car Kit 3.1, Food Kit
+  https://www.kenney.nl/
+  CC0 1.0. Car Kit 의 라이선스 원문은 models/cars/LICENSE-kenney.txt 에 동봉.
+
+
+아이콘
+------
+
+Lucide (backpack, circle-dollar-sign, triangle)
+  https://lucide.dev/
+  ISC License.
+  Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022
+  as part of Feather (MIT). All other copyright (c) for Lucide are held
+  by Lucide Contributors 2022.
+
+
+소리
+----
+
+발소리(audio/footsteps.mp3) — elevenlabs.io 에서 생성.
+그 밖의 효과음과 앰비언스는 WebAudio 로 실행 중에 합성하며, 오디오 파일이 없습니다.
+
+
+이미지
+------
+
+엔딩 창밖 파노라마 2종 — Gemini (Nano Banana) 로 생성.
+기존 저작물을 입력 이미지로 사용하지 않았습니다.
+
+
+데이터
+------
+
+노선도 텍스처 — 서울교통공사 사이버스테이션의 공개 노선 데이터를 좌표로 받아
+자체 작도했습니다. 공사가 발행한 노선도 이미지 파일은 사용하지 않았습니다.
+노선도 도안에 관한 권리는 서울교통공사에 있습니다.
+
+
+폰트
+----
+
+웹폰트를 포함하지 않습니다. system-ui, Malgun Gothic 등 이용자 기기에
+설치된 글꼴만 사용합니다.
+
+
+그 밖의 모든 3D 모델, 애니메이션, UI, 사운드는 자체 제작입니다.
