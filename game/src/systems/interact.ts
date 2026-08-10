@@ -75,11 +75,11 @@ const autoWearActions = (s: GameState, item: ItemId): readonly Action[] => {
  * 순찰 역무원(ACT-08)을 이번 프레임의 상호작용 대상으로 만든다 — 없으면 `null`.
  *
  * 정적 테이블에 못 넣는 이유가 둘이다.
- *  1. **위치가 시간의 함수다.** `staffAt(elapsedMs)` 가 비상게이트 앞을 왕복한다.
+ *  1. **위치가 시간의 함수다.** `staffAt(elapsedMs)` 가 개찰구 안쪽 사각 루프를 돈다.
  *  2. **이번 판에 없을 수 있다.** OBS-13 이 안 뽑혔으면 몸이 아예 없다
  *     (`render/actors.ts obsOff`). 몸이 없는 대상에 프롬프트가 뜨면 허공에 말을 건다.
  *
- * 순찰 구간은 x 63.5~70.5 로 **개찰구 안쪽**이다 — 여기까지 왔다면 문은 이미 지난 뒤라
+ * 순찰 루프는 x 63.4~70.8 · y 7.6~31.1 로 **개찰구 안쪽**이다 — 여기까지 왔다면 문은 이미 지난 뒤라
  * 이 대화에는 문을 여는 선택지가 없다(`staffBranches`). 길과 시간만 준다.
  */
 export const patrolStaffTarget = (s: GameState): Interactable | null => {

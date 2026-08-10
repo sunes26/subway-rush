@@ -6,7 +6,9 @@
  *   같은 수법이다(`tests/unit/interp.test.ts`). 관측 못 하는 환경의 통과는 거짓 안심이다.
  */
 
+import type { BgmTrack } from './bgm'
 import type { StepKind } from './sfx'
+import { endingOf } from '../data/endings'
 import { TIMER_STAGES } from '../data/tuning'
 import { FLOOR } from '../data/world'
 import type { GameState } from '../state/types'
@@ -66,6 +68,28 @@ export const announceOn = (state: GameState['train']['state'], prev: GameState['
 export const stepCutoffOf = (s: GameState): number => {
   if (s.player.rampId) return 3200                    // 계단통 — 좁고 울린다
   return Math.abs(s.player.pos.z - FLOOR.L0) < 1.5 ? 6800 : 2400
+}
+
+/**
+ * 지금 흘러야 할 BGM — **`phase` 하나로 정한다**(`audio/bgm.ts`).
+ *
+ *   title            타이틀 안내판
+ *   intro            버스에서 내리기까지의 애니메이션
+ *   playing·boarding 본편 곡. **작게 깐다**(`audio/bgm.ts GAIN`) — 심박이 그 위에 있어야 한다
+ *   ended            엔딩 컷이 시작되는 순간부터. 결과판까지 이어진다
+ *
+ * 엔딩 곡은 **톤으로** 가른다. `hidden`(지하철 마스터·동전 부자·오늘도 평화로운 역·해방)은
+ * 넷 다 성취 계열이라 해피 쪽에 붙인다 — 실패로 끝난 판에만 배드가 흐른다.
+ * 어느 엔딩인가는 `endingOf` 가 정한다. 결과 화면(`ui/screens.ts`)과 **같은 함수**다:
+ * 규칙이 두 벌이면 결과판은 배드엔딩인데 음악은 해피엔딩인 판이 언젠가 나온다.
+ */
+export const bgmTrackOf = (s: GameState): BgmTrack | null => {
+  if (s.phase === 'title') return 'title'
+  if (s.phase === 'intro') return 'intro'
+  // 탑승 중(`boarding`)도 아직 본편이다 — 문이 닫히기 전에 곡을 갈면 그 자체가 신호가 된다
+  if (s.phase === 'playing' || s.phase === 'boarding') return 'play'
+  if (s.phase !== 'ended') return null
+  return endingOf(s).tone === 'fail' ? 'bad' : 'happy'
 }
 
 /** 존별 앰비언스 대역(Hz) — 지상은 밝고 지하는 먹먹하다 */

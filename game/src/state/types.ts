@@ -127,6 +127,13 @@ export type GatesState = Readonly<{
   cooldownMs: number
   /** 운임구역 진입 완료 — 비가역 */
   passed: boolean
+  /**
+   * 개찰구에서 요금을 **냈다**. `passed` 와 다른 사실이다 — 태그는 성공했는데
+   * 통과 시간(`GATE.passMs`) 안에 못 건너면 문이 다시 닫히고 `passed` 는 false 로 남는다.
+   * 그 상태를 "요금 미납"으로 읽으면 낸 사람이 비상게이트에서 부정승차로 몰린다
+   * (`systems/emergency.ts`). 납부는 잔액으로 역산할 수 없다 — 낸 직후 잔액은 0이다.
+   */
+  farePaid: boolean
   /** 마지막 거부 사유 (HUD 표시용) */
   lastReject: 'broken' | 'low' | null
   attempts: number

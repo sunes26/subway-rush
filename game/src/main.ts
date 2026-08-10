@@ -48,8 +48,9 @@ import { createSettings } from './ui/settings'
 import { RES_SCALES, type Settings } from './core/settings'
 import { createAmbience } from './audio/ambience'
 import { createFootsteps } from './audio/footsteps'
+import { createBgm, type BgmTrack } from './audio/bgm'
 import {
-  ambienceHzOf, announceOn, heartIntensity, heartbeatIntervalMs, heartbeatOn,
+  ambienceHzOf, announceOn, bgmTrackOf, heartIntensity, heartbeatIntervalMs, heartbeatOn,
   stepCutoffOf, stepIntervalMs, stepKindOf,
 } from './audio/cues'
 import { recordEnding } from './core/save'
@@ -97,6 +98,15 @@ const applyView = (): void => {
  * 그래서 헤드리스 테스트가 오디오 없이 그대로 돌고, 오디오가 실패해도 게임이 돈다.
  */
 const sfx = createSfx()
+/**
+ * BGM 4종 — 타이틀 · 인트로 · 해피엔딩 · 배드엔딩(`audio/bgm.ts` 헤더 참고).
+ * 어느 곡이 흐를지는 `bgmTrackOf` 가 `phase` 하나로 정하고 프레임 루프가 먹인다.
+ * WebAudio 그래프 밖이라 볼륨·음소거는 `applySettings` 와 `handleMeta` 가 직접 넘겨 준다.
+ *
+ * ⚠ `applySettings` 보다 **먼저** 만들어져야 한다 — 부팅 시 설정 초기 적용이
+ *   이걸 바로 부른다.
+ */
+const bgm = createBgm(BASE)
 
 const hud = createHud(uiRoot)
 /** 상호작용 오버레이 — 프롬프트·진행링·사유·대화·QTE. HUD와 분리한 이유는 ui/dialog.ts 헤더 참고 */
@@ -126,6 +136,8 @@ const outro = createOutro(uiRoot)
  */
 const applySettings = (v: Settings, boot = false): void => {
   sfx.setVolumes({ master: v.master, bgm: v.bgm, sfx: v.sfx })
+  // 타이틀 BGM 은 마스터 버스 밖에 있다 — 두 슬라이더를 곱해 직접 먹인다
+  bgm.setVolume(v.master * v.bgm)
   input.setLook({ sens: v.sens, invertY: v.invertY })
   stage.setResScale(RES_SCALES[v.res])
   stage.setExposure(v.brightness)
@@ -537,7 +549,7 @@ const handleMeta = (f: InputFrame): void => {
     ambience.start(sfx.context(), sfx.bus())
     void footsteps.load(sfx.context(), sfx.bus(), BASE)
   }
-  if (f.pressMute) { const m = sfx.toggleMute(); ambience.setMuted(m) }
+  if (f.pressMute) { const m = sfx.toggleMute(); ambience.setMuted(m); bgm.setMuted(m) }
   if (f.pressSlot > 0 || f.pressCollection) sfx.click()
   if (f.pressDebug) debug.toggle()
   if (f.pressToggleView) { cameraRig.toggleMode(); applyView() }
@@ -1051,6 +1063,11 @@ const frame = (now: number): void => {
    * 대화 상대가 늘어도 여기를 다시 고칠 일이 없다.
    */
   input.setPointerLockAllowed(state.act.dialogId === null)
+  /**
+   * BGM — `phase` 가 곧 스위치다(`bgmTrackOf`). 시작·재시작·타이틀 복귀에
+   * 각각 손댈 곳이 없고, 곡이 바뀌는 자리는 페이드로 겹친다.
+   */
+  bgm.setTrack(bgmTrackOf(state))
   screens.sync(state)
   recordIfEnded(state)
   debug.sync(state)
@@ -1243,6 +1260,8 @@ declare global {
       sfxMuted(): boolean
       /** 발소리 **샘플**이 로드·디코드됐는가 (E2E) */
       stepsReady(): boolean
+      /** 지금 흐르고 있는 BGM (E2E — 자동재생이 막혔으면 null) */
+      bgmPlaying(): BgmTrack | null
       /** 1인칭 시선을 강제한다 (E2E용 — 포인터 락 없이 시점 검증) */
       look(yaw: number, pitch?: number): void
       /**
@@ -1437,6 +1456,7 @@ window.__game = {
   sfxPlays: () => sfx.plays(),
   sfxMuted: () => sfx.muted(),
   stepsReady: () => footsteps.ready(),
+  bgmPlaying: () => bgm.playing(),
 }
 
 export { EMPTY_INPUT }

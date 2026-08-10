@@ -553,7 +553,7 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
    * `OBS-07` 온/오프를 같이 본다 — 둘은 한 세트라 아주머니가 없는 판엔 학생도 없다.
    */
   const syncPreacher = (
-    s: GameState, rig: NpcRig, at: { x: number; y: number }, prev: { x: number; y: number },
+    s: GameState, rig: NpcRig, at: { x: number; y: number; facing: number },
     stand: Stand | null, dtSec: number,
   ): void => {
     if (obsOff(s, rig, 'OBS-07')) return
@@ -571,8 +571,9 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
     const p = s.player.pos
     const d = Math.hypot(p.x - at.x, p.y - at.y)
     const spotted = d <= OBSTACLE.preachRangeM * 2.2
-    const walkFacing = Math.atan2(at.y - prev.y, at.x - prev.x)
-    rig.place(at.x, at.y, FLOOR.L0, walkFacing)
+    // 전방축은 **판정과 같은 식**을 쓴다(`systems/obstacles.ts auntieAt`) — 차분으로 다시 구하면
+    // t=0 프레임에 0으로 떨어져 "보고 있는데 다른 데를 보는" 그림이 나온다
+    rig.place(at.x, at.y, FLOOR.L0, at.facing)
 
     const visible = nearObs(s, at.x, at.y, FLOOR.L0)
     rig.setVisible(visible)
@@ -589,12 +590,12 @@ export const loadActors = async (baseUrl: string): Promise<Actors> => {
 
   const syncAjumma = (s: GameState, dtSec: number): void => {
     const stand = preachStand(s)
-    syncPreacher(s, aj, auntieAt(s.elapsedMs), auntieAt(Math.max(0, s.elapsedMs - 120)), stand?.aj ?? null, dtSec)
+    syncPreacher(s, aj, auntieAt(s.elapsedMs), stand?.aj ?? null, dtSec)
   }
 
   const syncStudent = (s: GameState, dtSec: number): void => {
     const stand = preachStand(s)
-    syncPreacher(s, st, studentAt(s.elapsedMs), studentAt(Math.max(0, s.elapsedMs - 120)), stand?.st ?? null, dtSec)
+    syncPreacher(s, st, studentAt(s.elapsedMs), stand?.st ?? null, dtSec)
   }
 
   /** 좀비폰족 — 위치가 시간의 순수 함수라 렌더도 **같은 식**을 쓴다 */

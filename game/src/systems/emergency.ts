@@ -52,6 +52,19 @@ export const emergencySystem = (s: GameState): Action[] => {
   if (s.player.pos.x < EMERGENCY.passX) return []
 
   /**
+   * **이미 개찰구에서 냈으면 끝이다.** 태그는 성공했는데 통과 시간 안에 못 건너
+   * 문이 다시 닫힌 경우가 여기 걸린다 — 돈은 나갔고 `passed` 는 false 다.
+   * 그 사람에게 요금을 또 물리면 이중 과금이고, 잔액이 모자라면 부정승차로 몰린다.
+   * 판정 근거는 잔액이 아니라 **납부 사실**(`gates.farePaid`)이어야 한다.
+   */
+  if (s.gates.farePaid) {
+    return [
+      { t: 'GATE_PASSED' },
+      { t: 'FX', kind: 'toast', text: '비상게이트 통과 — 요금은 이미 냈다', lifeMs: 2000, value: 0 },
+    ]
+  }
+
+  /**
    * 요금을 안 냈으면 **부정승차다.**
    *
    * 지갑 반납·인터폰으로 열었어도 요금은 별개다 — 문이 열린 것과 요금을 낸 것은

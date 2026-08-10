@@ -72,6 +72,13 @@ export const gatesSystem = (s: GameState): Action[] => {
         out.push({ t: 'GATE_REJECT', gateId: id, reason: 'broken' })
         out.push({ t: 'TIME_PENALTY', ms: GATE.brokenPenaltyMs, label: '고장' })
         out.push({ t: 'FX', kind: 'shake', text: '', lifeMs: 220, value: 1 })
+      } else if (s.gates.farePaid) {
+        /**
+         * 이미 낸 사람의 재태그. 통과 시간(`GATE.passMs`) 안에 못 건너면 문이 다시
+         * 닫히는데, 그때 요금을 또 받으면 이중 과금이고 잔액 0이면 **낸 사람이
+         * 잔액부족으로 막힌다**. 판정 근거는 잔액이 아니라 납부 사실이다.
+         */
+        out.push({ t: 'GATE_ACCEPT', gateId: id })
       } else if (s.cardBalance < FARE) {
         out.push({ t: 'GATE_REJECT', gateId: id, reason: 'low' })
         out.push({ t: 'TIME_PENALTY', ms: GATE.lowBalancePenaltyMs, label: '잔액부족' })
