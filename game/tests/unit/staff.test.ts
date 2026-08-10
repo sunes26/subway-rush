@@ -4,55 +4,82 @@
 
 import { describe, expect, it } from 'vitest'
 import { byId, INTERCOM_ID, PATROL_STAFF_ID } from '../../src/data/interactables'
-import { EMERGENCY, STAFF } from '../../src/data/tuning'
-import { EMERGENCY_GATE, FLOOR } from '../../src/data/world'
+import { EMERGENCY, FARE, STAFF } from '../../src/data/tuning'
+import { EMERGENCY_GATE, FLOOR, GATES, GATE_TRIGGER_X } from '../../src/data/world'
 import type { FlagId, GameState } from '../../src/state/types'
 import { emergencyDoor } from '../../src/systems/emergency'
 import { greetingFor, patrolStaffTarget } from '../../src/systems/interact'
-import { inVision, staffAt } from '../../src/systems/staff'
+import { inVision, patrolPeriodMs, staffAt } from '../../src/systems/staff'
 import { holdFor, put, start, tap, wait, yawTo } from './_pilot'
 
 const armed = (patch: Partial<GameState> = {}): GameState =>
   start(7, { obstacles: ['OBS-13'], ...patch })
 
-/** 역무원 바로 앞(시야 정면 2m)에 세운다 */
-const inFront = (s: GameState): GameState => {
+/** 역무원 진행 방향 0.9m 앞에 세운다 — 적발 거리(2m) 안. 유예가 0이라 한 프레임이면 끝난다 */
+const inFront = (s: GameState, m = 0.9): GameState => {
   const pose = staffAt(s.elapsedMs)
-  return put(s, pose.x + 2 * Math.cos(pose.facing), pose.y + 2 * Math.sin(pose.facing), FLOOR.B1)
+  return put(s, pose.x + m * Math.cos(pose.facing), pose.y + m * Math.sin(pose.facing), FLOOR.B1)
 }
 
+const XS = STAFF.path.map((p) => p[0])
+const YS = STAFF.path.map((p) => p[1])
+
 describe('S17-1 순찰', () => {
-  it('구간을 왕복한다', () => {
-    const xs = Array.from({ length: 40 }, (_, i) => staffAt(i * (STAFF.periodMs / 40)).x)
-    expect(Math.min(...xs)).toBeGreaterThanOrEqual(STAFF.xMin - 0.01)
-    expect(Math.max(...xs)).toBeLessThanOrEqual(STAFF.xMax + 0.01)
-    expect(Math.max(...xs) - Math.min(...xs), '실제로 움직인다').toBeGreaterThan(6)
+  it('사각 루프를 벗어나지 않는다', () => {
+    const poses = Array.from({ length: 80 }, (_, i) => staffAt(i * (patrolPeriodMs / 80)))
+    for (const p of poses) {
+      expect(p.x).toBeGreaterThanOrEqual(Math.min(...XS) - 0.01)
+      expect(p.x).toBeLessThanOrEqual(Math.max(...XS) + 0.01)
+      expect(p.y).toBeGreaterThanOrEqual(Math.min(...YS) - 0.01)
+      expect(p.y).toBeLessThanOrEqual(Math.max(...YS) + 0.01)
+    }
+    // 왕복이 아니라 루프다 — 두 축 모두 실제로 움직인다
+    const xs = poses.map((p) => p.x)
+    const ys = poses.map((p) => p.y)
+    expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(6)
+    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(20)
   })
 
-  it('시야가 이동 방향을 따라 뒤집힌다', () => {
-    expect(staffAt(STAFF.periodMs * 0.25).facing).toBe(0)
-    expect(staffAt(STAFF.periodMs * 0.75).facing).toBeCloseTo(Math.PI, 5)
+  it('속도가 일정하다 — 같은 시간이면 같은 거리', () => {
+    const step = 200
+    const gaps = Array.from({ length: 40 }, (_, i) => {
+      const a = staffAt(i * patrolPeriodMs / 40)
+      const b = staffAt(i * patrolPeriodMs / 40 + step)
+      return Math.hypot(b.x - a.x, b.y - a.y)
+    })
+    // 꼭짓점을 낀 구간은 직선거리가 짧아지므로 상한만 본다(2.6 m/s × 0.2s = 0.52m)
+    expect(Math.max(...gaps)).toBeLessThanOrEqual(STAFF.speedMps * (step / 1000) + 1e-6)
+  })
+
+  it('전방축이 이동 방향을 따라간다', () => {
+    const p = staffAt(patrolPeriodMs * 0.02)                 // 첫 변: −y 진행
+    expect(p.facing).toBeCloseTo(-Math.PI / 2, 3)
+    const q = staffAt(patrolPeriodMs * 0.6)                  // 반대편 변: +y 진행
+    expect(q.facing).toBeCloseTo(Math.PI / 2, 3)
   })
 
   it('주기가 반복된다 — 시간의 순수 함수', () => {
-    expect(staffAt(1234).x).toBeCloseTo(staffAt(1234 + STAFF.periodMs).x, 6)
+    expect(staffAt(1234).x).toBeCloseTo(staffAt(1234 + patrolPeriodMs).x, 6)
+    expect(staffAt(1234).y).toBeCloseTo(staffAt(1234 + patrolPeriodMs).y, 6)
   })
 })
 
-describe('S17-2 시야콘 · 적발', () => {
-  it('정면 2m 는 시야 안, 뒤 2m 는 밖', () => {
+describe('S17-2 적발 판정 — 정면 + 2m · 즉발', () => {
+  it('정면 0.6m 는 걸리고, 뒤 0.6m 는 안 걸린다', () => {
     const s = armed()
     const pose = staffAt(s.elapsedMs)
-    const front = put(s, pose.x + 2 * Math.cos(pose.facing), pose.y, FLOOR.B1)
-    const back = put(s, pose.x - 2 * Math.cos(pose.facing), pose.y, FLOOR.B1)
+    const d = 0.6
+    const front = put(s, pose.x + d * Math.cos(pose.facing), pose.y + d * Math.sin(pose.facing), FLOOR.B1)
+    const back = put(s, pose.x - d * Math.cos(pose.facing), pose.y - d * Math.sin(pose.facing), FLOOR.B1)
     expect(inVision(front)).toBe(true)
     expect(inVision(back)).toBe(false)
   })
 
-  it('사거리 밖이면 정면이어도 안 보인다', () => {
+  it('적발 거리를 넘으면 정면이어도 안 걸린다', () => {
     const s = armed()
     const pose = staffAt(s.elapsedMs)
-    const far = put(s, pose.x + STAFF.visionM + 2, pose.y, FLOOR.B1)
+    const d = STAFF.visionM + 0.5
+    const far = put(s, pose.x + d * Math.cos(pose.facing), pose.y + d * Math.sin(pose.facing), FLOOR.B1)
     expect(inVision(far)).toBe(false)
   })
 
@@ -62,25 +89,20 @@ describe('S17-2 시야콘 · 적발', () => {
     expect(s.staffAlertMs).toBe(0)
   })
 
-  it('부정통과 + 시야 → 0.8초 뒤 E-09', () => {
-    const s = holdFor(inFront(armed({ flags: ['FARE_EVADED'] })), {}, 120)
+  it('부정통과 + 정면 → 첫 프레임에 E-09. 유예가 없다', () => {
+    const s = holdFor(inFront(armed({ flags: ['FARE_EVADED'] })), {}, 1)
     expect(s.endingId).toBe('E-09')
+    expect(s.flags).toContain('BUSTED')
   })
 
-  it('0.8초 전에는 아직 안 걸린다 — 도망칠 유예가 있다', () => {
-    const early = holdFor(inFront(armed({ flags: ['FARE_EVADED'] })), {}, 20)   // 0.33s
-    expect(early.endingId).toBeNull()
-    expect(early.staffAlertMs).toBeGreaterThan(0)
-  })
-
-  it('시야에서 벗어나면 경보가 식는다', () => {
-    const s0 = inFront(armed({ flags: ['FARE_EVADED'] }))
-    const warmed = holdFor(s0, {}, 20)
-    expect(warmed.staffAlertMs).toBeGreaterThan(0)
-    const pose = staffAt(warmed.elapsedMs)
-    const fled = holdFor(put(warmed, pose.x, pose.y + STAFF.visionM + 4, FLOOR.B1), {}, 3)
-    expect(fled.staffAlertMs).toBe(0)
-    expect(fled.endingId).toBeNull()
+  it('판정 밖이면 몇 초를 서 있어도 아무 일이 없다 — 즉발이라 더 그렇다', () => {
+    const s0 = armed({ flags: ['FARE_EVADED'] })
+    const pose = staffAt(s0.elapsedMs)
+    // 순찰선에서 옆으로 크게 비켜 선다(루프 안쪽/바깥 어느 변에도 안 닿는 거리)
+    const aside = put(s0, pose.x + 6, pose.y - 6, FLOOR.B1)
+    const s = holdFor(aside, {}, 120)
+    expect(s.endingId).toBeNull()
+    expect(s.staffAlertMs).toBe(0)
   })
 
   it('OBS-13 이 비활성인 시드에서는 순찰이 아무 판정도 안 한다', () => {
@@ -190,6 +212,37 @@ describe('S17-3~5 비상게이트 3경로', () => {
     expect(s.cardBalance).toBe(2200 - EMERGENCY.fare)
   })
 
+  /**
+   * 회귀 — 개찰구에서 요금을 냈지만 통과 시간 안에 못 건넌 사람.
+   * 돈은 나갔고 `passed` 는 false 라, 예전엔 잔액만 보고 부정승차로 몰았다(→ E-09).
+   */
+  it('개찰구에서 이미 냈으면 비상게이트로 나가도 부정승차가 아니다', () => {
+    const s0 = start(7, {
+      cardBalance: FARE,
+      flags: ['EMERGENCY_OPEN'] as FlagId[],
+      obstacles: ['OBS-13'],
+    })
+    const g = GATES.find((x) => x.id === s0.gates.workingIds[0])!
+    const tagged = wait(put(s0, (GATE_TRIGGER_X.min + GATE_TRIGGER_X.max) / 2, g.y, FLOOR.B1), 500)
+    expect(tagged.gates.farePaid, '태그 성공 = 납부').toBe(true)
+    expect(tagged.cardBalance).toBe(0)
+
+    const lapsed = wait(tagged, 2600)                    // 통과 시간을 넘겨 문이 다시 닫힌다
+    expect(lapsed.gates.passed).toBe(false)
+
+    const out = holdFor(put(lapsed, EMERGENCY_GATE.x + 1.2, EMERGENCY_GATE.y, FLOOR.B1), {}, 3)
+    expect(out.gates.passed).toBe(true)
+    expect(out.flags).not.toContain('FARE_EVADED')
+  })
+
+  it('이미 낸 사람에게 요금을 또 물지 않는다', () => {
+    const s0 = start(7, { cardBalance: FARE * 2, flags: ['EMERGENCY_OPEN'] as FlagId[] })
+    const g = GATES.find((x) => x.id === s0.gates.workingIds[0])!
+    const tagged = wait(put(s0, (GATE_TRIGGER_X.min + GATE_TRIGGER_X.max) / 2, g.y, FLOOR.B1), 500)
+    const out = holdFor(put(wait(tagged, 2600), EMERGENCY_GATE.x + 1.2, EMERGENCY_GATE.y, FLOOR.B1), {}, 3)
+    expect(out.cardBalance, '차감은 개찰구 한 번뿐').toBe(FARE)
+  })
+
   it('문이 닫혀 있으면 통과되지 않는다', () => {
     const s0 = start(7, { cardBalance: 0 })
     const s = holdFor(put(s0, EMERGENCY_GATE.x - 1.2, EMERGENCY_GATE.y, FLOOR.B1), { moveY: 1 }, 60)
@@ -206,8 +259,9 @@ describe('S17-7 순찰 역무원 말 걸기', () => {
   it('자리가 순찰을 따라 움직인다 — 정적 테이블이면 못 하는 일', () => {
     const s = armed()
     const now = patrolStaffTarget(s)!
-    const later = patrolStaffTarget({ ...s, elapsedMs: s.elapsedMs + STAFF.periodMs / 4 })!
-    expect(Math.abs(later.x - now.x)).toBeGreaterThan(1)
+    const later = patrolStaffTarget({ ...s, elapsedMs: s.elapsedMs + patrolPeriodMs / 4 })!
+    // 루프라 x 만 보면 안 된다 — 1/4 주기는 통째로 y 변 위일 수 있다
+    expect(Math.hypot(later.x - now.x, later.y - now.y)).toBeGreaterThan(1)
   })
 
   it('E 로 대화창이 열리고, 고르면 대답이 나온다', () => {

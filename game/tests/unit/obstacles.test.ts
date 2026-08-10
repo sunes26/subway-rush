@@ -29,15 +29,38 @@ const mid = (r: readonly [number, number, number, number]) =>
 const stand = (s: GameState, x: number, y: number, z: number, steps = 4): GameState =>
   holdFor(put(s, x, y, z), {}, steps)
 
+/**
+ * 상대가 **바라보는 쪽** m미터 앞 좌표. OBS-07 은 이제 반경만으로 안 걸린다 —
+ * 마주봄 + 1.5m 가 조건이라(디렉터 지시 2026-08-10) 뒤에 서면 아무 일도 안 일어난다.
+ */
+const inFrontOf = (p: { x: number; y: number; facing: number }, m = 1.0) =>
+  ({ x: p.x + m * Math.cos(p.facing), y: p.y + m * Math.sin(p.facing) })
+
+const AUNTIE_FRONT = inFrontOf(AUNTIE_AT)
+const STUDENT_FRONT = inFrontOf(STUDENT_AT)
+
 describe('S16-1 각 방해요소가 발동한다', () => {
-  it('OBS-07 아주머니 — 반경 안이면 강제 대화가 시작된다', () => {
-    const s = stand(armed(), AUNTIE_AT.x, AUNTIE_AT.y - 1.0, FLOOR.L0)
+  it('OBS-07 아주머니 — 마주본 3m 안이면 강제 대화가 시작된다', () => {
+    const s = stand(armed(), AUNTIE_FRONT.x, AUNTIE_FRONT.y, FLOOR.L0)
     expect(s.preach.active).toBe(true)
   })
 
-  it('OBS-07 학생 — 아주머니와 독립된 반경이라도 같은 대화가 시작된다', () => {
-    const s = stand(armed(), STUDENT_AT.x, STUDENT_AT.y - 1.0, FLOOR.L0)
+  it('OBS-07 학생 — 아주머니와 독립된 판정이라도 같은 대화가 시작된다', () => {
+    const s = stand(armed(), STUDENT_FRONT.x, STUDENT_FRONT.y, FLOOR.L0)
     expect(s.preach.active).toBe(true)
+  })
+
+  it('OBS-07 — 등 뒤 1m 는 안 걸린다. 마주봐야 붙잡는다', () => {
+    const back = inFrontOf(AUNTIE_AT, -1.0)
+    const s = stand(armed(), back.x, back.y, FLOOR.L0, 30)
+    expect(s.preach.active).toBe(false)
+  })
+
+  it('OBS-07 — 정면이어도 판정 거리를 넘으면 안 걸린다', () => {
+    // 순찰이 2 m/s 로 다가오므로 오래 서 있으면 결국 잡힌다 — 여기서 보는 건 '그 순간' 판정이다
+    const far = inFrontOf(AUNTIE_AT, 4.5)
+    const s = stand(armed(), far.x, far.y, FLOOR.L0)
+    expect(s.preach.active).toBe(false)
   })
 
   it('OBS-10 공사 — 막다른 주머니에 들어가면 −20s', () => {
@@ -82,18 +105,18 @@ describe('S16-2 짝 아이템이 무효화한다', () => {
     ({ flags: [flag], inventory: [...inv, null, null, null].slice(0, 3) })
 
   it('이어폰 착용 — 아주머니도 무효', () => {
-    const s = stand(armed(wearing('EARBUDS_ON', ['I-05'])), AUNTIE_AT.x, AUNTIE_AT.y - 1, FLOOR.L0)
+    const s = stand(armed(wearing('EARBUDS_ON', ['I-05'])), AUNTIE_FRONT.x, AUNTIE_FRONT.y, FLOOR.L0)
     expect(s.timeLeftMs).toBeGreaterThan(180_000 - 1000)
     expect(s.preach.active).toBe(false)
   })
 
   it('이어폰 착용 — 학생도 무효', () => {
-    const s = stand(armed(wearing('EARBUDS_ON', ['I-05'])), STUDENT_AT.x, STUDENT_AT.y - 1, FLOOR.L0)
+    const s = stand(armed(wearing('EARBUDS_ON', ['I-05'])), STUDENT_FRONT.x, STUDENT_FRONT.y, FLOOR.L0)
     expect(s.preach.active).toBe(false)
   })
 
   it('이어폰을 **들고만** 있으면 안 막힌다 — 착용해야 한다', () => {
-    const s = stand(armed({ inventory: ['I-05', null, null] }), AUNTIE_AT.x, AUNTIE_AT.y - 1, FLOOR.L0)
+    const s = stand(armed({ inventory: ['I-05', null, null] }), AUNTIE_FRONT.x, AUNTIE_FRONT.y, FLOOR.L0)
     expect(s.preach.active).toBe(true)
   })
 
@@ -155,7 +178,7 @@ describe('S16-4 stall 중첩', () => {
 
 describe('S16-5 쿨다운', () => {
   it('연속 발동하지 않는다 — 한 번 붙잡히면 한동안 조용하다', () => {
-    const s = stand(armed(), AUNTIE_AT.x, AUNTIE_AT.y - 1, FLOOR.L0, 4)
+    const s = stand(armed(), AUNTIE_FRONT.x, AUNTIE_FRONT.y, FLOOR.L0, 4)
     const t1 = s.timeLeftMs
     const s2 = holdFor(s, {}, 120)                       // 2초 더 서 있는다
     const spent = t1 - s2.timeLeftMs

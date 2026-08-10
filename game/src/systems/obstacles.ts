@@ -18,6 +18,7 @@ import { OBSTACLES, type ObsId } from '../data/obstacles'
 import { OBSTACLE } from '../data/tuning'
 import { FLOOR } from '../data/world'
 import type { Action, GameState, ItemId } from '../state/types'
+import { facesPoint, type Facing2D } from './vision'
 import { ZOMBIE_TALK_LINES } from './zombieTalk'
 
 export type ObsCtx = Readonly<{ dtMs: number; prev: GameState }>
@@ -73,11 +74,22 @@ const preachPatrolY = (elapsedMs: number): number => {
 const studentPatrolY = (elapsedMs: number): number =>
   PREACH_Y_MIN + PREACH_Y_MAX - preachPatrolY(elapsedMs)
 
-export const auntieAt = (elapsedMs: number): { x: number; y: number } =>
-  ({ x: AUNTIE_X, y: preachPatrolY(elapsedMs) })
+/**
+ * 전방축(rad) — **이동 방향이다.** 렌더(`render/actors.ts syncPreacher`)는 120ms 차분으로
+ * 같은 값을 구한다. 두 값이 어긋나면 "보고 있는데 안 걸린다"가 되므로 정의를 맞춰 둔다.
+ * 삼각파 전반(+y)에는 +π/2, 후반(−y)에는 −π/2. 학생은 반대 위상이라 부호가 뒤집힌다.
+ */
+const preachFacing = (elapsedMs: number): number => {
+  const period = OBSTACLE.preachPeriodMs
+  const forward = (elapsedMs % period) / period <= 0.5
+  return forward ? Math.PI / 2 : -Math.PI / 2
+}
 
-export const studentAt = (elapsedMs: number): { x: number; y: number } =>
-  ({ x: STUDENT_X, y: studentPatrolY(elapsedMs) })
+export const auntieAt = (elapsedMs: number): Facing2D =>
+  ({ x: AUNTIE_X, y: preachPatrolY(elapsedMs), facing: preachFacing(elapsedMs) })
+
+export const studentAt = (elapsedMs: number): Facing2D =>
+  ({ x: STUDENT_X, y: studentPatrolY(elapsedMs), facing: -preachFacing(elapsedMs) })
 
 /**
  * OBS-10 공사중 막다른 길 — `OBJ-28-N`(y 6.6~7.0, x 44~56)과
@@ -147,10 +159,14 @@ const RULES: readonly Rule[] = [
       // 다시 시작될 수 있다
       if (s.preach.active) return false
       if (!onFloor(s.player.pos.z, FLOOR.L0)) return false
-      const auntie = auntieAt(s.elapsedMs)
-      const student = studentAt(s.elapsedMs)
-      return near(s, auntie.x, auntie.y, OBSTACLE.preachRangeM) ||
-        near(s, student.x, student.y, OBSTACLE.preachRangeM)
+      /**
+       * 반경만 보던 판정을 **역무원(OBS-13)과 같은 원리**로 바꿨다(디렉터 지시 2026-08-10):
+       * 상대가 이쪽을 마주보고 있을 것 + 3m 이내. 유예는 없다 — 조건이 맞는 프레임에 바로 붙잡힌다.
+       * 등 뒤로 지나가면 안 걸린다. 그게 이제 이 방해를 푸는 방법이다(이어폰과 별개로).
+       */
+      const sees = (pose: Facing2D): boolean =>
+        facesPoint(pose, s.player.pos.x, s.player.pos.y, OBSTACLE.preachRangeM, OBSTACLE.preachHalfAngleRad)
+      return sees(auntieAt(s.elapsedMs)) || sees(studentAt(s.elapsedMs))
     },
     // 시간을 깎지 않는다 — 대화가 끝날 때까지 그 자리에 붙잡힌다 (`systems/movement.ts` isTalkLocked)
     effect: () => [{ t: 'PREACH_START' }],
