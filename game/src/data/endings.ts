@@ -309,5 +309,18 @@ export const resolveEnding = (s: GameState): EndingDef => {
   throw new Error('no ending matched — fallback missing')
 }
 
+/**
+ * 이 판의 엔딩 — **`state.endingId` 가 먼저다.**
+ *
+ * 매번 `resolveEnding(s)` 로 다시 계산하면 E-15(오답 선물)·E-16(단소 2대째)이
+ * 절대 안 나온다. 그 둘은 `when` 이 항상 거짓인 강제 엔딩이라, 시스템이 발행해
+ * 놓아도 재계산은 못 고른다 — 실측: E-16 으로 끝낸 판이 화면에는 E-06 다음 열차로 떴다.
+ *
+ * ★ 화면(`ui/screens.ts`)과 BGM(`main.ts`)이 **같은 함수**를 쓴다. 규칙이 두 벌이면
+ *   결과판은 배드엔딩인데 음악은 해피엔딩인 판이 언젠가 나온다.
+ */
+export const endingOf = (s: GameState): EndingDef =>
+  (s.endingId ? ENDINGS.find((e) => e.id === s.endingId) : undefined) ?? resolveEnding(s)
+
 export const pickHint = (seed: number): string =>
   FAIL_HINTS[Math.abs(seed) % FAIL_HINTS.length] as string

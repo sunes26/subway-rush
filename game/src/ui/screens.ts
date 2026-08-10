@@ -18,7 +18,7 @@
 
 import { formatClock } from '../core/math'
 import { loadSave } from '../core/save'
-import { ENDINGS, resolveEnding, type EndingDef } from '../data/endings'
+import { ENDINGS, endingOf, type EndingDef } from '../data/endings'
 import { QUEUE_MARKERS } from '../data/world'
 import type { GameState } from '../state/types'
 import { badgeOf, TONE_MARK, WHAT_HAPPENED } from './ending-copy'
@@ -141,15 +141,11 @@ const factsFor = (e: EndingDef, s: GameState): readonly Fact[] => {
 }
 
 /**
- * 화면에 띄울 엔딩 — **`state.endingId` 가 먼저다.**
- *
- * 매번 `resolveEnding(s)` 로 다시 계산하면 E-15(오답 선물)·E-16(단소 2대째)이
- * 절대 안 나온다. 그 둘은 `when` 이 항상 거짓인 강제 엔딩이라(`data/endings.ts`),
- * 시스템이 발행해 놓아도 재계산은 못 고른다 — 실측: E-16 으로 끝낸 판이 화면에는
- * E-06 다음 열차로 떴다. 발행된 id 가 있으면 그것을 쓴다.
+ * 화면에 띄울 엔딩. 규칙(발행된 id 가 재계산을 이긴다)은 `data/endings.ts endingOf` 에
+ * 한 벌만 둔다 — BGM(`main.ts`)이 같은 함수로 곡을 고르므로, 규칙이 갈라지면
+ * 결과판과 음악이 서로 다른 엔딩을 말하게 된다.
  */
-const shown = (s: GameState): EndingDef =>
-  (s.endingId ? ENDINGS.find((e) => e.id === s.endingId) : undefined) ?? resolveEnding(s)
+const shown = (s: GameState): EndingDef => endingOf(s)
 
 export const createScreens = (mount: HTMLElement, actions: ScreenActions): Screens => {
   const style = document.createElement('style')

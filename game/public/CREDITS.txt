@@ -44,6 +44,18 @@ Lucide (backpack, circle-dollar-sign, triangle)
 ----
 
 발소리(audio/footsteps.mp3) — elevenlabs.io 에서 생성.
+
+BGM 5종 — 전부 128kbps(본편 곡만 112kbps)로 재인코딩해 반입했습니다.
+
+  타이틀(audio/title.mp3) — "Steel Reckoning" by Aberrant Realities.
+    원본 `aberrantrealities-steel-reckoning-573458.mp3` · 256kbps · 178s.
+  인트로(audio/intro.mp3) — 원본 `첫 애니메이션구간.mp3` · 256kbps · 9.8s.
+  엔딩·해피(audio/ending-happy.mp3) — 원본 `HAPPYENDING.mp3` · 256kbps · 96s.
+  엔딩·배드(audio/ending-bad.mp3) — 원본 `BAD_ENDING.mp3` · 256kbps · 116s.
+  본편(audio/play.mp3) — "The Great Shoulder Bounce" by 별고래 (Free Music) · 231s.
+
+  ※ 다섯 곡 모두 **출처 URL 과 라이선스 확인 필요** — 배포 전에 이 줄들을 채울 것.
+
 그 밖의 효과음과 앰비언스는 WebAudio 로 실행 중에 합성하며, 오디오 파일이 없습니다.
 
 
