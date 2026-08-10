@@ -8,10 +8,12 @@
   공유하려 하면 두 용도 다 어중간해진다.
 
 대상
-  `items.ts` 의 슬롯 아이템 중 `items.blend` 에 실제 메시가 있는 10종만.
-  커피(I-07)·신문지(I-08)·캐리어(I-10)·지갑(I-11)·EMP(I-14) 는
-  이 파일에 모델이 없다(맵 잡동사니뿐) — 아이콘 없이 이모지 글리프로 남는다.
-  이어폰(I-05)은 `items_build.py ITM05_Earbuds` 로 메시가 생겨 여기 합류했다.
+  `items.ts` 의 슬롯 아이템 중 `items.blend` 에 실제 메시가 있는 11종만.
+  커피(I-07)·캐리어(I-10)·지갑(I-11)·EMP(I-14) 는 이 파일에 모델이 없다
+  (맵 잡동사니뿐) — 아이콘 없이 이모지 글리프로 남는다.
+  이어폰(I-05)은 `items_build.py ITM05_Earbuds` 로, 신문지(I-08)는 `ITM08_Paper` 로
+  메시가 생겨 차례로 합류했다. **메시를 새로 만들면 아래 `ICONS` 에도 넣어야 한다** —
+  안 넣으면 HUD 슬롯만 조용히 이모지로 남는다(신문지가 실제로 그랬다).
 """
 import bpy
 import math
@@ -25,8 +27,8 @@ os.makedirs(OUT, exist_ok=True)
 
 # items.ts 의 `node` 필드와 정확히 같아야 한다 — HUD가 이 이름으로 PNG를 찾는다
 ICONS = (
-    "ITM01_Backscratcher", "ITM05_Earbuds", "ITM06_Mask", "ITM09_Umbrella", "ITM12_Yanggaeng",
-    "ITM12_BananaMilk", "ITM12_Chocolate", "ITM12_Soda", "ITM12_SnackBag",
+    "ITM01_Backscratcher", "ITM05_Earbuds", "ITM06_Mask", "ITM08_Paper", "ITM09_Umbrella",
+    "ITM12_Yanggaeng", "ITM12_BananaMilk", "ITM12_Chocolate", "ITM12_Soda", "ITM12_SnackBag",
     "ITM13_RouteMap",
 )
 
